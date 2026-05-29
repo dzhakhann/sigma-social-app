@@ -944,7 +944,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       margin: const EdgeInsets.all(10),
                       child: ListTile(
                         title: Text(chat['name'] ?? 'Chat ${index + 1}'),
-                        subtitle: Text(chat['lastMessage'] ?? 'No messages'),
+                        subtitle: Text(chat['last_message'] ?? 'No messages'),
                         trailing: const Icon(Icons.arrow_forward),
                         onTap: () {
                           Navigator.push(
@@ -1102,32 +1102,65 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<void> sendMessage() async {
     if (messageController.text.isEmpty) return;
+
     final messageText = messageController.text;
     messageController.clear();
-    socketService.sendMessage(
-      widget.chat['id'],
-      messageText,
-      widget.user['id'],
-    );
-    setState(() {
-      messages.add({
-        'sender_id': widget.user['id'],
-        'content': messageText,
-        'timestamp': DateTime.now().toString(),
-      });
-    });
+
     try {
+      // СНАЧАЛА создаем/получаем чат с правильным UUID
+      final chatResponse = await http.post(
+        Uri.parse('$API_URL/chats/get-or-create'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user1_id': widget.user['id'],
+          'user2_id': widget.targetUser?['id'] ??
+              (widget.chat['user2_id'] ?? widget.chat['targetUserId']),
+        }),
+      );
+
+      final chatData = jsonDecode(chatResponse.body);
+      if (!chatData['success']) {
+        print('Error creating chat: ${chatData['error']}');
+        return;
+      }
+
+      final correctChatId = chatData['data']['id'];
+
+      // ПОТОМ отправляем сообщение с ПРАВИЛЬНЫМ chat_id (UUID)
       await http.post(
         Uri.parse('$API_URL/messages'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'chat_id': widget.chat['id'],
+          'chat_id': correctChatId,
           'sender_id': widget.user['id'],
           'content': messageText,
         }),
       );
+
+      // Отправляем через WebSocket
+      socketService.sendMessage(
+        correctChatId,
+        messageText,
+        widget.user['id'],
+      );
+
+      setState(() {
+        messages.add({
+          'sender_id': widget.user['id'],
+          'content': messageText,
+          'timestamp': DateTime.now().toString(),
+        });
+      });
     } catch (e) {
-      print('Error: $e');
+      print('Send message error: $e');
+      // Добавляем сообщение в локальный список даже при ошибке
+      setState(() {
+        messages.add({
+          'sender_id': widget.user['id'],
+          'content': messageText,
+          'timestamp': DateTime.now().toString(),
+        });
+      });
     }
   }
 
