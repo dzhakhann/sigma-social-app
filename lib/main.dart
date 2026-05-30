@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
+import 'package:http_parser/http_parser.dart';
 import 'services/socket_service.dart';
 
 const String API_URL = 'https://sigma-social-backend.onrender.com/api';
@@ -490,9 +493,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool isLoading = false;
   bool isEditing = false;
   bool isFollowing = false;
+  bool isUploadingAvatar = false;
 
   late TextEditingController usernameController;
   late TextEditingController bioController;
+
+  Future<void> pickAndUploadAvatar() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 80,
+    );
+    if (image == null) return;
+
+    setState(() => isUploadingAvatar = true);
+    try {
+      final bytes = await image.readAsBytes();
+      final fileName = '${widget.user['id']}_avatar.jpg';
+
+      final uploadResponse = await http.put(
+        Uri.parse(
+            'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/avatars/$fileName'),
+        headers: {
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2Ynl4a3J0eWpxcm9yeG5ja3Z3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg5MDM4NiwiZXhwIjoyMDk1NDY2Mzg2fQ.oP8PhoIqP8F6QJnKM4p-gujW_nfe12ZWsePg_Scc_8A',
+          'Content-Type': 'image/jpeg',
+          'x-upsert': 'true',
+        },
+        body: bytes,
+      );
+
+      if (uploadResponse.statusCode == 200 ||
+          uploadResponse.statusCode == 201) {
+        final avatarUrl =
+            'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/public/avatars/$fileName?t=${DateTime.now().millisecondsSinceEpoch}';
+
+        await http.post(
+          Uri.parse('$API_URL/users/${widget.user['id']}/update'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'username': userProfile['username'],
+            'bio': userProfile['bio'] ?? '',
+            'avatar_url': avatarUrl,
+          }),
+        );
+
+        setState(() => userProfile['avatar_url'] = avatarUrl);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Avatar updated!')),
+        );
+      }
+    } catch (e) {
+      print('Avatar upload error: $e');
+    }
+    setState(() => isUploadingAvatar = false);
+  }
 
   @override
   void initState() {
@@ -637,20 +694,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFD4AF37),
-                      shape: BoxShape.circle,
+                  GestureDetector(
+                    onTap: widget.isOwnProfile ? pickAndUploadAvatar : null,
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD4AF37),
+                            shape: BoxShape.circle,
+                            image: userProfile['avatar_url'] != null
+                                ? DecorationImage(
+                                    image:
+                                        NetworkImage(userProfile['avatar_url']),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: userProfile['avatar_url'] == null
+                              ? const Icon(Icons.person,
+                                  size: 50, color: Colors.black)
+                              : null,
+                        ),
+                        if (widget.isOwnProfile)
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFD4AF37),
+                                shape: BoxShape.circle,
+                              ),
+                              child: isUploadingAvatar
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(6),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.black),
+                                    )
+                                  : const Icon(Icons.camera_alt,
+                                      size: 18, color: Colors.black),
+                            ),
+                          ),
+                      ],
                     ),
-                    child: const Icon(Icons.person, size: 50, color: Colors.black),
                   ),
                   const SizedBox(height: 20),
                   if (!isEditing)
                     Text(
                       userProfile['username'] ?? 'User',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 24, fontWeight: FontWeight.bold),
                     )
                   else
                     TextField(
@@ -676,17 +772,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       Column(children: [
                         Text(userPosts.length.toString(),
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37))),
+                            style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4AF37))),
                         const Text('Posts'),
                       ]),
                       Column(children: [
                         Text((userProfile['followers_count'] ?? 0).toString(),
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37))),
+                            style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4AF37))),
                         const Text('Followers'),
                       ]),
                       Column(children: [
                         Text((userProfile['following_count'] ?? 0).toString(),
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37))),
+                            style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4AF37))),
                         const Text('Following'),
                       ]),
                     ],
@@ -700,12 +805,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ElevatedButton(
                             onPressed: toggleFollow,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: isFollowing ? Colors.grey[700] : const Color(0xFFD4AF37),
-                              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                              backgroundColor: isFollowing
+                                  ? Colors.grey[700]
+                                  : const Color(0xFFD4AF37),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 30, vertical: 12),
                             ),
                             child: Text(
                               isFollowing ? 'Following ✓' : 'Follow +',
-                              style: TextStyle(color: isFollowing ? Colors.white : Colors.black),
+                              style: TextStyle(
+                                  color: isFollowing
+                                      ? Colors.white
+                                      : Colors.black),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -716,7 +827,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 MaterialPageRoute(
                                   builder: (context) => ChatDetailScreen(
                                     chat: {
-                                      'id': '${widget.user['id']}_${widget.targetUserId}',
+                                      'id':
+                                          '${widget.user['id']}_${widget.targetUserId}',
                                       'name': userProfile['username'],
                                     },
                                     user: widget.user,
@@ -727,9 +839,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFD4AF37),
-                              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 30, vertical: 12),
                             ),
-                            child: const Text('Message 💬', style: TextStyle(color: Colors.black)),
+                            child: const Text('Message 💬',
+                                style: TextStyle(color: Colors.black)),
                           ),
                         ],
                       ),
@@ -743,7 +857,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Posts', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text('Posts',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   isLoading
                       ? const Center(child: CircularProgressIndicator())
@@ -760,12 +876,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: Padding(
                                     padding: const EdgeInsets.all(15),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(post['content'], style: const TextStyle(fontSize: 16)),
+                                        Text(post['content'],
+                                            style:
+                                                const TextStyle(fontSize: 16)),
                                         const SizedBox(height: 10),
                                         Text('❤️ ${post['likes_count']} likes',
-                                            style: TextStyle(color: Colors.grey[400])),
+                                            style: TextStyle(
+                                                color: Colors.grey[400])),
                                       ],
                                     ),
                                   ),
@@ -842,7 +962,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => SelectUserScreen(user: widget.user),
+                              builder: (context) =>
+                                  SelectUserScreen(user: widget.user),
                             ),
                           );
                         },
@@ -853,7 +974,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             color: Color(0xFFD4AF37),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.add, size: 60, color: Colors.black),
+                          child: const Icon(Icons.add,
+                              size: 60, color: Colors.black),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -962,7 +1084,8 @@ class _SelectUserScreenState extends State<SelectUserScreen> {
                             MaterialPageRoute(
                               builder: (context) => ChatDetailScreen(
                                 chat: {
-                                  'id': '${widget.user['id']}_${targetUser['id']}',
+                                  'id':
+                                      '${widget.user['id']}_${targetUser['id']}',
                                   'name': targetUser['username'],
                                 },
                                 user: widget.user,
@@ -1091,13 +1214,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : messages.isEmpty
-                    ? const Center(child: Text('No messages yet. Start chatting!'))
+                    ? const Center(
+                        child: Text('No messages yet. Start chatting!'))
                     : ListView.builder(
                         reverse: true,
                         itemCount: messages.length,
                         itemBuilder: (context, index) {
                           final message = messages[messages.length - 1 - index];
-                          final isOwn = message['sender_id'] == widget.user['id'];
+                          final isOwn =
+                              message['sender_id'] == widget.user['id'];
                           return Align(
                             alignment: isOwn
                                 ? Alignment.centerRight
@@ -1129,7 +1254,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 Expanded(
                   child: TextField(
                     controller: messageController,
-                    decoration: const InputDecoration(hintText: 'Type message...'),
+                    decoration:
+                        const InputDecoration(hintText: 'Type message...'),
                   ),
                 ),
                 const SizedBox(width: 10),
