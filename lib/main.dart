@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 import 'services/socket_service.dart';
 
 const String API_URL = 'https://sigma-social-backend.onrender.com/api';
@@ -215,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ===== FEED SCREEN (С ПОИСКОМ) =====
+// ===== FEED SCREEN =====
 class FeedScreen extends StatefulWidget {
   final Map user;
   const FeedScreen({Key? key, required this.user}) : super(key: key);
@@ -278,7 +279,6 @@ class _FeedScreenState extends State<FeedScreen> {
 
   void filterPosts() {
     final query = searchController.text.toLowerCase();
-
     if (query.isEmpty) {
       setState(() => filteredPosts = posts);
     } else {
@@ -287,7 +287,6 @@ class _FeedScreenState extends State<FeedScreen> {
           final content = (post['content'] ?? '').toLowerCase();
           final username =
               (usersMap[post['user_id']]?['username'] ?? '').toLowerCase();
-
           return content.contains(query) || username.contains(query);
         }).toList();
       });
@@ -350,7 +349,6 @@ class _FeedScreenState extends State<FeedScreen> {
       ),
       body: Column(
         children: [
-          // ===== ПОЛЕ ПОИСКА =====
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -370,8 +368,6 @@ class _FeedScreenState extends State<FeedScreen> {
               ),
             ),
           ),
-
-          // ===== ПОЛЕ ДЛЯ ПОСТОВ =====
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -392,8 +388,6 @@ class _FeedScreenState extends State<FeedScreen> {
               ],
             ),
           ),
-
-          // ===== СПИСОК ПОСТОВ (ОТФИЛЬТРОВАННЫЙ) =====
           Expanded(
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -414,7 +408,6 @@ class _FeedScreenState extends State<FeedScreen> {
                           final username = userInfo != null
                               ? userInfo['username'] ?? 'User'
                               : 'Loading...';
-
                           return Card(
                             margin: const EdgeInsets.all(10),
                             child: Padding(
@@ -474,7 +467,7 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 }
 
-// ===== PROFILE SCREEN (С FOLLOW + MESSAGE) =====
+// ===== PROFILE SCREEN =====
 class ProfileScreen extends StatefulWidget {
   final Map user;
   final String? targetUserId;
@@ -628,9 +621,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (widget.isOwnProfile && !isEditing)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () {
-                setState(() => isEditing = true);
-              },
+              onPressed: () => setState(() => isEditing = true),
             )
           else if (widget.isOwnProfile && isEditing)
             IconButton(
@@ -649,24 +640,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     width: 100,
                     height: 100,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD4AF37),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFD4AF37),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.person,
-                      size: 50,
-                      color: Colors.black,
-                    ),
+                    child:
+                        const Icon(Icons.person, size: 50, color: Colors.black),
                   ),
                   const SizedBox(height: 20),
                   if (!isEditing)
                     Text(
                       userProfile['username'] ?? 'User',
                       style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+                          fontSize: 24, fontWeight: FontWeight.bold),
                     )
                   else
                     TextField(
@@ -690,45 +676,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      Column(
-                        children: [
-                          Text(
-                            userPosts.length.toString(),
+                      Column(children: [
+                        Text(userPosts.length.toString(),
                             style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFD4AF37),
-                            ),
-                          ),
-                          const Text('Posts'),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          Text(
-                            (userProfile['followers_count'] ?? 0).toString(),
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4AF37))),
+                        const Text('Posts'),
+                      ]),
+                      Column(children: [
+                        Text((userProfile['followers_count'] ?? 0).toString(),
                             style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFD4AF37),
-                            ),
-                          ),
-                          const Text('Followers'),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          Text(
-                            (userProfile['following_count'] ?? 0).toString(),
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4AF37))),
+                        const Text('Followers'),
+                      ]),
+                      Column(children: [
+                        Text((userProfile['following_count'] ?? 0).toString(),
                             style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFD4AF37),
-                            ),
-                          ),
-                          const Text('Following'),
-                        ],
-                      ),
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4AF37))),
+                        const Text('Following'),
+                      ]),
                     ],
                   ),
                   if (!widget.isOwnProfile)
@@ -737,7 +708,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Follow Button
                           ElevatedButton(
                             onPressed: toggleFollow,
                             style: ElevatedButton.styleFrom(
@@ -745,20 +715,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ? Colors.grey[700]
                                   : const Color(0xFFD4AF37),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 30,
-                                vertical: 12,
-                              ),
+                                  horizontal: 30, vertical: 12),
                             ),
                             child: Text(
                               isFollowing ? 'Following ✓' : 'Follow +',
                               style: TextStyle(
-                                color:
-                                    isFollowing ? Colors.white : Colors.black,
-                              ),
+                                  color: isFollowing
+                                      ? Colors.white
+                                      : Colors.black),
                             ),
                           ),
                           const SizedBox(width: 10),
-                          // Message Button
                           ElevatedButton(
                             onPressed: () {
                               Navigator.push(
@@ -779,14 +746,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFD4AF37),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 30,
-                                vertical: 12,
-                              ),
+                                  horizontal: 30, vertical: 12),
                             ),
-                            child: const Text(
-                              'Message 💬',
-                              style: TextStyle(color: Colors.black),
-                            ),
+                            child: const Text('Message 💬',
+                                style: TextStyle(color: Colors.black)),
                           ),
                         ],
                       ),
@@ -800,13 +763,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Posts',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  const Text('Posts',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   isLoading
                       ? const Center(child: CircularProgressIndicator())
@@ -826,19 +785,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          post['content'],
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                          ),
-                                        ),
+                                        Text(post['content'],
+                                            style:
+                                                const TextStyle(fontSize: 16)),
                                         const SizedBox(height: 10),
-                                        Text(
-                                          '❤️ ${post['likes_count']} likes',
-                                          style: TextStyle(
-                                            color: Colors.grey[400],
-                                          ),
-                                        ),
+                                        Text('❤️ ${post['likes_count']} likes',
+                                            style: TextStyle(
+                                                color: Colors.grey[400])),
                                       ],
                                     ),
                                   ),
@@ -874,26 +827,29 @@ class ChatsScreen extends StatefulWidget {
 class _ChatsScreenState extends State<ChatsScreen> {
   List chats = [];
   bool isLoading = false;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     getChats();
+    // Автообновление списка чатов каждые 5 секунд
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted) getChats();
+    });
   }
 
   Future<void> getChats() async {
-    setState(() => isLoading = true);
     try {
       final response = await http
           .get(Uri.parse('$API_URL/chats?userId=${widget.user['id']}'));
       final data = jsonDecode(response.body);
-      if (data['success']) {
+      if (data['success'] && mounted) {
         setState(() => chats = data['data'] ?? []);
       }
     } catch (e) {
       print('Error: $e');
     }
-    setState(() => isLoading = false);
   }
 
   @override
@@ -920,8 +876,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         child: Container(
                           width: 120,
                           height: 120,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD4AF37),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFD4AF37),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.add,
@@ -929,10 +885,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      const Text(
-                        'Tap to start chatting',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
+                      const Text('Tap to start chatting',
+                          style: TextStyle(fontSize: 16, color: Colors.grey)),
                     ],
                   ),
                 )
@@ -962,6 +916,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   },
                 ),
     );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 }
 
@@ -1064,50 +1024,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final messageController = TextEditingController();
   List messages = [];
   bool isLoading = false;
-  late SocketService socketService;
+  String? correctChatId;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    socketService = SocketService();
-    socketService.connect(widget.user['id']);
-    getMessages();
-    socketService.socket.on('receive_message', (data) {
-      if (mounted) {
-        setState(() {
-          messages.add({
-            'sender_id': data['sender_id'],
-            'content': data['content'],
-            'timestamp': DateTime.now().toString(),
-          });
-        });
-      }
-    });
+    _initChat();
   }
 
-  Future<void> getMessages() async {
+  // Сначала получаем правильный chat_id, потом загружаем сообщения
+  Future<void> _initChat() async {
     setState(() => isLoading = true);
     try {
-      final response =
-          await http.get(Uri.parse('$API_URL/messages/${widget.chat['id']}'));
-      final data = jsonDecode(response.body);
-      if (data['success']) {
-        setState(() => messages = data['data'] ?? []);
-      }
-    } catch (e) {
-      print('Error: $e');
-    }
-    setState(() => isLoading = false);
-  }
-
-  Future<void> sendMessage() async {
-    if (messageController.text.isEmpty) return;
-
-    final messageText = messageController.text;
-    messageController.clear();
-
-    try {
-      // СНАЧАЛА создаем/получаем чат с правильным UUID
       final chatResponse = await http.post(
         Uri.parse('$API_URL/chats/get-or-create'),
         headers: {'Content-Type': 'application/json'},
@@ -1117,16 +1046,42 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               (widget.chat['user2_id'] ?? widget.chat['targetUserId']),
         }),
       );
-
       final chatData = jsonDecode(chatResponse.body);
-      if (!chatData['success']) {
-        print('Error creating chat: ${chatData['error']}');
-        return;
+      if (chatData['success']) {
+        correctChatId = chatData['data']['id'];
+        await getMessages();
+        // Автообновление сообщений каждые 3 секунды
+        _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
+          if (mounted) getMessages();
+        });
       }
+    } catch (e) {
+      print('Init chat error: $e');
+    }
+    setState(() => isLoading = false);
+  }
 
-      final correctChatId = chatData['data']['id'];
+  Future<void> getMessages() async {
+    if (correctChatId == null) return;
+    try {
+      final response =
+          await http.get(Uri.parse('$API_URL/messages/$correctChatId'));
+      final data = jsonDecode(response.body);
+      if (data['success'] && mounted) {
+        setState(() => messages = data['data'] ?? []);
+      }
+    } catch (e) {
+      print('Error: $e');
+    }
+  }
 
-      // ПОТОМ отправляем сообщение с ПРАВИЛЬНЫМ chat_id (UUID)
+  Future<void> sendMessage() async {
+    if (messageController.text.isEmpty || correctChatId == null) return;
+
+    final messageText = messageController.text;
+    messageController.clear();
+
+    try {
       await http.post(
         Uri.parse('$API_URL/messages'),
         headers: {'Content-Type': 'application/json'},
@@ -1136,24 +1091,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           'content': messageText,
         }),
       );
-
-      // Отправляем через WebSocket
-      socketService.sendMessage(
-        correctChatId,
-        messageText,
-        widget.user['id'],
-      );
-
-      setState(() {
-        messages.add({
-          'sender_id': widget.user['id'],
-          'content': messageText,
-          'timestamp': DateTime.now().toString(),
-        });
-      });
+      // Сразу обновляем сообщения после отправки
+      await getMessages();
     } catch (e) {
       print('Send message error: $e');
-      // Добавляем сообщение в локальный список даже при ошибке
       setState(() {
         messages.add({
           'sender_id': widget.user['id'],
@@ -1233,6 +1174,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   void dispose() {
+    _timer?.cancel();
     messageController.dispose();
     super.dispose();
   }
