@@ -2,13 +2,13 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class SocketService {
   late IO.Socket socket;
-  final String wsUrl = 'http://localhost:3000';
+  final String wsUrl = 'https://sigma-social-backend.onrender.com';
 
   void connect(String userId) {
     socket = IO.io(
         wsUrl,
         IO.OptionBuilder()
-            .setTransports(['websocket'])
+            .setTransports(['websocket', 'polling'])
             .disableAutoConnect()
             .build());
 
