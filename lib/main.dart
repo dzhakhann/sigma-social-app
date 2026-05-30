@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
-import 'package:http_parser/http_parser.dart';
 import 'services/socket_service.dart';
 
 const String API_URL = 'https://sigma-social-backend.onrender.com/api';
@@ -36,58 +34,33 @@ class MyApp extends StatelessWidget {
             backgroundColor: const Color(0xFFD4AF37),
             foregroundColor: Colors.black,
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 5,
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFD4AF37), width: 2),
-          ),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFD4AF37), width: 2)),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF333333), width: 1),
-          ),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF333333), width: 1)),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFD4AF37), width: 2),
-          ),
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFD4AF37), width: 2)),
           filled: true,
           fillColor: const Color(0xFF1A1A1A),
           labelStyle: const TextStyle(color: Color(0xFFD4AF37)),
-          hintStyle: TextStyle(color: Colors.grey[600]),
+          hintStyle: const TextStyle(color: Colors.grey),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-        textTheme: TextTheme(
-          displayLarge: const TextStyle(
-            color: Colors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-          ),
-          titleLarge: const TextStyle(
-            color: Color(0xFFD4AF37),
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-          bodyLarge: TextStyle(
-            color: Colors.grey[300],
-            fontSize: 16,
-          ),
-          bodyMedium: TextStyle(
-            color: Colors.grey[400],
-            fontSize: 14,
-          ),
         ),
         cardTheme: CardTheme(
           color: const Color(0xFF1A1A1A),
           elevation: 4,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
       home: const LoginScreen(),
@@ -98,7 +71,6 @@ class MyApp extends StatelessWidget {
 // ===== LOGIN SCREEN =====
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -112,15 +84,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> register() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.post(
-        Uri.parse('$API_URL/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': emailController.text,
-          'username': emailController.text.split('@')[0],
-          'password': passwordController.text,
-        }),
-      );
+      final response = await http.post(Uri.parse('$API_URL/auth/register'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': emailController.text,
+            'username': emailController.text.split('@')[0],
+            'password': passwordController.text
+          }));
       final data = jsonDecode(response.body);
       if (data['success']) {
         setState(() => message = '✅ Registered! Now login');
@@ -138,24 +108,20 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> login() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.post(
-        Uri.parse('$API_URL/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': emailController.text,
-          'password': passwordController.text,
-        }),
-      );
+      final response = await http.post(Uri.parse('$API_URL/auth/login'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': emailController.text,
+            'password': passwordController.text
+          }));
       final data = jsonDecode(response.body);
       if (data['success']) {
-        if (mounted) {
+        if (mounted)
           Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FeedScreen(user: data['data']['user']),
-            ),
-          );
-        }
+              context,
+              MaterialPageRoute(
+                  builder: (context) =>
+                      FeedScreen(user: data['data']['user'])));
       } else {
         setState(() => message = '❌ ${data['error']}');
       }
@@ -178,33 +144,27 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
             const SizedBox(height: 40),
             TextField(
-              controller: emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
+                controller: emailController,
+                decoration: const InputDecoration(labelText: 'Email')),
             const SizedBox(height: 20),
             TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password'),
-            ),
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Password')),
             const SizedBox(height: 30),
             if (message.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Text(message),
-              ),
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: Text(message)),
             ElevatedButton(
-              onPressed: isLoading ? null : login,
-              child: Text(isLoading ? 'Loading...' : 'Login'),
-            ),
+                onPressed: isLoading ? null : login,
+                child: Text(isLoading ? 'Loading...' : 'Login')),
             const SizedBox(height: 10),
             ElevatedButton(
-              onPressed: isLoading ? null : register,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey[700],
-              ),
-              child: const Text('Register'),
-            ),
+                onPressed: isLoading ? null : register,
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: Colors.grey[700]),
+                child: const Text('Register')),
           ],
         ),
       ),
@@ -223,7 +183,6 @@ class _LoginScreenState extends State<LoginScreen> {
 class FeedScreen extends StatefulWidget {
   final Map user;
   const FeedScreen({Key? key, required this.user}) : super(key: key);
-
   @override
   State<FeedScreen> createState() => _FeedScreenState();
 }
@@ -252,12 +211,13 @@ class _FeedScreenState extends State<FeedScreen> {
       final response = await http.get(Uri.parse('$API_URL/posts'));
       final data = jsonDecode(response.body);
       if (data['success']) {
-        setState(() => posts = data['data'] ?? []);
-        filteredPosts = posts;
+        setState(() {
+          posts = data['data'] ?? [];
+          filteredPosts = posts;
+        });
         for (var post in posts) {
-          if (!usersMap.containsKey(post['user_id'])) {
+          if (!usersMap.containsKey(post['user_id']))
             getUserInfo(post['user_id']);
-          }
         }
       }
     } catch (e) {
@@ -270,11 +230,10 @@ class _FeedScreenState extends State<FeedScreen> {
     try {
       final response = await http.get(Uri.parse('$API_URL/users/$userId'));
       final data = jsonDecode(response.body);
-      if (data['success']) {
+      if (data['success'])
         setState(() {
           usersMap[userId] = data['data'];
         });
-      }
     } catch (e) {
       print('Error: $e');
     }
@@ -299,14 +258,10 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> createPost() async {
     if (postController.text.isEmpty) return;
     try {
-      final response = await http.post(
-        Uri.parse('$API_URL/posts'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': widget.user['id'],
-          'content': postController.text,
-        }),
-      );
+      final response = await http.post(Uri.parse('$API_URL/posts'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(
+              {'user_id': widget.user['id'], 'content': postController.text}));
       final data = jsonDecode(response.body);
       if (data['success']) {
         postController.clear();
@@ -324,30 +279,18 @@ class _FeedScreenState extends State<FeedScreen> {
         title: Text('Welcome ${widget.user['username']}!'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.chat, size: 28),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatsScreen(user: widget.user),
-                ),
-              );
-            },
-          ),
+              icon: const Icon(Icons.chat, size: 28),
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => ChatsScreen(user: widget.user)))),
           IconButton(
-            icon: const Icon(Icons.person, size: 28),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ProfileScreen(
-                    user: widget.user,
-                    isOwnProfile: true,
-                  ),
-                ),
-              );
-            },
-          ),
+              icon: const Icon(Icons.person, size: 28),
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => ProfileScreen(
+                          user: widget.user, isOwnProfile: true)))),
         ],
       ),
       body: Column(
@@ -365,31 +308,22 @@ class _FeedScreenState extends State<FeedScreen> {
                         onPressed: () {
                           searchController.clear();
                           filterPosts();
-                        },
-                      )
+                        })
                     : null,
               ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
+            child: Row(children: [
+              Expanded(
                   child: TextField(
-                    controller: postController,
-                    decoration: const InputDecoration(
-                      hintText: 'Share your thoughts...',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: createPost,
-                  child: const Text('Post'),
-                ),
-              ],
-            ),
+                      controller: postController,
+                      decoration: const InputDecoration(
+                          hintText: 'Share your thoughts...'))),
+              const SizedBox(width: 10),
+              ElevatedButton(onPressed: createPost, child: const Text('Post')),
+            ]),
           ),
           Expanded(
             child: isLoading
@@ -397,12 +331,10 @@ class _FeedScreenState extends State<FeedScreen> {
                 : filteredPosts.isEmpty
                     ? Center(
                         child: Text(
-                          searchController.text.isEmpty
-                              ? 'No posts yet'
-                              : 'No posts found for "${searchController.text}"',
-                          style: TextStyle(color: Colors.grey[400]),
-                        ),
-                      )
+                            searchController.text.isEmpty
+                                ? 'No posts yet'
+                                : 'No posts found',
+                            style: const TextStyle(color: Colors.grey)))
                     : ListView.builder(
                         itemCount: filteredPosts.length,
                         itemBuilder: (context, index) {
@@ -416,42 +348,32 @@ class _FeedScreenState extends State<FeedScreen> {
                             child: Padding(
                               padding: const EdgeInsets.all(15),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  GestureDetector(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => ProfileScreen(
-                                            user: widget.user,
-                                            targetUserId: post['user_id'],
-                                            isOwnProfile: false,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    child: Text(
-                                      username,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFFD4AF37),
-                                      ),
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) =>
+                                                  ProfileScreen(
+                                                      user: widget.user,
+                                                      targetUserId:
+                                                          post['user_id'],
+                                                      isOwnProfile: false))),
+                                      child: Text(username,
+                                          style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFFD4AF37))),
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    post['content'],
-                                    style: const TextStyle(fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    '❤️ ${post['likes_count']} likes',
-                                    style: TextStyle(color: Colors.grey[400]),
-                                  ),
-                                ],
-                              ),
+                                    const SizedBox(height: 8),
+                                    Text(post['content'],
+                                        style: const TextStyle(fontSize: 16)),
+                                    const SizedBox(height: 10),
+                                    Text('❤️ ${post['likes_count']} likes',
+                                        style: const TextStyle(
+                                            color: Colors.grey)),
+                                  ]),
                             ),
                           );
                         },
@@ -475,14 +397,12 @@ class ProfileScreen extends StatefulWidget {
   final Map user;
   final String? targetUserId;
   final bool isOwnProfile;
-
-  const ProfileScreen({
-    Key? key,
-    required this.user,
-    this.targetUserId,
-    this.isOwnProfile = true,
-  }) : super(key: key);
-
+  const ProfileScreen(
+      {Key? key,
+      required this.user,
+      this.targetUserId,
+      this.isOwnProfile = true})
+      : super(key: key);
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -494,25 +414,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool isEditing = false;
   bool isFollowing = false;
   bool isUploadingAvatar = false;
-
   late TextEditingController usernameController;
   late TextEditingController bioController;
 
   Future<void> pickAndUploadAvatar() async {
     final picker = ImagePicker();
     final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 80,
-    );
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80);
     if (image == null) return;
-
     setState(() => isUploadingAvatar = true);
     try {
       final bytes = await image.readAsBytes();
       final fileName = '${widget.user['id']}_avatar.jpg';
-
       final uploadResponse = await http.put(
         Uri.parse(
             'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/avatars/$fileName'),
@@ -520,30 +436,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'Authorization':
               'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2Ynl4a3J0eWpxcm9yeG5ja3Z3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg5MDM4NiwiZXhwIjoyMDk1NDY2Mzg2fQ.oP8PhoIqP8F6QJnKM4p-gujW_nfe12ZWsePg_Scc_8A',
           'Content-Type': 'image/jpeg',
-          'x-upsert': 'true',
+          'x-upsert': 'true'
         },
         body: bytes,
       );
-
       if (uploadResponse.statusCode == 200 ||
           uploadResponse.statusCode == 201) {
         final avatarUrl =
             'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/public/avatars/$fileName?t=${DateTime.now().millisecondsSinceEpoch}';
-
-        await http.post(
-          Uri.parse('$API_URL/users/${widget.user['id']}/update'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'username': userProfile['username'],
-            'bio': userProfile['bio'] ?? '',
-            'avatar_url': avatarUrl,
-          }),
-        );
-
+        await http.post(Uri.parse('$API_URL/users/${widget.user['id']}/update'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'username': userProfile['username'],
+              'bio': userProfile['bio'] ?? '',
+              'avatar_url': avatarUrl
+            }));
         setState(() => userProfile['avatar_url'] = avatarUrl);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Avatar updated!')),
-        );
+        if (mounted)
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('✅ Avatar updated!')));
       }
     } catch (e) {
       print('Avatar upload error: $e');
@@ -554,19 +465,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.isOwnProfile) {
-      userProfile = widget.user;
-    } else {
-      userProfile = {};
-    }
+    userProfile = widget.isOwnProfile ? widget.user : {};
     usernameController =
         TextEditingController(text: userProfile['username'] ?? '');
     bioController = TextEditingController(text: userProfile['bio'] ?? '');
     getUserProfile();
     getUserPosts();
-    if (!widget.isOwnProfile) {
-      checkFollowStatus();
-    }
+    if (!widget.isOwnProfile) checkFollowStatus();
   }
 
   Future<void> getUserProfile() async {
@@ -606,10 +511,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> checkFollowStatus() async {
     try {
-      final response = await http.get(
-        Uri.parse(
-            '$API_URL/users/${widget.user['id']}/following/${widget.targetUserId}'),
-      );
+      final response = await http.get(Uri.parse(
+          '$API_URL/users/${widget.user['id']}/following/${widget.targetUserId}'));
       final data = jsonDecode(response.body);
       setState(() => isFollowing = data['isFollowing'] ?? false);
     } catch (e) {
@@ -621,21 +524,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final endpoint = isFollowing ? 'unfollow' : 'follow';
       final response = await http.post(
-        Uri.parse(
-            '$API_URL/users/${widget.user['id']}/$endpoint/${widget.targetUserId}'),
-        headers: {'Content-Type': 'application/json'},
-      );
+          Uri.parse(
+              '$API_URL/users/${widget.user['id']}/$endpoint/${widget.targetUserId}'),
+          headers: {'Content-Type': 'application/json'});
       final data = jsonDecode(response.body);
       if (data['success']) {
         setState(() {
           isFollowing = !isFollowing;
-          if (isFollowing) {
-            userProfile['followers_count'] =
-                (userProfile['followers_count'] ?? 0) + 1;
-          } else {
-            userProfile['followers_count'] =
-                (userProfile['followers_count'] ?? 1) - 1;
-          }
+          userProfile['followers_count'] = isFollowing
+              ? (userProfile['followers_count'] ?? 0) + 1
+              : (userProfile['followers_count'] ?? 1) - 1;
         });
       }
     } catch (e) {
@@ -646,13 +544,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> updateProfile() async {
     try {
       final response = await http.post(
-        Uri.parse('$API_URL/users/${widget.user['id']}/update'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'username': usernameController.text,
-          'bio': bioController.text,
-        }),
-      );
+          Uri.parse('$API_URL/users/${widget.user['id']}/update'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'username': usernameController.text,
+            'bio': bioController.text
+          }));
       final data = jsonDecode(response.body);
       if (data['success']) {
         setState(() {
@@ -660,9 +557,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           userProfile['username'] = usernameController.text;
           userProfile['bio'] = bioController.text;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Profile updated!')),
-        );
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('✅ Profile updated!')));
       }
     } catch (e) {
       print('Error: $e');
@@ -677,205 +574,169 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           if (widget.isOwnProfile && !isEditing)
             IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => setState(() => isEditing = true),
-            )
+                icon: const Icon(Icons.edit),
+                onPressed: () => setState(() => isEditing = true))
           else if (widget.isOwnProfile && isEditing)
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: updateProfile,
-            ),
+            IconButton(icon: const Icon(Icons.check), onPressed: updateProfile),
         ],
       ),
       body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: widget.isOwnProfile ? pickAndUploadAvatar : null,
-                    child: Stack(
-                      children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD4AF37),
-                            shape: BoxShape.circle,
-                            image: userProfile['avatar_url'] != null
-                                ? DecorationImage(
-                                    image:
-                                        NetworkImage(userProfile['avatar_url']),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: userProfile['avatar_url'] == null
-                              ? const Icon(Icons.person,
-                                  size: 50, color: Colors.black)
-                              : null,
-                        ),
-                        if (widget.isOwnProfile)
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              width: 30,
-                              height: 30,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFD4AF37),
-                                shape: BoxShape.circle,
-                              ),
-                              child: isUploadingAvatar
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(6),
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2, color: Colors.black),
-                                    )
-                                  : const Icon(Icons.camera_alt,
-                                      size: 18, color: Colors.black),
-                            ),
-                          ),
-                      ],
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(children: [
+              GestureDetector(
+                onTap: widget.isOwnProfile ? pickAndUploadAvatar : null,
+                child: Stack(children: [
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD4AF37),
+                      shape: BoxShape.circle,
+                      image: userProfile['avatar_url'] != null
+                          ? DecorationImage(
+                              image: NetworkImage(userProfile['avatar_url']),
+                              fit: BoxFit.cover)
+                          : null,
                     ),
+                    child: userProfile['avatar_url'] == null
+                        ? const Icon(Icons.person,
+                            size: 50, color: Colors.black)
+                        : null,
                   ),
-                  const SizedBox(height: 20),
-                  if (!isEditing)
-                    Text(
-                      userProfile['username'] ?? 'User',
+                  if (widget.isOwnProfile)
+                    Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFFD4AF37), shape: BoxShape.circle),
+                          child: isUploadingAvatar
+                              ? const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.black))
+                              : const Icon(Icons.camera_alt,
+                                  size: 18, color: Colors.black),
+                        )),
+                ]),
+              ),
+              const SizedBox(height: 20),
+              if (!isEditing)
+                Text(userProfile['username'] ?? 'User',
+                    style: const TextStyle(
+                        fontSize: 24, fontWeight: FontWeight.bold))
+              else
+                TextField(
+                    controller: usernameController,
+                    decoration: const InputDecoration(labelText: 'Username')),
+              const SizedBox(height: 10),
+              if (!isEditing)
+                Text(userProfile['bio'] ?? 'No bio',
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center)
+              else
+                TextField(
+                    controller: bioController,
+                    decoration: const InputDecoration(labelText: 'Bio'),
+                    maxLines: 3),
+              const SizedBox(height: 20),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                Column(children: [
+                  Text(userPosts.length.toString(),
                       style: const TextStyle(
-                          fontSize: 24, fontWeight: FontWeight.bold),
-                    )
-                  else
-                    TextField(
-                      controller: usernameController,
-                      decoration: const InputDecoration(labelText: 'Username'),
-                    ),
-                  const SizedBox(height: 10),
-                  if (!isEditing)
-                    Text(
-                      userProfile['bio'] ?? 'No bio',
-                      style: TextStyle(color: Colors.grey[400]),
-                      textAlign: TextAlign.center,
-                    )
-                  else
-                    TextField(
-                      controller: bioController,
-                      decoration: const InputDecoration(labelText: 'Bio'),
-                      maxLines: 3,
-                    ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Column(children: [
-                        Text(userPosts.length.toString(),
-                            style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFD4AF37))),
-                        const Text('Posts'),
-                      ]),
-                      Column(children: [
-                        Text((userProfile['followers_count'] ?? 0).toString(),
-                            style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFD4AF37))),
-                        const Text('Followers'),
-                      ]),
-                      Column(children: [
-                        Text((userProfile['following_count'] ?? 0).toString(),
-                            style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFD4AF37))),
-                        const Text('Following'),
-                      ]),
-                    ],
-                  ),
-                  if (!widget.isOwnProfile)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ElevatedButton(
-                            onPressed: toggleFollow,
-                            style: ElevatedButton.styleFrom(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFD4AF37))),
+                  const Text('Posts')
+                ]),
+                Column(children: [
+                  Text((userProfile['followers_count'] ?? 0).toString(),
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFD4AF37))),
+                  const Text('Followers')
+                ]),
+                Column(children: [
+                  Text((userProfile['following_count'] ?? 0).toString(),
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFD4AF37))),
+                  const Text('Following')
+                ]),
+              ]),
+              if (!widget.isOwnProfile)
+                Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          onPressed: toggleFollow,
+                          style: ElevatedButton.styleFrom(
                               backgroundColor: isFollowing
                                   ? Colors.grey[700]
                                   : const Color(0xFFD4AF37),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 30, vertical: 12),
-                            ),
-                            child: Text(
-                              isFollowing ? 'Following ✓' : 'Follow +',
+                                  horizontal: 30, vertical: 12)),
+                          child: Text(isFollowing ? 'Following ✓' : 'Follow +',
                               style: TextStyle(
                                   color: isFollowing
                                       ? Colors.white
-                                      : Colors.black),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
+                                      : Colors.black)),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
                                   builder: (context) => ChatDetailScreen(
-                                    chat: {
-                                      'id':
-                                          '${widget.user['id']}_${widget.targetUserId}',
-                                      'name': userProfile['username'],
-                                    },
-                                    user: widget.user,
-                                    targetUser: userProfile,
-                                  ),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
+                                          chat: {
+                                            'id':
+                                                '${widget.user['id']}_${widget.targetUserId}',
+                                            'name': userProfile['username']
+                                          },
+                                          user: widget.user,
+                                          targetUser: userProfile))),
+                          style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFD4AF37),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 30, vertical: 12),
-                            ),
-                            child: const Text('Message 💬',
-                                style: TextStyle(color: Colors.black)),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Posts',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : userPosts.isEmpty
-                          ? const Text('No posts')
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: userPosts.length,
-                              itemBuilder: (context, index) {
-                                final post = userPosts[index];
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(15),
-                                    child: Column(
+                                  horizontal: 30, vertical: 12)),
+                          child: const Text('Message 💬',
+                              style: TextStyle(color: Colors.black)),
+                        ),
+                      ]),
+                ),
+            ]),
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Posts',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : userPosts.isEmpty
+                      ? const Text('No posts')
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: userPosts.length,
+                          itemBuilder: (context, index) {
+                            final post = userPosts[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              child: Padding(
+                                  padding: const EdgeInsets.all(15),
+                                  child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
@@ -884,19 +745,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                                 const TextStyle(fontSize: 16)),
                                         const SizedBox(height: 10),
                                         Text('❤️ ${post['likes_count']} likes',
-                                            style: TextStyle(
-                                                color: Colors.grey[400])),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                ],
-              ),
-            ),
-          ],
-        ),
+                                            style: const TextStyle(
+                                                color: Colors.grey)),
+                                      ])),
+                            );
+                          },
+                        ),
+            ]),
+          ),
+        ]),
       ),
     );
   }
@@ -913,21 +770,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class ChatsScreen extends StatefulWidget {
   final Map user;
   const ChatsScreen({Key? key, required this.user}) : super(key: key);
-
   @override
   State<ChatsScreen> createState() => _ChatsScreenState();
 }
 
 class _ChatsScreenState extends State<ChatsScreen> {
   List chats = [];
-  bool isLoading = false;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     getChats();
-    // Автообновление списка чатов каждые 5 секунд
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (mounted) getChats();
     });
@@ -938,9 +792,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final response = await http
           .get(Uri.parse('$API_URL/chats?userId=${widget.user['id']}'));
       final data = jsonDecode(response.body);
-      if (data['success'] && mounted) {
+      if (data['success'] && mounted)
         setState(() => chats = data['data'] ?? []);
-      }
     } catch (e) {
       print('Error: $e');
     }
@@ -950,77 +803,62 @@ class _ChatsScreenState extends State<ChatsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Chats')),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : chats.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  SelectUserScreen(user: widget.user),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: 120,
-                          height: 120,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFD4AF37),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.add,
-                              size: 60, color: Colors.black),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      const Text('Tap to start chatting',
-                          style: TextStyle(fontSize: 16, color: Colors.grey)),
-                    ],
+      body: chats.isEmpty
+          ? Center(
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) =>
+                                SelectUserScreen(user: widget.user))),
+                    child: Container(
+                        width: 120,
+                        height: 120,
+                        decoration: const BoxDecoration(
+                            color: Color(0xFFD4AF37), shape: BoxShape.circle),
+                        child: const Icon(Icons.add,
+                            size: 60, color: Colors.black)),
                   ),
-                )
-              : ListView.builder(
-                  itemCount: chats.length,
-                  itemBuilder: (context, index) {
-                    final chat = chats[index];
-                    return Card(
-                      margin: const EdgeInsets.all(10),
-                      child: ListTile(
-                        leading: chat['avatar'] != null
-                            ? CircleAvatar(
-                                backgroundImage: NetworkImage(chat['avatar']))
-                            : const CircleAvatar(
-                                backgroundColor: Color(0xFFD4AF37),
-                                child: Icon(Icons.person, color: Colors.black)),
-                        title: Text(chat['name'] ?? 'Chat ${index + 1}'),
-                        subtitle: Text(chat['last_message'] ?? 'No messages'),
-                        trailing: const Icon(Icons.arrow_forward),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ChatDetailScreen(
-                                chat: chat,
-                                user: widget.user,
-                                targetUser: {
-                                  'id': chat['other_user_id'] ??
-                                      (chat['user1_id'] == widget.user['id']
-                                          ? chat['user2_id']
-                                          : chat['user1_id']),
-                                },
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+                  const SizedBox(height: 20),
+                  const Text('Tap to start chatting',
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
+                ]))
+          : ListView.builder(
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                return Card(
+                  margin: const EdgeInsets.all(10),
+                  child: ListTile(
+                    leading: chat['avatar'] != null
+                        ? CircleAvatar(
+                            backgroundImage: NetworkImage(chat['avatar']))
+                        : const CircleAvatar(
+                            backgroundColor: Color(0xFFD4AF37),
+                            child: Icon(Icons.person, color: Colors.black)),
+                    title: Text(chat['name'] ?? 'Chat ${index + 1}'),
+                    subtitle: Text(chat['last_message'] ?? 'No messages'),
+                    trailing: const Icon(Icons.arrow_forward),
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => ChatDetailScreen(
+                                  chat: chat,
+                                  user: widget.user,
+                                  targetUser: {
+                                    'id': chat['other_user_id'] ??
+                                        (chat['user1_id'] == widget.user['id']
+                                            ? chat['user2_id']
+                                            : chat['user1_id'])
+                                  },
+                                ))),
+                  ),
+                );
+              },
+            ),
     );
   }
 
@@ -1035,7 +873,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
 class SelectUserScreen extends StatefulWidget {
   final Map user;
   const SelectUserScreen({Key? key, required this.user}) : super(key: key);
-
   @override
   State<SelectUserScreen> createState() => _SelectUserScreenState();
 }
@@ -1082,25 +919,28 @@ class _SelectUserScreenState extends State<SelectUserScreen> {
                     return Card(
                       margin: const EdgeInsets.all(10),
                       child: ListTile(
+                        leading: targetUser['avatar_url'] != null
+                            ? CircleAvatar(
+                                backgroundImage:
+                                    NetworkImage(targetUser['avatar_url']))
+                            : const CircleAvatar(
+                                backgroundColor: Color(0xFFD4AF37),
+                                child: Icon(Icons.person, color: Colors.black)),
                         title: Text(targetUser['username'] ?? 'User'),
                         subtitle: Text(targetUser['email'] ?? ''),
                         trailing: const Icon(Icons.message),
-                        onTap: () {
-                          Navigator.push(
+                        onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => ChatDetailScreen(
-                                chat: {
-                                  'id':
-                                      '${widget.user['id']}_${targetUser['id']}',
-                                  'name': targetUser['username'],
-                                },
-                                user: widget.user,
-                                targetUser: targetUser,
-                              ),
-                            ),
-                          );
-                        },
+                                builder: (context) => ChatDetailScreen(
+                                      chat: {
+                                        'id':
+                                            '${widget.user['id']}_${targetUser['id']}',
+                                        'name': targetUser['username']
+                                      },
+                                      user: widget.user,
+                                      targetUser: targetUser,
+                                    ))),
                       ),
                     );
                   },
@@ -1114,23 +954,20 @@ class ChatDetailScreen extends StatefulWidget {
   final Map chat;
   final Map user;
   final Map? targetUser;
-
-  const ChatDetailScreen({
-    Key? key,
-    required this.chat,
-    required this.user,
-    this.targetUser,
-  }) : super(key: key);
-
+  const ChatDetailScreen(
+      {Key? key, required this.chat, required this.user, this.targetUser})
+      : super(key: key);
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final messageController = TextEditingController();
+  final editController = TextEditingController();
   List messages = [];
   bool isLoading = false;
   String? correctChatId;
+  String? editingMessageId;
   Timer? _timer;
 
   @override
@@ -1139,24 +976,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _initChat();
   }
 
-  // Сначала получаем правильный chat_id, потом загружаем сообщения
   Future<void> _initChat() async {
     setState(() => isLoading = true);
     try {
+      final user2Id = widget.targetUser?['id'] ??
+          (widget.chat['user2_id'] ?? widget.chat['other_user_id']);
+      if (user2Id == null) {
+        setState(() => isLoading = false);
+        return;
+      }
       final chatResponse = await http.post(
-        Uri.parse('$API_URL/chats/get-or-create'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user1_id': widget.user['id'],
-          'user2_id': widget.targetUser?['id'] ??
-              (widget.chat['user2_id'] ?? widget.chat['targetUserId']),
-        }),
-      );
+          Uri.parse('$API_URL/chats/get-or-create'),
+          headers: {'Content-Type': 'application/json'},
+          body:
+              jsonEncode({'user1_id': widget.user['id'], 'user2_id': user2Id}));
       final chatData = jsonDecode(chatResponse.body);
       if (chatData['success']) {
         correctChatId = chatData['data']['id'];
         await getMessages();
-        // Автообновление сообщений каждые 3 секунды
         _timer = Timer.periodic(const Duration(seconds: 3), (timer) {
           if (mounted) getMessages();
         });
@@ -1173,9 +1010,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final response =
           await http.get(Uri.parse('$API_URL/messages/$correctChatId'));
       final data = jsonDecode(response.body);
-      if (data['success'] && mounted) {
+      if (data['success'] && mounted)
         setState(() => messages = data['data'] ?? []);
-      }
     } catch (e) {
       print('Error: $e');
     }
@@ -1183,98 +1019,204 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<void> sendMessage() async {
     if (messageController.text.isEmpty || correctChatId == null) return;
-
     final messageText = messageController.text;
     messageController.clear();
-
     try {
-      await http.post(
-        Uri.parse('$API_URL/messages'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'chat_id': correctChatId,
-          'sender_id': widget.user['id'],
-          'content': messageText,
-        }),
-      );
-      // Сразу обновляем сообщения после отправки
+      await http.post(Uri.parse('$API_URL/messages'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'chat_id': correctChatId,
+            'sender_id': widget.user['id'],
+            'content': messageText
+          }));
       await getMessages();
     } catch (e) {
       print('Send message error: $e');
-      setState(() {
-        messages.add({
-          'sender_id': widget.user['id'],
-          'content': messageText,
-          'timestamp': DateTime.now().toString(),
-        });
-      });
     }
+  }
+
+  Future<void> deleteMessage(String messageId) async {
+    try {
+      await http.delete(Uri.parse('$API_URL/messages/$messageId'),
+          headers: {'Content-Type': 'application/json'});
+      await getMessages();
+    } catch (e) {
+      print('Delete error: $e');
+    }
+  }
+
+  Future<void> editMessage(String messageId, String newContent) async {
+    try {
+      await http.put(Uri.parse('$API_URL/messages/$messageId'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'content': newContent}));
+      setState(() => editingMessageId = null);
+      editController.clear();
+      await getMessages();
+    } catch (e) {
+      print('Edit error: $e');
+    }
+  }
+
+  void showMessageOptions(Map message) {
+    final isOwn = message['sender_id'] == widget.user['id'];
+    if (!isOwn) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.edit, color: Color(0xFFD4AF37)),
+            title: const Text('Edit message',
+                style: TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context);
+              editController.text = message['content'];
+              setState(() => editingMessageId = message['id']);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red),
+            title: const Text('Delete message',
+                style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(context);
+              deleteMessage(message['id']);
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final chatName =
+        widget.chat['name'] ?? widget.targetUser?['username'] ?? 'Chat';
+    final chatAvatar =
+        widget.chat['avatar'] ?? widget.targetUser?['avatar_url'];
     return Scaffold(
-      appBar: AppBar(title: Text(widget.chat['name'] ?? 'Chat')),
-      body: Column(
-        children: [
-          Expanded(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : messages.isEmpty
-                    ? const Center(
-                        child: Text('No messages yet. Start chatting!'))
-                    : ListView.builder(
-                        reverse: true,
-                        itemCount: messages.length,
-                        itemBuilder: (context, index) {
-                          final message = messages[messages.length - 1 - index];
-                          final isOwn =
-                              message['sender_id'] == widget.user['id'];
-                          return Align(
+      appBar: AppBar(
+        title: Row(children: [
+          chatAvatar != null
+              ? CircleAvatar(
+                  radius: 18, backgroundImage: NetworkImage(chatAvatar))
+              : const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Color(0xFF333333),
+                  child: Icon(Icons.person, color: Colors.white, size: 18)),
+          const SizedBox(width: 10),
+          Text(chatName,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ]),
+      ),
+      body: Column(children: [
+        Expanded(
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : messages.isEmpty
+                  ? const Center(
+                      child: Text('No messages yet. Start chatting!'))
+                  : ListView.builder(
+                      reverse: true,
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final message = messages[messages.length - 1 - index];
+                        final isOwn = message['sender_id'] == widget.user['id'];
+                        final isEdited = message['is_edited'] == true;
+                        return GestureDetector(
+                          onLongPress: () => showMessageOptions(message),
+                          child: Align(
                             alignment: isOwn
                                 ? Alignment.centerRight
                                 : Alignment.centerLeft,
                             child: Container(
-                              margin: const EdgeInsets.all(8),
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               padding: const EdgeInsets.all(12),
+                              constraints: BoxConstraints(
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width * 0.75),
                               decoration: BoxDecoration(
                                 color: isOwn
                                     ? const Color(0xFFD4AF37)
                                     : const Color(0xFF333333),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                message['content'],
-                                style: TextStyle(
-                                  color: isOwn ? Colors.black : Colors.white,
-                                ),
-                              ),
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(message['content'],
+                                        style: TextStyle(
+                                            color: isOwn
+                                                ? Colors.black
+                                                : Colors.white,
+                                            fontSize: 15)),
+                                    if (isEdited)
+                                      Text('edited',
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              color: isOwn
+                                                  ? Colors.black54
+                                                  : Colors.grey)),
+                                  ]),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+        if (editingMessageId != null)
+          Container(
+            color: const Color(0xFF1A1A1A),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(children: [
+              const Icon(Icons.edit, color: Color(0xFFD4AF37), size: 16),
+              const SizedBox(width: 8),
+              const Text('Editing message',
+                  style: TextStyle(color: Color(0xFFD4AF37), fontSize: 12)),
+              const Spacer(),
+              GestureDetector(
+                  onTap: () {
+                    setState(() => editingMessageId = null);
+                    editController.clear();
+                  },
+                  child: const Icon(Icons.close, color: Colors.grey, size: 16)),
+            ]),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: messageController,
-                    decoration:
-                        const InputDecoration(hintText: 'Type message...'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: sendMessage,
-                  child: const Text('Send'),
-                ),
-              ],
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: const Color(0xFF0A0A0A),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: editingMessageId != null
+                    ? editController
+                    : messageController,
+                decoration: InputDecoration(
+                    hintText: editingMessageId != null
+                        ? 'Edit message...'
+                        : 'Type message...'),
+                maxLines: null,
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: editingMessageId != null
+                  ? () => editMessage(editingMessageId!, editController.text)
+                  : sendMessage,
+              style: ElevatedButton.styleFrom(minimumSize: const Size(60, 48)),
+              child: Icon(editingMessageId != null ? Icons.check : Icons.send,
+                  color: Colors.black),
+            ),
+          ]),
+        ),
+      ]),
     );
   }
 
@@ -1282,6 +1224,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void dispose() {
     _timer?.cancel();
     messageController.dispose();
+    editController.dispose();
     super.dispose();
   }
 }
