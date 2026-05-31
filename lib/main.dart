@@ -311,49 +311,58 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
+  Map<String, List> _groupedStories() {
+    final Map<String, List> grouped = {};
+    for (var story in stories) {
+      final userId = story['user_id'] as String;
+      if (userId == widget.user['id']) continue; // skip own stories from list
+      grouped.putIfAbsent(userId, () => []).add(story);
+    }
+    return grouped;
+  }
+
+  void _openStory(List userStories, int startIndex) {
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => StoryViewScreen(
+                  stories: userStories,
+                  startIndex: startIndex,
+                  user: widget.user,
+                  onStoryDeleted: () => getStories(),
+                )));
+  }
+
   Future<void> addStory() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Add Story',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          ListTile(
-              leading: const Icon(Icons.camera_alt, color: Color(0xFFD4AF37)),
-              title: const Text('Camera'),
-              onTap: () => Navigator.pop(context, ImageSource.camera)),
-          ListTile(
-              leading:
-                  const Icon(Icons.photo_library, color: Color(0xFFD4AF37)),
-              title: const Text('Gallery'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery)),
-        ]),
-      ),
-    );
-    if (source == null) return;
-
     final picker = ImagePicker();
-    final XFile? image =
-        await picker.pickImage(source: source, maxWidth: 800, imageQuality: 70);
+    final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 800, imageQuality: 80);
     if (image == null) return;
-
     try {
       final bytes = await image.readAsBytes();
-      final base64Image = base64Encode(bytes);
-
-      final response = await http.post(
-        Uri.parse('$API_URL/stories/upload'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(
-            {'user_id': widget.user['id'], 'image_base64': base64Image}),
+      final fileName =
+          '${widget.user['id']}_story_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final uploadResponse = await http.put(
+        Uri.parse(
+            'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/avatars/$fileName'),
+        headers: {
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2Ynl4a3J0eWpxcm9yeG5ja3Z3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg5MDM4NiwiZXhwIjoyMDk1NDY2Mzg2fQ.oP8PhoIqP8F6QJnKM4p-gujW_nfe12ZWsePg_Scc_8A',
+          'Content-Type': 'image/jpeg',
+          'x-upsert': 'true'
+        },
+        body: bytes,
       );
-      final data = jsonDecode(response.body);
-      if (data['success']) getStories();
+      if (uploadResponse.statusCode == 200 ||
+          uploadResponse.statusCode == 201) {
+        final imageUrl =
+            'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/public/avatars/$fileName';
+        await http.post(Uri.parse('$API_URL/stories'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(
+                {'user_id': widget.user['id'], 'image_url': imageUrl}));
+        getStories();
+      }
     } catch (e) {
       print('Add story error: $e');
     }
@@ -382,65 +391,135 @@ class _FeedScreenState extends State<FeedScreen> {
       ),
       body: Column(
         children: [
-          // ===== STORIES =====
+          // ===== STORIES (Instagram style) =====
           SizedBox(
             height: 100,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: stories.length + 1,
+              itemCount: _groupedStories().length + 1,
               itemBuilder: (context, index) {
                 if (index == 0) {
+                  // My story button
+                  final myStories = stories
+                      .where((s) => s['user_id'] == widget.user['id'])
+                      .toList();
                   return GestureDetector(
-                    onTap: addStory,
+                    onTap: myStories.isEmpty
+                        ? addStory
+                        : () {
+                            showModalBottomSheet(
+                              context: context,
+                              backgroundColor: const Color(0xFF1A1A1A),
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.vertical(
+                                      top: Radius.circular(20))),
+                              builder: (context) => Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                        leading: const Icon(Icons.add,
+                                            color: Color(0xFFD4AF37)),
+                                        title: const Text('Add to story'),
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          addStory();
+                                        }),
+                                    ListTile(
+                                        leading: const Icon(Icons.visibility,
+                                            color: Color(0xFFD4AF37)),
+                                        title: const Text('View my story'),
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          _openStory(myStories, 0);
+                                        }),
+                                  ]),
+                            );
+                          },
                     child: Container(
-                      margin: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      width: 70,
                       child: Column(children: [
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A1A),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                                color: const Color(0xFFD4AF37), width: 2),
+                        Stack(children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: myStories.isEmpty
+                                      ? const Color(0xFF333333)
+                                      : const Color(0xFFD4AF37),
+                                  width: 2),
+                              image: widget.user['avatar_url'] != null
+                                  ? DecorationImage(
+                                      image: NetworkImage(
+                                          widget.user['avatar_url']),
+                                      fit: BoxFit.cover)
+                                  : null,
+                              color: const Color(0xFF1A1A1A),
+                            ),
+                            child: widget.user['avatar_url'] == null
+                                ? const Icon(Icons.person, color: Colors.grey)
+                                : null,
                           ),
-                          child: const Icon(Icons.add,
-                              color: Color(0xFFD4AF37), size: 30),
-                        ),
+                          Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: const BoxDecoration(
+                                    color: Color(0xFFD4AF37),
+                                    shape: BoxShape.circle),
+                                child: const Icon(Icons.add,
+                                    size: 16, color: Colors.black),
+                              )),
+                        ]),
                         const SizedBox(height: 4),
-                        const Text('Add',
-                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        const Text('Your story',
+                            style: TextStyle(fontSize: 10, color: Colors.grey),
+                            overflow: TextOverflow.ellipsis),
                       ]),
                     ),
                   );
                 }
-                final story = stories[index - 1];
+                final grouped = _groupedStories();
+                final userId = grouped.keys.toList()[index - 1];
+                final userStories = grouped[userId]!;
+                final firstStory = userStories.first;
                 return GestureDetector(
-                  onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => StoryViewScreen(
-                              story: story, user: widget.user))),
+                  onTap: () => _openStory(userStories, 0),
                   child: Container(
-                    margin: const EdgeInsets.all(8),
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    width: 70,
                     child: Column(children: [
                       Container(
-                        width: 60,
-                        height: 60,
+                        width: 64,
+                        height: 64,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                              color: const Color(0xFFD4AF37), width: 2),
-                          image: DecorationImage(
-                              image: NetworkImage(story['image_url']),
-                              fit: BoxFit.cover),
+                              color: const Color(0xFFD4AF37), width: 2.5),
+                          image: firstStory['user_avatar'] != null
+                              ? DecorationImage(
+                                  image:
+                                      NetworkImage(firstStory['user_avatar']),
+                                  fit: BoxFit.cover)
+                              : null,
+                          color: const Color(0xFF1A1A1A),
                         ),
+                        child: firstStory['user_avatar'] == null
+                            ? const Icon(Icons.person, color: Colors.grey)
+                            : null,
                       ),
                       const SizedBox(height: 4),
-                      Text(story['username'] ?? 'User',
+                      Text(firstStory['username'] ?? 'User',
                           style:
-                              const TextStyle(fontSize: 11, color: Colors.grey),
-                          overflow: TextOverflow.ellipsis),
+                              const TextStyle(fontSize: 10, color: Colors.grey),
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center),
                     ]),
                   ),
                 );
@@ -1579,36 +1658,82 @@ class _CommentsScreenState extends State<CommentsScreen> {
   }
 }
 
-// ===== STORY VIEW SCREEN =====
+// ===== STORY VIEW SCREEN (Instagram style) =====
 class StoryViewScreen extends StatefulWidget {
-  final Map story;
+  final List stories;
+  final int startIndex;
   final Map user;
-  const StoryViewScreen({Key? key, required this.story, required this.user})
-      : super(key: key);
+  final VoidCallback? onStoryDeleted;
+
+  const StoryViewScreen({
+    Key? key,
+    required this.stories,
+    required this.startIndex,
+    required this.user,
+    this.onStoryDeleted,
+  }) : super(key: key);
+
   @override
   State<StoryViewScreen> createState() => _StoryViewScreenState();
 }
 
 class _StoryViewScreenState extends State<StoryViewScreen> {
+  late int _currentIndex;
   double _progress = 0;
   Timer? _timer;
+  bool _isPaused = false;
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.startIndex;
+    _pageController = PageController(initialPage: _currentIndex);
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _progress = 0;
     _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      setState(() => _progress += 0.05 / 5);
+      if (_isPaused) return;
+      setState(() => _progress += 1 / (5000 / 50)); // 5 seconds per story
       if (_progress >= 1.0) {
-        timer.cancel();
-        if (mounted) Navigator.pop(context);
+        _nextStory();
       }
     });
   }
 
-  Future<void> deleteStory() async {
-    if (widget.story['user_id'] != widget.user['id']) return;
+  void _nextStory() {
+    if (_currentIndex < widget.stories.length - 1) {
+      setState(() {
+        _currentIndex++;
+        _progress = 0;
+      });
+      _pageController.animateToPage(_currentIndex,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      _startTimer();
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  void _prevStory() {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+        _progress = 0;
+      });
+      _pageController.animateToPage(_currentIndex,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      _startTimer();
+    }
+  }
+
+  Future<void> _deleteStory(String storyId) async {
     try {
-      await http.delete(Uri.parse('$API_URL/stories/${widget.story['id']}'));
+      await http.delete(Uri.parse('$API_URL/stories/$storyId'));
+      widget.onStoryDeleted?.call();
       if (mounted) Navigator.pop(context);
     } catch (e) {
       print('Error: $e');
@@ -1617,46 +1742,136 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final story = widget.stories[_currentIndex];
+    final isOwn = story['user_id'] == widget.user['id'];
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: () => Navigator.pop(context),
+        onLongPressStart: (_) => setState(() => _isPaused = true),
+        onLongPressEnd: (_) => setState(() => _isPaused = false),
+        onTapUp: (details) {
+          final screenWidth = MediaQuery.of(context).size.width;
+          if (details.globalPosition.dx < screenWidth / 3) {
+            _prevStory();
+          } else {
+            _nextStory();
+          }
+        },
         child: Stack(children: [
-          Center(
-              child: Image.network(widget.story['image_url'],
-                  fit: BoxFit.contain)),
+          // Story image
+          Positioned.fill(
+            child: Image.network(
+              story['image_url'],
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(
+                    child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
+              },
+            ),
+          ),
+
+          // Top gradient
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 120,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black54, Colors.transparent]),
+              ),
+            ),
+          ),
+
+          // Progress bars + header
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: SafeArea(
               child: Column(children: [
-                LinearProgressIndicator(
-                    value: _progress,
-                    backgroundColor: Colors.white30,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(Color(0xFFD4AF37))),
+                // Progress bars
                 Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(
+                      children: List.generate(widget.stories.length, (i) {
+                    return Expanded(
+                      child: Container(
+                        height: 3,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: i < _currentIndex
+                                ? 1.0
+                                : i == _currentIndex
+                                    ? _progress
+                                    : 0.0,
+                            backgroundColor: Colors.white30,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.white),
+                          ),
+                        ),
+                      ),
+                    );
+                  })),
+                ),
+
+                // User info
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(children: [
-                    widget.story['user_avatar'] != null
+                    story['user_avatar'] != null
                         ? CircleAvatar(
                             radius: 20,
-                            backgroundImage:
-                                NetworkImage(widget.story['user_avatar']))
+                            backgroundImage: NetworkImage(story['user_avatar']))
                         : const CircleAvatar(
                             radius: 20,
                             backgroundColor: Color(0xFFD4AF37),
                             child: Icon(Icons.person, color: Colors.black)),
-                    const SizedBox(width: 8),
-                    Text(widget.story['username'] ?? 'User',
+                    const SizedBox(width: 10),
+                    Text(story['username'] ?? 'User',
                         style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15)),
+                    const SizedBox(width: 8),
+                    Text(_timeAgo(story['created_at']),
+                        style: const TextStyle(
+                            color: Colors.white60, fontSize: 12)),
                     const Spacer(),
-                    if (widget.story['user_id'] == widget.user['id'])
+                    if (isOwn)
                       IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.white),
-                          onPressed: deleteStory),
+                        icon: const Icon(Icons.delete_outline,
+                            color: Colors.white),
+                        onPressed: () => showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: const Color(0xFF1A1A1A),
+                            title: const Text('Delete story?',
+                                style: TextStyle(color: Colors.white)),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Cancel')),
+                              TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _deleteStory(story['id']);
+                                  },
+                                  child: const Text('Delete',
+                                      style: TextStyle(color: Colors.red))),
+                            ],
+                          ),
+                        ),
+                      ),
                     IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
                         onPressed: () => Navigator.pop(context)),
@@ -1665,14 +1880,44 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
               ]),
             ),
           ),
+
+          // Tap areas (invisible)
+          Positioned.fill(
+            child: Row(children: [
+              Expanded(
+                  flex: 1,
+                  child: GestureDetector(
+                      onTap: _prevStory,
+                      child: Container(color: Colors.transparent))),
+              Expanded(
+                  flex: 2,
+                  child: GestureDetector(
+                      onTap: _nextStory,
+                      child: Container(color: Colors.transparent))),
+            ]),
+          ),
         ]),
       ),
     );
   }
 
+  String _timeAgo(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      final diff = DateTime.now().difference(date);
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+      if (diff.inHours < 24) return '${diff.inHours}h';
+      return '${diff.inDays}d';
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _pageController.dispose();
     super.dispose();
   }
 }
