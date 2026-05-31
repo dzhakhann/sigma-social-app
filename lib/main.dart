@@ -312,9 +312,36 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<void> addStory() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Add Story',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          ListTile(
+            leading: const Icon(Icons.camera_alt, color: Color(0xFFD4AF37)),
+            title: const Text('Camera'),
+            onTap: () => Navigator.pop(context, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library, color: Color(0xFFD4AF37)),
+            title: const Text('Gallery'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
+          ),
+        ]),
+      ),
+    );
+
+    if (source == null) return;
+
     final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 800, imageQuality: 80);
+    final XFile? image =
+        await picker.pickImage(source: source, maxWidth: 800, imageQuality: 80);
     if (image == null) return;
     try {
       final bytes = await image.readAsBytes();
