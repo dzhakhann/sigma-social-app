@@ -202,6 +202,7 @@ class _FeedScreenState extends State<FeedScreen> {
     socketService = SocketService();
     socketService.connect(widget.user['id']);
     getPosts();
+    getStories();
     searchController.addListener(filterPosts);
   }
 
@@ -297,6 +298,54 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
+  List stories = [];
+
+  Future<void> getStories() async {
+    try {
+      final response = await http.get(Uri.parse('$API_URL/stories'));
+      final data = jsonDecode(response.body);
+      if (data['success'] && mounted)
+        setState(() => stories = data['data'] ?? []);
+    } catch (e) {
+      print('Stories error: $e');
+    }
+  }
+
+  Future<void> addStory() async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 800, imageQuality: 80);
+    if (image == null) return;
+    try {
+      final bytes = await image.readAsBytes();
+      final fileName =
+          '${widget.user['id']}_story_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final uploadResponse = await http.put(
+        Uri.parse(
+            'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/avatars/$fileName'),
+        headers: {
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2Ynl4a3J0eWpxcm9yeG5ja3Z3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTg5MDM4NiwiZXhwIjoyMDk1NDY2Mzg2fQ.oP8PhoIqP8F6QJnKM4p-gujW_nfe12ZWsePg_Scc_8A',
+          'Content-Type': 'image/jpeg',
+          'x-upsert': 'true'
+        },
+        body: bytes,
+      );
+      if (uploadResponse.statusCode == 200 ||
+          uploadResponse.statusCode == 201) {
+        final imageUrl =
+            'https://uvbyxkrtyjqrorxnckvw.supabase.co/storage/v1/object/public/avatars/$fileName';
+        await http.post(Uri.parse('$API_URL/stories'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(
+                {'user_id': widget.user['id'], 'image_url': imageUrl}));
+        getStories();
+      }
+    } catch (e) {
+      print('Add story error: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -320,6 +369,72 @@ class _FeedScreenState extends State<FeedScreen> {
       ),
       body: Column(
         children: [
+          // ===== STORIES =====
+          SizedBox(
+            height: 100,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: stories.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return GestureDetector(
+                    onTap: addStory,
+                    child: Container(
+                      margin: const EdgeInsets.all(8),
+                      child: Column(children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A1A),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: const Color(0xFFD4AF37), width: 2),
+                          ),
+                          child: const Icon(Icons.add,
+                              color: Color(0xFFD4AF37), size: 30),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text('Add',
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ]),
+                    ),
+                  );
+                }
+                final story = stories[index - 1];
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => StoryViewScreen(
+                              story: story, user: widget.user))),
+                  child: Container(
+                    margin: const EdgeInsets.all(8),
+                    child: Column(children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: const Color(0xFFD4AF37), width: 2),
+                          image: DecorationImage(
+                              image: NetworkImage(story['image_url']),
+                              fit: BoxFit.cover),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(story['username'] ?? 'User',
+                          style:
+                              const TextStyle(fontSize: 11, color: Colors.grey),
+                          overflow: TextOverflow.ellipsis),
+                    ]),
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -408,25 +523,45 @@ class _FeedScreenState extends State<FeedScreen> {
                                     Text(post['content'],
                                         style: const TextStyle(fontSize: 16)),
                                     const SizedBox(height: 10),
-                                    GestureDetector(
-                                      onTap: () => likePost(post['id']),
-                                      child: Row(children: [
-                                        Icon(
-                                            isLiked
-                                                ? Icons.favorite
-                                                : Icons.favorite_border,
-                                            color: isLiked
-                                                ? Colors.red
-                                                : Colors.grey,
-                                            size: 20),
-                                        const SizedBox(width: 4),
-                                        Text('${post['likes_count']} likes',
-                                            style: TextStyle(
-                                                color: isLiked
-                                                    ? Colors.red
-                                                    : Colors.grey)),
-                                      ]),
-                                    ),
+                                    Row(children: [
+                                      GestureDetector(
+                                        onTap: () => likePost(post['id']),
+                                        child: Row(children: [
+                                          Icon(
+                                              isLiked
+                                                  ? Icons.favorite
+                                                  : Icons.favorite_border,
+                                              color: isLiked
+                                                  ? Colors.red
+                                                  : Colors.grey,
+                                              size: 20),
+                                          const SizedBox(width: 4),
+                                          Text('${post['likes_count']}',
+                                              style: TextStyle(
+                                                  color: isLiked
+                                                      ? Colors.red
+                                                      : Colors.grey)),
+                                        ]),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      GestureDetector(
+                                        onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (context) =>
+                                                    CommentsScreen(
+                                                        post: post,
+                                                        user: widget.user))),
+                                        child: Row(children: [
+                                          const Icon(Icons.comment_outlined,
+                                              color: Colors.grey, size: 20),
+                                          const SizedBox(width: 4),
+                                          Text('${post['comments_count'] ?? 0}',
+                                              style: const TextStyle(
+                                                  color: Colors.grey)),
+                                        ]),
+                                      ),
+                                    ]),
                                   ]),
                             ),
                           );
@@ -1280,6 +1415,251 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _timer?.cancel();
     messageController.dispose();
     editController.dispose();
+    super.dispose();
+  }
+}
+
+// ===== COMMENTS SCREEN =====
+class CommentsScreen extends StatefulWidget {
+  final Map post;
+  final Map user;
+  const CommentsScreen({Key? key, required this.post, required this.user})
+      : super(key: key);
+  @override
+  State<CommentsScreen> createState() => _CommentsScreenState();
+}
+
+class _CommentsScreenState extends State<CommentsScreen> {
+  final commentController = TextEditingController();
+  List comments = [];
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    getComments();
+  }
+
+  Future<void> getComments() async {
+    setState(() => isLoading = true);
+    try {
+      final response = await http
+          .get(Uri.parse('$API_URL/posts/${widget.post['id']}/comments'));
+      final data = jsonDecode(response.body);
+      if (data['success'] && mounted)
+        setState(() => comments = data['data'] ?? []);
+    } catch (e) {
+      print('Error: $e');
+    }
+    setState(() => isLoading = false);
+  }
+
+  Future<void> addComment() async {
+    if (commentController.text.isEmpty) return;
+    final text = commentController.text;
+    commentController.clear();
+    try {
+      await http.post(Uri.parse('$API_URL/posts/${widget.post['id']}/comments'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'user_id': widget.user['id'], 'content': text}));
+      getComments();
+    } catch (e) {
+      print('Error: $e');
+    }
+  }
+
+  Future<void> deleteComment(String commentId) async {
+    try {
+      await http.delete(Uri.parse('$API_URL/comments/$commentId'));
+      getComments();
+    } catch (e) {
+      print('Error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Comments')),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.post['username'] ?? 'User',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFD4AF37))),
+                    const SizedBox(height: 4),
+                    Text(widget.post['content']),
+                  ]),
+            ),
+          ),
+        ),
+        const Divider(),
+        Expanded(
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : comments.isEmpty
+                  ? const Center(
+                      child: Text('No comments yet',
+                          style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: comments.length,
+                      itemBuilder: (context, index) {
+                        final comment = comments[index];
+                        final isOwn = comment['user_id'] == widget.user['id'];
+                        return ListTile(
+                          leading: comment['user_avatar'] != null
+                              ? CircleAvatar(
+                                  backgroundImage:
+                                      NetworkImage(comment['user_avatar']))
+                              : const CircleAvatar(
+                                  backgroundColor: Color(0xFFD4AF37),
+                                  child:
+                                      Icon(Icons.person, color: Colors.black)),
+                          title: Text(comment['username'] ?? 'User',
+                              style: const TextStyle(
+                                  color: Color(0xFFD4AF37),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13)),
+                          subtitle: Text(comment['content']),
+                          trailing: isOwn
+                              ? IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red, size: 18),
+                                  onPressed: () => deleteComment(comment['id']))
+                              : null,
+                        );
+                      },
+                    ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: const Color(0xFF0A0A0A),
+          child: Row(children: [
+            Expanded(
+                child: TextField(
+                    controller: commentController,
+                    decoration:
+                        const InputDecoration(hintText: 'Write a comment...'))),
+            const SizedBox(width: 8),
+            ElevatedButton(
+                onPressed: addComment,
+                style:
+                    ElevatedButton.styleFrom(minimumSize: const Size(60, 48)),
+                child: const Icon(Icons.send, color: Colors.black)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  void dispose() {
+    commentController.dispose();
+    super.dispose();
+  }
+}
+
+// ===== STORY VIEW SCREEN =====
+class StoryViewScreen extends StatefulWidget {
+  final Map story;
+  final Map user;
+  const StoryViewScreen({Key? key, required this.story, required this.user})
+      : super(key: key);
+  @override
+  State<StoryViewScreen> createState() => _StoryViewScreenState();
+}
+
+class _StoryViewScreenState extends State<StoryViewScreen> {
+  double _progress = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+      setState(() => _progress += 0.05 / 5);
+      if (_progress >= 1.0) {
+        timer.cancel();
+        if (mounted) Navigator.pop(context);
+      }
+    });
+  }
+
+  Future<void> deleteStory() async {
+    if (widget.story['user_id'] != widget.user['id']) return;
+    try {
+      await http.delete(Uri.parse('$API_URL/stories/${widget.story['id']}'));
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      print('Error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Stack(children: [
+          Center(
+              child: Image.network(widget.story['image_url'],
+                  fit: BoxFit.contain)),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Column(children: [
+                LinearProgressIndicator(
+                    value: _progress,
+                    backgroundColor: Colors.white30,
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(Color(0xFFD4AF37))),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(children: [
+                    widget.story['user_avatar'] != null
+                        ? CircleAvatar(
+                            radius: 20,
+                            backgroundImage:
+                                NetworkImage(widget.story['user_avatar']))
+                        : const CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Color(0xFFD4AF37),
+                            child: Icon(Icons.person, color: Colors.black)),
+                    const SizedBox(width: 8),
+                    Text(widget.story['username'] ?? 'User',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    if (widget.story['user_id'] == widget.user['id'])
+                      IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.white),
+                          onPressed: deleteStory),
+                    IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
     super.dispose();
   }
 }
