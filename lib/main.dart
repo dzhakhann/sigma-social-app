@@ -1789,7 +1789,23 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
             ),
           ),
 
-          // Top gradient
+          // Tap areas (invisible) - behind buttons
+          Positioned.fill(
+            child: Row(children: [
+              Expanded(
+                  flex: 1,
+                  child: GestureDetector(
+                      onTap: _prevStory,
+                      child: Container(color: Colors.transparent))),
+              Expanded(
+                  flex: 2,
+                  child: GestureDetector(
+                      onTap: _nextStory,
+                      child: Container(color: Colors.transparent))),
+            ]),
+          ),
+
+          // Top gradient - above tap areas
           Positioned(
             top: 0,
             left: 0,
@@ -1805,14 +1821,13 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
             ),
           ),
 
-          // Progress bars + header
+          // Header - always on top, blocks taps on buttons
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: SafeArea(
               child: Column(children: [
-                // Progress bars
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1839,8 +1854,6 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                     );
                   })),
                 ),
-
-                // User info
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1859,76 +1872,57 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 15)),
-                    const SizedBox(width: 8),
-                    Text(_timeAgo(story['created_at']),
-                        style: const TextStyle(
-                            color: Colors.white60, fontSize: 12)),
                     const Spacer(),
                     if (isOwn)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            color: Colors.white),
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            backgroundColor: const Color(0xFF1A1A1A),
-                            title: const Text('Delete story?',
-                                style: TextStyle(color: Colors.white)),
-                            actions: [
-                              TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Cancel')),
-                              TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _deleteStory(story['id']);
-                                  },
-                                  child: const Text('Delete',
-                                      style: TextStyle(color: Colors.red))),
-                            ],
-                          ),
+                      GestureDetector(
+                        onTap: () {
+                          _timer?.cancel();
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: const Color(0xFF1A1A1A),
+                              title: const Text('Delete story?',
+                                  style: TextStyle(color: Colors.white)),
+                              actions: [
+                                TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _startTimer();
+                                    },
+                                    child: const Text('Cancel')),
+                                TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _deleteStory(story['id']);
+                                    },
+                                    child: const Text('Delete',
+                                        style: TextStyle(color: Colors.red))),
+                              ],
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          child: const Icon(Icons.delete_outline,
+                              color: Colors.white, size: 24),
                         ),
                       ),
-                    IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => Navigator.pop(context)),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        child: const Icon(Icons.close,
+                            color: Colors.white, size: 24),
+                      ),
+                    ),
                   ]),
                 ),
               ]),
             ),
           ),
-
-          // Tap areas (invisible)
-          Positioned.fill(
-            child: Row(children: [
-              Expanded(
-                  flex: 1,
-                  child: GestureDetector(
-                      onTap: _prevStory,
-                      child: Container(color: Colors.transparent))),
-              Expanded(
-                  flex: 2,
-                  child: GestureDetector(
-                      onTap: _nextStory,
-                      child: Container(color: Colors.transparent))),
-            ]),
-          ),
         ]),
       ),
     );
-  }
-
-  String _timeAgo(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      final diff = DateTime.now().difference(date);
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-      if (diff.inHours < 24) return '${diff.inHours}h';
-      return '${diff.inDays}d';
-    } catch (e) {
-      return '';
-    }
   }
 
   @override
