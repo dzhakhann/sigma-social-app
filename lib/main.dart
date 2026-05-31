@@ -208,7 +208,8 @@ class _FeedScreenState extends State<FeedScreen> {
   Future<void> getPosts() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse('$API_URL/posts'));
+      final response = await http
+          .get(Uri.parse('$API_URL/posts?userId=${widget.user['id']}'));
       final data = jsonDecode(response.body);
       if (data['success']) {
         setState(() {
@@ -247,11 +248,35 @@ class _FeedScreenState extends State<FeedScreen> {
       setState(() {
         filteredPosts = posts.where((post) {
           final content = (post['content'] ?? '').toLowerCase();
-          final username =
-              (usersMap[post['user_id']]?['username'] ?? '').toLowerCase();
+          final username = (post['username'] ?? '').toLowerCase();
           return content.contains(query) || username.contains(query);
         }).toList();
       });
+    }
+  }
+
+  Future<void> likePost(String postId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$API_URL/posts/$postId/like'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': widget.user['id']}),
+      );
+      final data = jsonDecode(response.body);
+      if (data['success']) {
+        setState(() {
+          for (var i = 0; i < posts.length; i++) {
+            if (posts[i]['id'] == postId) {
+              posts[i] = Map.from(posts[i]);
+              posts[i]['likes_count'] = data['likes_count'];
+              posts[i]['is_liked'] = data['liked'];
+            }
+          }
+          filteredPosts = posts;
+        });
+      }
+    } catch (e) {
+      print('Like error: $e');
     }
   }
 
@@ -339,10 +364,8 @@ class _FeedScreenState extends State<FeedScreen> {
                         itemCount: filteredPosts.length,
                         itemBuilder: (context, index) {
                           final post = filteredPosts[index];
-                          final userInfo = usersMap[post['user_id']];
-                          final username = userInfo != null
-                              ? userInfo['username'] ?? 'User'
-                              : 'Loading...';
+                          final username = post['username'] ?? 'User';
+                          final isLiked = post['is_liked'] == true;
                           return Card(
                             margin: const EdgeInsets.all(10),
                             child: Padding(
@@ -350,29 +373,60 @@ class _FeedScreenState extends State<FeedScreen> {
                               child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    GestureDetector(
-                                      onTap: () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (context) =>
-                                                  ProfileScreen(
-                                                      user: widget.user,
-                                                      targetUserId:
-                                                          post['user_id'],
-                                                      isOwnProfile: false))),
-                                      child: Text(username,
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFFD4AF37))),
-                                    ),
+                                    Row(children: [
+                                      post['user_avatar'] != null
+                                          ? CircleAvatar(
+                                              radius: 16,
+                                              backgroundImage: NetworkImage(
+                                                  post['user_avatar']))
+                                          : const CircleAvatar(
+                                              radius: 16,
+                                              backgroundColor:
+                                                  Color(0xFFD4AF37),
+                                              child: Icon(Icons.person,
+                                                  size: 16,
+                                                  color: Colors.black)),
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                                builder: (context) =>
+                                                    ProfileScreen(
+                                                        user: widget.user,
+                                                        targetUserId:
+                                                            post['user_id'],
+                                                        isOwnProfile: false))),
+                                        child: Text(username,
+                                            style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFD4AF37))),
+                                      ),
+                                    ]),
                                     const SizedBox(height: 8),
                                     Text(post['content'],
                                         style: const TextStyle(fontSize: 16)),
                                     const SizedBox(height: 10),
-                                    Text('❤️ ${post['likes_count']} likes',
-                                        style: const TextStyle(
-                                            color: Colors.grey)),
+                                    GestureDetector(
+                                      onTap: () => likePost(post['id']),
+                                      child: Row(children: [
+                                        Icon(
+                                            isLiked
+                                                ? Icons.favorite
+                                                : Icons.favorite_border,
+                                            color: isLiked
+                                                ? Colors.red
+                                                : Colors.grey,
+                                            size: 20),
+                                        const SizedBox(width: 4),
+                                        Text('${post['likes_count']} likes',
+                                            style: TextStyle(
+                                                color: isLiked
+                                                    ? Colors.red
+                                                    : Colors.grey)),
+                                      ]),
+                                    ),
                                   ]),
                             ),
                           );
@@ -493,7 +547,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> getUserPosts() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse('$API_URL/posts'));
+      final response = await http
+          .get(Uri.parse('$API_URL/posts?userId=${widget.user['id']}'));
       final data = jsonDecode(response.body);
       if (data['success']) {
         final allPosts = data['data'] ?? [];
