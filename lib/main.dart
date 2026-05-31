@@ -322,11 +322,24 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   void _openStory(List userStories, int startIndex) {
+    // Build list of all user groups for cross-user navigation
+    final allGroups = _groupedStories().values.toList();
+    // Find which group index we're opening
+    int groupIndex = 0;
+    for (int i = 0; i < allGroups.length; i++) {
+      if (allGroups[i].isNotEmpty &&
+          allGroups[i][0]['user_id'] == userStories[0]['user_id']) {
+        groupIndex = i;
+        break;
+      }
+    }
     Navigator.push(
         context,
         MaterialPageRoute(
             builder: (context) => StoryViewScreen(
                   stories: userStories,
+                  allGroups: allGroups,
+                  groupIndex: groupIndex,
                   startIndex: startIndex,
                   user: widget.user,
                   onStoryDeleted: () => getStories(),
@@ -447,7 +460,20 @@ class _FeedScreenState extends State<FeedScreen> {
                                         title: const Text('View my story'),
                                         onTap: () {
                                           Navigator.pop(context);
-                                          _openStory(myStories, 0);
+                                          Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      StoryViewScreen(
+                                                          stories: myStories,
+                                                          allGroups: [
+                                                            myStories
+                                                          ],
+                                                          groupIndex: 0,
+                                                          startIndex: 0,
+                                                          user: widget.user,
+                                                          onStoryDeleted: () =>
+                                                              getStories())));
                                         }),
                                   ]),
                             );
@@ -1678,6 +1704,8 @@ class _CommentsScreenState extends State<CommentsScreen> {
 // ===== STORY VIEW SCREEN (Instagram style) =====
 class StoryViewScreen extends StatefulWidget {
   final List stories;
+  final List allGroups;
+  final int groupIndex;
   final int startIndex;
   final Map user;
   final VoidCallback? onStoryDeleted;
@@ -1685,6 +1713,8 @@ class StoryViewScreen extends StatefulWidget {
   const StoryViewScreen({
     Key? key,
     required this.stories,
+    required this.allGroups,
+    required this.groupIndex,
     required this.startIndex,
     required this.user,
     this.onStoryDeleted,
@@ -1695,63 +1725,86 @@ class StoryViewScreen extends StatefulWidget {
 }
 
 class _StoryViewScreenState extends State<StoryViewScreen> {
+  late List _currentStories;
+  late int _currentGroupIndex;
   late int _currentIndex;
   double _progress = 0;
   Timer? _timer;
   bool _isPaused = false;
-  late PageController _pageController;
+  bool _isClosing = false;
 
   @override
   void initState() {
     super.initState();
+    _currentStories = widget.stories;
+    _currentGroupIndex = widget.groupIndex;
     _currentIndex = widget.startIndex;
-    _pageController = PageController(initialPage: _currentIndex);
     _startTimer();
   }
 
   void _startTimer() {
     _timer?.cancel();
-    _progress = 0;
+    if (!mounted) return;
+    setState(() => _progress = 0);
     _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (_isPaused) return;
-      setState(() => _progress += 1 / (5000 / 50)); // 5 seconds per story
+      if (!mounted || _isPaused) return;
+      setState(() => _progress += 0.01);
       if (_progress >= 1.0) {
+        timer.cancel();
         _nextStory();
       }
     });
   }
 
   void _nextStory() {
-    if (_currentIndex < widget.stories.length - 1) {
+    if (!mounted || _isClosing) return;
+    if (_currentIndex < _currentStories.length - 1) {
       setState(() {
         _currentIndex++;
-        _progress = 0;
       });
-      _pageController.animateToPage(_currentIndex,
-          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      _startTimer();
+    } else if (_currentGroupIndex < widget.allGroups.length - 1) {
+      setState(() {
+        _currentGroupIndex++;
+        _currentStories = widget.allGroups[_currentGroupIndex];
+        _currentIndex = 0;
+      });
       _startTimer();
     } else {
-      Navigator.pop(context);
+      _closeScreen();
     }
   }
 
   void _prevStory() {
+    if (!mounted || _isClosing) return;
     if (_currentIndex > 0) {
       setState(() {
         _currentIndex--;
-        _progress = 0;
       });
-      _pageController.animateToPage(_currentIndex,
-          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      _startTimer();
+    } else if (_currentGroupIndex > 0) {
+      setState(() {
+        _currentGroupIndex--;
+        _currentStories = widget.allGroups[_currentGroupIndex];
+        _currentIndex = _currentStories.length - 1;
+      });
       _startTimer();
     }
   }
 
+  void _closeScreen() {
+    if (_isClosing || !mounted) return;
+    _isClosing = true;
+    _timer?.cancel();
+    Navigator.of(context).pop();
+  }
+
   Future<void> _deleteStory(String storyId) async {
+    _timer?.cancel();
     try {
       await http.delete(Uri.parse('$API_URL/stories/$storyId'));
       widget.onStoryDeleted?.call();
-      if (mounted) Navigator.pop(context);
+      _closeScreen();
     } catch (e) {
       print('Error: $e');
     }
@@ -1759,37 +1812,41 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final story = widget.stories[_currentIndex];
+    if (_currentStories.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _closeScreen());
+      return const Scaffold(backgroundColor: Colors.black);
+    }
+
+    final story = _currentStories[_currentIndex];
     final isOwn = story['user_id'] == widget.user['id'];
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onLongPressStart: (_) => setState(() => _isPaused = true),
-        onLongPressEnd: (_) => setState(() => _isPaused = false),
-        onTapUp: (details) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          if (details.globalPosition.dx < screenWidth / 3) {
-            _prevStory();
-          } else {
-            _nextStory();
-          }
+        onLongPressStart: (_) {
+          _timer?.cancel();
+          setState(() => _isPaused = true);
+        },
+        onLongPressEnd: (_) {
+          setState(() => _isPaused = false);
+          _startTimer();
         },
         child: Stack(children: [
-          // Story image
           Positioned.fill(
             child: Image.network(
               story['image_url'],
               fit: BoxFit.cover,
+              key: ValueKey(story['id']),
               loadingBuilder: (context, child, progress) {
                 if (progress == null) return child;
                 return const Center(
                     child: CircularProgressIndicator(color: Color(0xFFD4AF37)));
               },
+              errorBuilder: (context, error, stackTrace) => const Center(
+                  child:
+                      Icon(Icons.broken_image, color: Colors.white, size: 60)),
             ),
           ),
-
-          // Tap areas (invisible) - behind buttons
           Positioned.fill(
             child: Row(children: [
               Expanded(
@@ -1804,24 +1861,20 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                       child: Container(color: Colors.transparent))),
             ]),
           ),
-
-          // Top gradient - above tap areas
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: 120,
+            height: 130,
             child: Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.black54, Colors.transparent]),
+                    colors: [Colors.black87, Colors.transparent]),
               ),
             ),
           ),
-
-          // Header - always on top, blocks taps on buttons
           Positioned(
             top: 0,
             left: 0,
@@ -1830,9 +1883,9 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
               child: Column(children: [
                 Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Row(
-                      children: List.generate(widget.stories.length, (i) {
+                      children: List.generate(_currentStories.length, (i) {
                     return Expanded(
                       child: Container(
                         height: 3,
@@ -1856,22 +1909,23 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                 ),
                 Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: Row(children: [
                     story['user_avatar'] != null
                         ? CircleAvatar(
-                            radius: 20,
+                            radius: 18,
                             backgroundImage: NetworkImage(story['user_avatar']))
                         : const CircleAvatar(
-                            radius: 20,
+                            radius: 18,
                             backgroundColor: Color(0xFFD4AF37),
-                            child: Icon(Icons.person, color: Colors.black)),
-                    const SizedBox(width: 10),
+                            child: Icon(Icons.person,
+                                color: Colors.black, size: 16)),
+                    const SizedBox(width: 8),
                     Text(story['username'] ?? 'User',
                         style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
-                            fontSize: 15)),
+                            fontSize: 14)),
                     const Spacer(),
                     if (isOwn)
                       GestureDetector(
@@ -1879,20 +1933,21 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                           _timer?.cancel();
                           showDialog(
                             context: context,
-                            builder: (context) => AlertDialog(
+                            builder: (ctx) => AlertDialog(
                               backgroundColor: const Color(0xFF1A1A1A),
                               title: const Text('Delete story?',
                                   style: TextStyle(color: Colors.white)),
                               actions: [
                                 TextButton(
                                     onPressed: () {
-                                      Navigator.pop(context);
+                                      Navigator.pop(ctx);
                                       _startTimer();
                                     },
-                                    child: const Text('Cancel')),
+                                    child: const Text('Cancel',
+                                        style: TextStyle(color: Colors.grey))),
                                 TextButton(
                                     onPressed: () {
-                                      Navigator.pop(context);
+                                      Navigator.pop(ctx);
                                       _deleteStory(story['id']);
                                     },
                                     child: const Text('Delete',
@@ -1901,19 +1956,17 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                             ),
                           );
                         },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          child: const Icon(Icons.delete_outline,
-                              color: Colors.white, size: 24),
-                        ),
+                        child: const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Icon(Icons.delete_outline,
+                                color: Colors.white, size: 22)),
                       ),
                     GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        child: const Icon(Icons.close,
-                            color: Colors.white, size: 24),
-                      ),
+                      onTap: _closeScreen,
+                      child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child:
+                              Icon(Icons.close, color: Colors.white, size: 22)),
                     ),
                   ]),
                 ),
@@ -1928,7 +1981,6 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _pageController.dispose();
     super.dispose();
   }
 }
