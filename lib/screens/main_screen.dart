@@ -4,6 +4,7 @@ import '../services/socket_service.dart';
 import 'feed_screen.dart';
 import 'reels_screen.dart';
 import 'search_screen.dart';
+import 'chats_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
 
@@ -26,6 +27,7 @@ class _MainScreenState extends State<MainScreen> {
       FeedScreen(user: widget.user),
       ReelsScreen(user: widget.user),
       SearchScreen(user: widget.user),
+      ChatsScreen(user: widget.user),
       NotificationsScreen(user: widget.user),
       ProfileScreen(user: widget.user, isOwnProfile: true),
     ];
@@ -57,6 +59,10 @@ class _MainScreenState extends State<MainScreen> {
               icon: Icon(Icons.search),
               activeIcon: Icon(Icons.search),
               label: 'Search'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline),
+              activeIcon: Icon(Icons.chat_bubble),
+              label: 'Chats'),
           BottomNavigationBarItem(
               icon: Icon(Icons.notifications_outlined),
               activeIcon: Icon(Icons.notifications),
