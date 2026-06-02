@@ -1,42 +1,45 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class SocketService {
+  static final SocketService _instance = SocketService._internal();
+  factory SocketService() => _instance;
+  SocketService._internal();
+
   late IO.Socket socket;
-  final String wsUrl = 'https://sigma-social-backend.onrender.com';
+  bool _connected = false;
+  final String _wsUrl = 'https://sigma-social-backend.onrender.com';
+
+  Function(Map)? onMessageReceived;
 
   void connect(String userId) {
+    if (_connected) return;
     socket = IO.io(
-        wsUrl,
+        _wsUrl,
         IO.OptionBuilder()
             .setTransports(['websocket', 'polling'])
             .disableAutoConnect()
             .build());
 
     socket.onConnect((_) {
-      print('✅ Connected to WebSocket');
-      socket.emit('user_connect', {
-        'userId': userId,
-        'username': 'User',
-      });
+      _connected = true;
+      socket.emit('user_connect', {'userId': userId, 'username': 'User'});
     });
 
     socket.on('receive_message', (data) {
-      print('💬 New message: ${data['content']}');
+      onMessageReceived?.call(Map<String, dynamic>.from(data));
     });
 
-    socket.onDisconnect((_) => print('🔴 Disconnected'));
+    socket.onDisconnect((_) => _connected = false);
     socket.connect();
   }
 
   void sendMessage(String chatId, String content, String userId) {
-    socket.emit('send_message', {
-      'chat_id': chatId,
-      'sender_id': userId,
-      'content': content,
-    });
+    socket.emit('send_message',
+        {'chat_id': chatId, 'sender_id': userId, 'content': content});
   }
 
   void disconnect() {
     socket.disconnect();
+    _connected = false;
   }
 }
