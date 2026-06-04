@@ -27,7 +27,8 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
-  // AUTH
+  // ─── AUTH ─────────────────────────────────────────────────────────────────
+
   static Future<Map> register(String email, String password) =>
       _post('/auth/register', {
         'email': email,
@@ -38,11 +39,13 @@ class ApiService {
   static Future<Map> login(String email, String password) =>
       _post('/auth/login', {'email': email, 'password': password});
 
-  // USERS
+  // ─── USERS ────────────────────────────────────────────────────────────────
+
   static Future<Map> getUser(String userId) => _get('/users/$userId');
+
   static Future<List> getUsers() async {
     final d = await _get('/users');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
   static Future<Map> updateUser(String userId, Map fields) =>
@@ -59,60 +62,90 @@ class ApiService {
     return d['isFollowing'] == true;
   }
 
-  // POSTS
+  // ─── POSTS ────────────────────────────────────────────────────────────────
+
   static Future<List> getPosts(String userId) async {
     final d = await _get('/posts?userId=$userId');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
-  static Future<Map> createPost(String userId, String content) =>
-      _post('/posts', {'user_id': userId, 'content': content});
+  static Future<List> getFollowingPosts(String userId) async {
+    final d = await _get('/posts/following?userId=$userId');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  static Future<Map> createPost(String userId, String content,
+      {String? imageUrl}) =>
+      _post('/posts', {
+        'user_id': userId,
+        'content': content,
+        if (imageUrl != null) 'image_url': imageUrl,
+      });
 
   static Future<Map> likePost(String postId, String userId) =>
       _post('/posts/$postId/like', {'user_id': userId});
 
-  // COMMENTS
+  // ─── COMMENTS ─────────────────────────────────────────────────────────────
+
   static Future<List> getComments(String postId) async {
     final d = await _get('/posts/$postId/comments');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
-  static Future<Map> addComment(String postId, String userId, String content) =>
-      _post('/posts/$postId/comments', {'user_id': userId, 'content': content});
+  static Future<Map> addComment(
+          String postId, String userId, String content) =>
+      _post('/posts/$postId/comments',
+          {'user_id': userId, 'content': content});
 
   static Future<Map> deleteComment(String commentId) =>
       _delete('/comments/$commentId');
 
-  // STORIES
+  // ─── STORIES ──────────────────────────────────────────────────────────────
+
   static Future<List> getStories() async {
     final d = await _get('/stories');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
   static Future<Map> uploadStory(String userId, String base64Image) =>
-      _post('/stories/upload', {'user_id': userId, 'image_base64': base64Image});
+      _post('/stories/upload',
+          {'user_id': userId, 'image_base64': base64Image});
 
-  static Future<Map> deleteStory(String storyId) => _delete('/stories/$storyId');
+  static Future<Map> deleteStory(String storyId) =>
+      _delete('/stories/$storyId');
 
-  // CHATS
+  // ─── CHATS ────────────────────────────────────────────────────────────────
+
   static Future<List> getChats(String userId) async {
     final d = await _get('/chats?userId=$userId');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
   static Future<Map> getOrCreateChat(String user1Id, String user2Id) =>
-      _post('/chats/get-or-create', {'user1_id': user1Id, 'user2_id': user2Id});
+      _post('/chats/get-or-create',
+          {'user1_id': user1Id, 'user2_id': user2Id});
 
-  // MESSAGES
+  // ─── MESSAGES ─────────────────────────────────────────────────────────────
+
   static Future<List> getMessages(String chatId) async {
     final d = await _get('/messages/$chatId');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
   static Future<Map> sendMessage(
-          String chatId, String senderId, String content) =>
-      _post('/messages',
-          {'chat_id': chatId, 'sender_id': senderId, 'content': content});
+    String chatId,
+    String senderId,
+    String content, {
+    String? mediaUrl,
+    String messageType = 'text',
+  }) =>
+      _post('/messages', {
+        'chat_id': chatId,
+        'sender_id': senderId,
+        'content': content,
+        'message_type': messageType,
+        if (mediaUrl != null) 'media_url': mediaUrl,
+      });
 
   static Future<Map> deleteMessage(String messageId) =>
       _delete('/messages/$messageId');
@@ -120,10 +153,11 @@ class ApiService {
   static Future<Map> editMessage(String messageId, String content) =>
       _put('/messages/$messageId', {'content': content});
 
-  // NOTIFICATIONS
+  // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
+
   static Future<List> getNotifications(String userId) async {
     final d = await _get('/notifications?userId=$userId');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
   static Future<Map> markNotificationRead(String notifId) =>
@@ -132,26 +166,29 @@ class ApiService {
   static Future<Map> markAllNotificationsRead(String userId) =>
       _post('/notifications/read-all', {'user_id': userId});
 
-  // SEARCH
+  // ─── SEARCH ───────────────────────────────────────────────────────────────
+
   static Future<List> searchUsers(String query) async {
     if (query.isEmpty) return [];
-    final d = await _get('/search/users?q=${Uri.encodeComponent(query)}');
-    return d['success'] ? (d['data'] ?? []) : [];
+    final d =
+        await _get('/search/users?q=${Uri.encodeComponent(query)}');
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
-  // REELS
+  // ─── REELS (kept for backward compat) ─────────────────────────────────────
+
   static Future<List> getReels(String userId) async {
     final d = await _get('/reels?userId=$userId');
-    return d['success'] ? (d['data'] ?? []) : [];
+    return d['success'] == true ? (d['data'] ?? []) : [];
   }
+
+  static Future<Map> likeReel(String reelId, String userId) =>
+      _post('/reels/$reelId/like', {'user_id': userId});
 
   static Future<Map> createReel(
           String userId, String videoUrl, String caption) =>
       _post('/reels',
           {'user_id': userId, 'video_url': videoUrl, 'caption': caption});
-
-  static Future<Map> likeReel(String reelId, String userId) =>
-      _post('/reels/$reelId/like', {'user_id': userId});
 
   static Future<Map> uploadReelVideo(
       String userId, List<int> bytes, String filename) async {
@@ -166,9 +203,11 @@ class ApiService {
           filename: filename));
     final streamed = await request.send();
     if (streamed.statusCode == 200 || streamed.statusCode == 201) {
-      final videoUrl =
-          '$kSupabaseUrl/storage/v1/object/public/avatars/reels_${userId}_$filename';
-      return {'success': true, 'url': videoUrl};
+      return {
+        'success': true,
+        'url':
+            '$kSupabaseUrl/storage/v1/object/public/avatars/reels_${userId}_$filename'
+      };
     }
     return {'success': false, 'error': 'Upload failed'};
   }
