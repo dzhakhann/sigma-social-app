@@ -13,6 +13,16 @@ subprojects {
     project.evaluationDependsOn(':app')
 }
 
+// Fix: remove -Werror and silence obsolete source/target warnings in ALL subprojects
+gradle.projectsEvaluated {
+    allprojects {
+        tasks.withType(JavaCompile) { t ->
+            t.options.compilerArgs.remove('-Werror')
+            t.options.compilerArgs << '-Xlint:-options'
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
