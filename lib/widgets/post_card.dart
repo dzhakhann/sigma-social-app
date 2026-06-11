@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 
 class PostCard extends StatelessWidget {
   final Map post;
@@ -18,6 +18,7 @@ class PostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     final isLiked = post['is_liked'] == true;
     final username = post['username'] ?? 'User';
     final avatarUrl = post['user_avatar'] as String?;
@@ -28,48 +29,48 @@ class PostCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 1),
-      color: kBg,
+      color: c.bg,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
+        // ── Header ────────────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
           child: Row(children: [
             GestureDetector(
               onTap: onUserTap,
-              child: _Avatar(url: avatarUrl, size: 40),
+              child: _PostAvatar(url: avatarUrl, size: 40, c: c),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: GestureDetector(
                 onTap: onUserTap,
                 child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(username,
-                      style: const TextStyle(
-                          color: kText,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  const SizedBox(height: 1),
-                  Text(_timeAgo(post['created_at']),
-                      style: const TextStyle(color: kDim, fontSize: 12)),
-                ]),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(username,
+                        style: TextStyle(
+                            color: c.ink,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    const SizedBox(height: 1),
+                    Text(_timeAgo(post['created_at']),
+                        style: TextStyle(color: c.inkSoft, fontSize: 12)),
+                  ],
+                ),
               ),
             ),
-            Icon(Icons.more_horiz_rounded, color: kDim, size: 20),
+            Icon(Icons.more_horiz_rounded, color: c.inkSoft, size: 20),
           ]),
         ),
 
-        // Content text
+        // ── Text content ──────────────────────────────────────────────────
         if (content.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: Text(content,
-                style: const TextStyle(
-                    color: kText, fontSize: 15, height: 1.45)),
+                style: TextStyle(color: c.ink, fontSize: 15, height: 1.45)),
           ),
 
-        // Image
+        // ── Image ─────────────────────────────────────────────────────────
         if (imageUrl != null && imageUrl.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -81,23 +82,23 @@ class PostCard extends StatelessWidget {
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
                   height: 200,
-                  color: kSurface,
-                  child: const Center(
+                  color: c.surface2,
+                  child: Center(
                       child: CircularProgressIndicator(
-                          color: kAccent, strokeWidth: 2)),
+                          color: c.accent, strokeWidth: 2)),
                 ),
                 errorWidget: (_, __, ___) => Container(
                   height: 120,
-                  color: kSurface,
-                  child: const Center(
+                  color: c.surface2,
+                  child: Center(
                       child: Icon(Icons.broken_image_outlined,
-                          color: kDim, size: 40)),
+                          color: c.inkSoft, size: 40)),
                 ),
               ),
             ),
           ),
 
-        // Actions
+        // ── Action buttons ────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 16, 14),
           child: Row(children: [
@@ -105,23 +106,23 @@ class PostCard extends StatelessWidget {
               icon: isLiked
                   ? Icons.favorite_rounded
                   : Icons.favorite_border_rounded,
-              color: isLiked ? kPink : kDim,
+              color: isLiked ? c.danger : c.inkSoft,
               count: likesCount,
               onTap: onLike,
             ),
             const SizedBox(width: 4),
             _ActionBtn(
               icon: Icons.chat_bubble_outline_rounded,
-              color: kDim,
+              color: c.inkSoft,
               count: commentsCount,
               onTap: onComment,
             ),
             const Spacer(),
-            Icon(Icons.bookmark_border_rounded, color: kDim, size: 20),
+            Icon(Icons.bookmark_border_rounded, color: c.inkSoft, size: 20),
           ]),
         ),
 
-        const Divider(height: 1),
+        Divider(height: 1, color: c.ink.withOpacity(0.07)),
       ]),
     );
   }
@@ -164,7 +165,9 @@ class _ActionBtn extends StatelessWidget {
             const SizedBox(width: 4),
             Text('$count',
                 style: TextStyle(
-                    color: color, fontSize: 13, fontWeight: FontWeight.w500)),
+                    color: color,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500)),
           ],
         ]),
       ),
@@ -172,10 +175,11 @@ class _ActionBtn extends StatelessWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
+class _PostAvatar extends StatelessWidget {
   final String? url;
   final double size;
-  const _Avatar({this.url, required this.size});
+  final BrutalColors c;
+  const _PostAvatar({this.url, required this.size, required this.c});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -183,7 +187,7 @@ class _Avatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: url == null ? kStoryGradient : null,
+        gradient: url == null ? c.storyGradient : null,
         image: url != null
             ? DecorationImage(
                 image: CachedNetworkImageProvider(url!), fit: BoxFit.cover)

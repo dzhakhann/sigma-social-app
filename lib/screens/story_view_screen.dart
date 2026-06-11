@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 
 class StoryViewScreen extends StatefulWidget {
   final List stories;
@@ -108,6 +108,8 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
+
     if (_currentStories.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _closeScreen());
       return const Scaffold(backgroundColor: Colors.black);
@@ -133,8 +135,8 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
               imageUrl: story['image_url'],
               fit: BoxFit.cover,
               key: ValueKey(story['id']),
-              placeholder: (_, __) => const Center(
-                  child: CircularProgressIndicator(color: kGold)),
+              placeholder: (_, __) => Center(
+                  child: CircularProgressIndicator(color: c.accent)),
               errorWidget: (_, __, ___) => const Center(
                   child: Icon(Icons.broken_image,
                       color: Colors.white, size: 60)),
@@ -202,9 +204,9 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                             radius: 18,
                             backgroundImage: CachedNetworkImageProvider(
                                 story['user_avatar']))
-                        : const CircleAvatar(
+                        : CircleAvatar(
                             radius: 18,
-                            backgroundColor: kGold,
+                            backgroundColor: c.accent,
                             child: Icon(Icons.person,
                                 color: Colors.black, size: 16)),
                     const SizedBox(width: 8),
@@ -221,24 +223,23 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                           showDialog(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              backgroundColor: kCard,
-                              title: const Text('Delete story?',
-                                  style: TextStyle(color: Colors.white)),
+                              backgroundColor: c.surface,
+                              title: const Text('Delete story?'),
                               actions: [
                                 TextButton(
                                     onPressed: () {
                                       Navigator.pop(ctx);
                                       _startTimer();
                                     },
-                                    child: const Text('Cancel',
-                                        style: TextStyle(color: Colors.grey))),
+                                    child: Text('Cancel',
+                                        style: TextStyle(color: c.inkSoft))),
                                 TextButton(
                                     onPressed: () {
                                       Navigator.pop(ctx);
                                       _deleteStory(story['id']);
                                     },
-                                    child: const Text('Delete',
-                                        style: TextStyle(color: Colors.red))),
+                                    child: Text('Delete',
+                                        style: TextStyle(color: c.danger))),
                               ],
                             ),
                           );

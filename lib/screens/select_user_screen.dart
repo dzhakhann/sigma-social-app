@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 import 'chat_detail_screen.dart';
 
 class SelectUserScreen extends StatefulWidget {
@@ -34,6 +34,7 @@ class _SelectUserScreenState extends State<SelectUserScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
       appBar: AppBar(title: const Text('Select User')),
       body: isLoading
@@ -52,12 +53,12 @@ class _SelectUserScreenState extends State<SelectUserScreen> {
                             ? CircleAvatar(
                                 backgroundImage: CachedNetworkImageProvider(
                                     u['avatar_url']))
-                            : const CircleAvatar(
-                                backgroundColor: kGold,
-                                child: Icon(Icons.person, color: Colors.black)),
+                            : CircleAvatar(
+                                backgroundColor: c.accent,
+                                child: Icon(Icons.person, color: c.ink)),
                         title: Text(u['username'] ?? 'User'),
                         subtitle: Text(u['email'] ?? '',
-                            style: const TextStyle(color: Colors.grey)),
+                            style: TextStyle(color: c.inkSoft)),
                         onTap: () => Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../services/socket_service.dart';
-import 'feed_screen.dart';
+import 'home_screen.dart';
 import 'search_screen.dart';
 import 'chats_screen.dart';
 import 'notifications_screen.dart';
@@ -23,7 +24,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     SocketService().connect(widget.user['id'].toString());
     _screens = [
-      FeedScreen(user: widget.user),
+      HomeScreen(user: widget.user),
       SearchScreen(user: widget.user),
       ChatsScreen(user: widget.user),
       NotificationsScreen(user: widget.user),
@@ -33,41 +34,113 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
+      backgroundColor: c.bg,
       body: IndexedStack(index: _tab, children: _screens),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: kSurface,
-          border: Border(top: BorderSide(color: kSurface2, width: 0.5)),
+      bottomNavigationBar: _BrutalNav(
+        index: _tab,
+        onTap: (i) => setState(() => _tab = i),
+      ),
+    );
+  }
+}
+
+class _BrutalNav extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  const _BrutalNav({required this.index, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    final items = <_NavItem>[
+      _NavItem(Icons.bolt_rounded, context.t('home')),
+      _NavItem(Icons.travel_explore_rounded, context.t('discover')),
+      _NavItem(Icons.forum_rounded, context.t('chats')),
+      _NavItem(Icons.notifications_active_rounded, context.t('alerts')),
+      _NavItem(Icons.face_rounded, context.t('me')),
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(top: BorderSide(color: c.ink, width: 3)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: [
+              for (int i = 0; i < items.length; i++)
+                Expanded(
+                  child: _NavButton(
+                    item: items[i],
+                    active: i == index,
+                    onTap: () => onTap(i),
+                  ),
+                ),
+            ],
+          ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _tab,
-          onTap: (i) => setState(() => _tab = i),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded, size: 26),
-              activeIcon: Icon(Icons.home_rounded, size: 26),
-              label: 'Feed',
+      ),
+    );
+  }
+}
+
+class _NavItem {
+  final IconData icon;
+  final String label;
+  const _NavItem(this.icon, this.label);
+}
+
+class _NavButton extends StatelessWidget {
+  final _NavItem item;
+  final bool active;
+  final VoidCallback onTap;
+  const _NavButton(
+      {required this.item, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? c.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? c.ink : Colors.transparent,
+            width: 2.5,
+          ),
+          boxShadow: active
+              ? [BoxShadow(color: c.shadow, offset: const Offset(3, 3), blurRadius: 0)]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              item.icon,
+              size: 22,
+              color: active ? c.onAccent : c.inkSoft,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.search_rounded, size: 26),
-              activeIcon: Icon(Icons.search_rounded, size: 26),
-              label: 'Search',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline_rounded, size: 24),
-              activeIcon: Icon(Icons.chat_bubble_rounded, size: 24),
-              label: 'Chats',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.notifications_outlined, size: 26),
-              activeIcon: Icon(Icons.notifications_rounded, size: 26),
-              label: 'Notifications',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline_rounded, size: 26),
-              activeIcon: Icon(Icons.person_rounded, size: 26),
-              label: 'Profile',
+            const SizedBox(height: 3),
+            Text(
+              item.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: active ? c.onAccent : c.inkSoft,
+                letterSpacing: 0.2,
+              ),
             ),
           ],
         ),

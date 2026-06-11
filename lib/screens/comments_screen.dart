@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 
 class CommentsScreen extends StatefulWidget {
   final Map post;
@@ -44,6 +44,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
       appBar: AppBar(title: const Text('Comments')),
       body: Column(children: [
@@ -55,8 +56,8 @@ class _CommentsScreenState extends State<CommentsScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(widget.post['username'] ?? 'User',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, color: kGold)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: c.accent)),
                 const SizedBox(height: 4),
                 Text(widget.post['content'] ?? ''),
               ]),
@@ -68,34 +69,34 @@ class _CommentsScreenState extends State<CommentsScreen> {
           child: isLoading
               ? const Center(child: CircularProgressIndicator())
               : comments.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text('No comments yet',
-                          style: TextStyle(color: Colors.grey)))
+                          style: TextStyle(color: c.inkSoft)))
                   : ListView.builder(
                       itemCount: comments.length,
                       itemBuilder: (context, i) {
-                        final c = comments[i];
-                        final isOwn = c['user_id'] == widget.user['id'];
+                        final cm = comments[i];
+                        final isOwn = cm['user_id'] == widget.user['id'];
                         return ListTile(
-                          leading: c['user_avatar'] != null
+                          leading: cm['user_avatar'] != null
                               ? CircleAvatar(
                                   backgroundImage: CachedNetworkImageProvider(
-                                      c['user_avatar']))
-                              : const CircleAvatar(
-                                  backgroundColor: kGold,
+                                      cm['user_avatar']))
+                              : CircleAvatar(
+                                  backgroundColor: c.accent,
                                   child: Icon(Icons.person,
-                                      color: Colors.black)),
-                          title: Text(c['username'] ?? 'User',
-                              style: const TextStyle(
-                                  color: kGold,
+                                      color: c.ink)),
+                          title: Text(cm['username'] ?? 'User',
+                              style: TextStyle(
+                                  color: c.accent,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13)),
-                          subtitle: Text(c['content'] ?? ''),
+                          subtitle: Text(cm['content'] ?? ''),
                           trailing: isOwn
                               ? IconButton(
-                                  icon: const Icon(Icons.delete,
-                                      color: Colors.red, size: 18),
-                                  onPressed: () => _deleteComment(c['id']))
+                                  icon: Icon(Icons.delete,
+                                      color: c.danger, size: 18),
+                                  onPressed: () => _deleteComment(cm['id']))
                               : null,
                         );
                       },
@@ -103,7 +104,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
         ),
         Container(
           padding: const EdgeInsets.all(12),
-          color: kDark,
+          color: c.bg,
           child: Row(children: [
             Expanded(
                 child: TextField(
@@ -115,7 +116,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                 onPressed: _addComment,
                 style:
                     ElevatedButton.styleFrom(minimumSize: const Size(56, 48)),
-                child: const Icon(Icons.send, color: Colors.black)),
+                child: Icon(Icons.send, color: c.ink)),
           ]),
         ),
       ]),

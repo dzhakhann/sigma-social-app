@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final Map user;
@@ -41,17 +41,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Color _iconColor(String type) {
+  Color _iconColor(String type, BrutalColors c) {
     switch (type) {
-      case 'like': return Colors.red;
-      case 'comment': return Colors.blue;
-      case 'follow': return kGold;
-      default: return Colors.grey;
+      case 'like': return c.danger;
+      case 'comment': return c.accent2;
+      case 'follow': return c.accent;
+      default: return c.inkSoft;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     final unread = _notifs.where((n) => n['is_read'] != true).length;
     return Scaffold(
       appBar: AppBar(
@@ -60,25 +61,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           if (unread > 0)
             TextButton(
                 onPressed: _markAllRead,
-                child: const Text('Mark all read',
-                    style: TextStyle(color: Colors.black, fontSize: 12))),
+                child: Text('Mark all read',
+                    style: TextStyle(color: c.ink, fontSize: 12))),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
-        color: kGold,
+        color: c.accent,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _notifs.isEmpty
-                ? const Center(
+                ? Center(
                     child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                         Icon(Icons.notifications_none,
-                            size: 60, color: Colors.grey),
-                        SizedBox(height: 16),
+                            size: 60, color: c.inkSoft),
+                        const SizedBox(height: 16),
                         Text('No notifications yet',
-                            style: TextStyle(color: Colors.grey)),
+                            style: TextStyle(color: c.inkSoft)),
                       ]))
                 : ListView.builder(
                     itemCount: _notifs.length,
@@ -89,7 +90,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ? DateTime.tryParse(n['created_at'])
                           : null;
                       return Container(
-                        color: isRead ? null : kGold.withOpacity(0.06),
+                        color: isRead ? null : c.accent.withOpacity(0.06),
                         child: ListTile(
                           leading: Stack(children: [
                             n['from_avatar'] != null
@@ -97,20 +98,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     backgroundImage:
                                         CachedNetworkImageProvider(
                                             n['from_avatar']))
-                                : const CircleAvatar(
-                                    backgroundColor: kCard,
+                                : CircleAvatar(
+                                    backgroundColor: c.surface,
                                     child: Icon(Icons.person,
-                                        color: Colors.grey)),
+                                        color: c.inkSoft)),
                             Positioned(
                               bottom: 0,
                               right: 0,
                               child: Container(
                                 padding: const EdgeInsets.all(2),
-                                decoration: const BoxDecoration(
-                                    color: kDark, shape: BoxShape.circle),
+                                decoration: BoxDecoration(
+                                    color: c.bg, shape: BoxShape.circle),
                                 child: Icon(_icon(n['type'] ?? ''),
                                     size: 12,
-                                    color: _iconColor(n['type'] ?? '')),
+                                    color: _iconColor(n['type'] ?? '', c)),
                               ),
                             ),
                           ]),
@@ -122,8 +123,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       : FontWeight.bold)),
                           subtitle: createdAt != null
                               ? Text(timeago.format(createdAt),
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 12))
+                                  style: TextStyle(
+                                      color: c.inkSoft, fontSize: 12))
                               : null,
                           onTap: () async {
                             if (!isRead) {

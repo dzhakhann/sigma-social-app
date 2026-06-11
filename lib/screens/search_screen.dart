@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 import 'profile_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -40,6 +40,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
       appBar: AppBar(title: const Text('Search')),
       body: Column(children: [
@@ -51,7 +52,7 @@ class _SearchScreenState extends State<SearchScreen> {
             onChanged: _onSearch,
             decoration: InputDecoration(
               hintText: 'Search users...',
-              prefixIcon: const Icon(Icons.search, color: kGold),
+              prefixIcon: Icon(Icons.search, color: c.accent),
               suffixIcon: _ctrl.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear),
@@ -72,7 +73,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           _ctrl.text.isEmpty
                               ? 'Search for users by username'
                               : 'No results found',
-                          style: const TextStyle(color: Colors.grey)))
+                          style: TextStyle(color: c.inkSoft)))
                   : ListView.builder(
                       itemCount: _results.length,
                       itemBuilder: (_, i) {
@@ -86,21 +87,21 @@ class _SearchScreenState extends State<SearchScreen> {
                                     backgroundImage:
                                         CachedNetworkImageProvider(
                                             u['avatar_url']))
-                                : const CircleAvatar(
-                                    backgroundColor: kGold,
+                                : CircleAvatar(
+                                    backgroundColor: c.accent,
                                     child: Icon(Icons.person,
-                                        color: Colors.black)),
+                                        color: c.ink)),
                             title: Text(u['username'] ?? 'User',
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold)),
                             subtitle: Text(u['bio'] ?? '',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.grey)),
+                                style: TextStyle(color: c.inkSoft)),
                             trailing: Text(
                                 '${u['followers_count'] ?? 0} followers',
-                                style: const TextStyle(
-                                    color: Colors.grey, fontSize: 12)),
+                                style: TextStyle(
+                                    color: c.inkSoft, fontSize: 12)),
                             onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(

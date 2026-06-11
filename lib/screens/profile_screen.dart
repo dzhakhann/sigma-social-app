@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../constants.dart';
+import '../theme/brutal_theme.dart';
 import 'chat_detail_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -146,6 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     final avatarUrl = userProfile['avatar_url'];
     return Scaffold(
       appBar: AppBar(
@@ -171,7 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
-                      color: kGold,
+                      color: c.accent,
                       shape: BoxShape.circle,
                       image: avatarUrl != null
                           ? DecorationImage(
@@ -180,8 +182,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : null,
                     ),
                     child: avatarUrl == null
-                        ? const Icon(Icons.person,
-                            size: 50, color: Colors.black)
+                        ? Icon(Icons.person,
+                            size: 50, color: c.ink)
                         : null,
                   ),
                   if (widget.isOwnProfile)
@@ -191,15 +193,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Container(
                           width: 30,
                           height: 30,
-                          decoration: const BoxDecoration(
-                              color: kGold, shape: BoxShape.circle),
+                          decoration: BoxDecoration(
+                              color: c.accent, shape: BoxShape.circle),
                           child: isUploadingAvatar
-                              ? const Padding(
-                                  padding: EdgeInsets.all(6),
+                              ? Padding(
+                                  padding: const EdgeInsets.all(6),
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.black))
-                              : const Icon(Icons.camera_alt,
-                                  size: 18, color: Colors.black),
+                                      strokeWidth: 2, color: c.ink))
+                              : Icon(Icons.camera_alt,
+                                  size: 18, color: c.ink),
                         )),
                 ]),
               ),
@@ -216,7 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 8),
               if (!isEditing)
                 Text(userProfile['bio'] ?? 'No bio',
-                    style: const TextStyle(color: Colors.grey),
+                    style: TextStyle(color: c.inkSoft),
                     textAlign: TextAlign.center)
               else
                 TextField(
@@ -227,11 +229,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _stat(userPosts.length.toString(), 'Posts'),
+                    _stat(userPosts.length.toString(), 'Posts', c),
                     _stat(
-                        '${userProfile['followers_count'] ?? 0}', 'Followers'),
+                        '${userProfile['followers_count'] ?? 0}', 'Followers', c),
                     _stat(
-                        '${userProfile['following_count'] ?? 0}', 'Following'),
+                        '${userProfile['following_count'] ?? 0}', 'Following', c),
                   ]),
               if (!widget.isOwnProfile) ...[
                 const SizedBox(height: 20),
@@ -242,14 +244,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onPressed: _toggleFollow,
                         style: ElevatedButton.styleFrom(
                             backgroundColor:
-                                isFollowing ? Colors.grey[700] : kGold,
+                                isFollowing ? c.inkSoft : c.accent,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 28, vertical: 12)),
                         child: Text(isFollowing ? 'Following ✓' : 'Follow +',
                             style: TextStyle(
                                 color: isFollowing
                                     ? Colors.white
-                                    : Colors.black)),
+                                    : c.ink)),
                       ),
                       const SizedBox(width: 10),
                       ElevatedButton(
@@ -263,11 +265,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         user: widget.user,
                                         targetUser: userProfile))),
                         style: ElevatedButton.styleFrom(
-                            backgroundColor: kGold,
+                            backgroundColor: c.accent,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 28, vertical: 12)),
-                        child: const Text('Message 💬',
-                            style: TextStyle(color: Colors.black)),
+                        child: Text('Message 💬',
+                            style: TextStyle(color: c.ink)),
                       ),
                     ]),
               ],
@@ -286,8 +288,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : userPosts.isEmpty
-                      ? const Text('No posts',
-                          style: TextStyle(color: Colors.grey))
+                      ? Text('No posts',
+                          style: TextStyle(color: c.inkSoft))
                       : ListView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
@@ -308,8 +310,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         const SizedBox(height: 6),
                                         Text(
                                             '❤️ ${post['likes_count']} likes',
-                                            style: const TextStyle(
-                                                color: Colors.grey,
+                                            style: TextStyle(
+                                                color: c.inkSoft,
                                                 fontSize: 12)),
                                       ])),
                             );
@@ -321,11 +323,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _stat(String value, String label) => Column(children: [
+  Widget _stat(String value, String label, BrutalColors c) => Column(children: [
         Text(value,
-            style: const TextStyle(
-                fontSize: 20, fontWeight: FontWeight.bold, color: kGold)),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            style: TextStyle(
+                fontSize: 20, fontWeight: FontWeight.bold, color: c.accent)),
+        Text(label, style: TextStyle(color: c.inkSoft, fontSize: 12)),
       ]);
 
   @override

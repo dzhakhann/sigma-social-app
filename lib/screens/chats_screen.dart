@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 import 'chat_detail_screen.dart';
 import 'select_user_screen.dart';
 
@@ -33,11 +33,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
       appBar: AppBar(title: const Text('Chats')),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: kGold,
-        foregroundColor: Colors.black,
+        backgroundColor: c.accent,
+        foregroundColor: c.ink,
         onPressed: () async {
           await Navigator.push(
               context,
@@ -48,9 +49,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
         child: const Icon(Icons.edit),
       ),
       body: chats.isEmpty
-          ? const Center(
+          ? Center(
               child: Text('No chats yet. Tap + to start',
-                  style: TextStyle(color: Colors.grey)))
+                  style: TextStyle(color: c.inkSoft)))
           : ListView.builder(
               itemCount: chats.length,
               itemBuilder: (_, i) {
@@ -63,16 +64,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ? CircleAvatar(
                             backgroundImage:
                                 CachedNetworkImageProvider(chat['avatar']))
-                        : const CircleAvatar(
-                            backgroundColor: kGold,
-                            child: Icon(Icons.person, color: Colors.black)),
+                        : CircleAvatar(
+                            backgroundColor: c.accent,
+                            child: Icon(Icons.person, color: c.ink)),
                     title: Text(chat['name'] ?? 'Chat',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(chat['last_message'] ?? 'No messages',
                         maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.grey)),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: Colors.grey),
+                        style: TextStyle(color: c.inkSoft)),
+                    trailing: Icon(Icons.chevron_right,
+                        color: c.inkSoft),
                     onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(

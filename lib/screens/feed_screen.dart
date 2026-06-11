@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../constants.dart';
+import '../theme/brutal_theme.dart';
 import '../widgets/post_card.dart';
 import 'comments_screen.dart';
 import 'profile_screen.dart';
@@ -153,35 +154,39 @@ class _FeedScreenState extends State<FeedScreen>
   }
 
   Future<void> _addStory() async {
+    final c = context.k;
     final src = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: kSurface,
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                  color: kBorder, borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 20),
-          const Text('Add Story',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: kText)),
-          const SizedBox(height: 16),
-          _SheetTile(
-              icon: Icons.camera_alt_rounded,
-              label: 'Camera',
-              onTap: () => Navigator.pop(context, ImageSource.camera)),
-          _SheetTile(
-              icon: Icons.photo_library_rounded,
-              label: 'Gallery',
-              onTap: () => Navigator.pop(context, ImageSource.gallery)),
-        ]),
-      ),
+      builder: (ctx) {
+        final sc = ctx.k;
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                    color: sc.ink.withOpacity(0.12), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 20),
+            Text('Add Story',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: sc.ink)),
+            const SizedBox(height: 16),
+            _SheetTile(
+                icon: Icons.camera_alt_rounded,
+                label: 'Camera',
+                onTap: () => Navigator.pop(ctx, ImageSource.camera)),
+            _SheetTile(
+                icon: Icons.photo_library_rounded,
+                label: 'Gallery',
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+          ]),
+        );
+      },
     );
     if (src == null) return;
     final picker = ImagePicker();
@@ -198,33 +203,34 @@ class _FeedScreenState extends State<FeedScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
-      backgroundColor: kBg,
+      backgroundColor: c.bg,
       body: NestedScrollView(
         headerSliverBuilder: (_, __) => [
-          _buildAppBar(),
+          _buildAppBar(c),
         ],
         body: TabBarView(
           controller: _tabCtrl,
           children: [
-            _buildFeed(_forYouPosts, 0),
-            _buildFeed(_followingPosts, 1),
+            _buildFeed(_forYouPosts, 0, c),
+            _buildFeed(_followingPosts, 1, c),
           ],
         ),
       ),
     );
   }
 
-  SliverAppBar _buildAppBar() {
+  SliverAppBar _buildAppBar(BrutalColors c) {
     return SliverAppBar(
       pinned: true,
       floating: true,
       snap: true,
-      backgroundColor: kBg,
+      backgroundColor: c.bg,
       elevation: 0,
       title: ShaderMask(
         shaderCallback: (bounds) =>
-            kStoryGradient.createShader(bounds),
+            c.storyGradient.createShader(bounds),
         child: const Text('sigma',
             style: TextStyle(
                 fontSize: 22,
@@ -284,23 +290,23 @@ class _FeedScreenState extends State<FeedScreen>
     );
   }
 
-  Widget _buildFeed(List posts, int tabIndex) {
+  Widget _buildFeed(List posts, int tabIndex, BrutalColors c) {
     return RefreshIndicator(
       onRefresh: _loadAll,
-      color: kAccent,
-      backgroundColor: kSurface,
+      color: c.accent,
+      backgroundColor: c.surface,
       child: CustomScrollView(
         slivers: [
           // Tab bar
           SliverToBoxAdapter(
             child: Container(
-              color: kBg,
+              color: c.bg,
               child: TabBar(
                 controller: _tabCtrl,
-                indicatorColor: kAccent,
+                indicatorColor: c.accent,
                 indicatorWeight: 2,
-                labelColor: kText,
-                unselectedLabelColor: kDim,
+                labelColor: c.ink,
+                unselectedLabelColor: c.inkSoft,
                 labelStyle: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 14),
                 tabs: const [
@@ -312,14 +318,14 @@ class _FeedScreenState extends State<FeedScreen>
           ),
 
           // Create post
-          SliverToBoxAdapter(child: _buildCreatePost()),
+          SliverToBoxAdapter(child: _buildCreatePost(c)),
 
           // Posts
           if (_isLoading)
-            const SliverFillRemaining(
+            SliverFillRemaining(
                 child: Center(
                     child: CircularProgressIndicator(
-                        color: kAccent, strokeWidth: 2)))
+                        color: c.accent, strokeWidth: 2)))
           else if (posts.isEmpty)
             SliverFillRemaining(
               child: Center(
@@ -331,13 +337,13 @@ class _FeedScreenState extends State<FeedScreen>
                           ? Icons.people_outline_rounded
                           : Icons.dynamic_feed_rounded,
                       size: 52,
-                      color: kDim),
+                      color: c.inkSoft),
                   const SizedBox(height: 14),
                   Text(
                       tabIndex == 1
                           ? 'Follow people to see their posts'
                           : 'No posts yet',
-                      style: const TextStyle(color: kMuted, fontSize: 15)),
+                      style: TextStyle(color: c.inkSoft, fontSize: 15)),
                 ]),
               ),
             )
@@ -373,9 +379,9 @@ class _FeedScreenState extends State<FeedScreen>
     );
   }
 
-  Widget _buildCreatePost() {
+  Widget _buildCreatePost(BrutalColors c) {
     return Container(
-      color: kBg,
+      color: c.bg,
       padding: const EdgeInsets.all(16),
       child: Column(children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -388,7 +394,7 @@ class _FeedScreenState extends State<FeedScreen>
               TextField(
                 controller: _postCtrl,
                 maxLines: null,
-                style: const TextStyle(color: kText, fontSize: 15),
+                style: TextStyle(color: c.ink, fontSize: 15),
                 decoration: const InputDecoration(
                   hintText: "What's on your mind?",
                   border: InputBorder.none,
@@ -410,9 +416,9 @@ class _FeedScreenState extends State<FeedScreen>
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
                             height: 80,
-                            color: kSurface,
-                            child: const Center(
-                                child: Icon(Icons.image, color: kDim)))),
+                            color: c.surface,
+                            child: Center(
+                                child: Icon(Icons.image, color: c.inkSoft)))),
                   ),
                   Positioned(
                     top: 6,
@@ -446,7 +452,7 @@ class _FeedScreenState extends State<FeedScreen>
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: Icon(Icons.image_outlined,
-                  color: kAccentLit, size: 22),
+                  color: c.accent, size: 22),
             ),
           ),
           const Spacer(),
@@ -456,7 +462,7 @@ class _FeedScreenState extends State<FeedScreen>
               padding: const EdgeInsets.symmetric(
                   horizontal: 20, vertical: 8),
               decoration: BoxDecoration(
-                gradient: kButtonGradient,
+                gradient: c.buttonGradient,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: _isPosting
@@ -500,6 +506,7 @@ class _MyStoryBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return GestureDetector(
       onTap: hasStory ? onView : onAdd,
       child: Container(
@@ -518,16 +525,16 @@ class _MyStoryBtn extends StatelessWidget {
               child: Container(
                 width: 20,
                 height: 20,
-                decoration: const BoxDecoration(
-                    gradient: kButtonGradient,
+                decoration: BoxDecoration(
+                    gradient: c.buttonGradient,
                     shape: BoxShape.circle),
                 child: const Icon(Icons.add, size: 13, color: Colors.white),
               ),
             ),
           ]),
           const SizedBox(height: 5),
-          const Text('Your story',
-              style: TextStyle(fontSize: 10, color: kMuted),
+          Text('Your story',
+              style: TextStyle(fontSize: 10, color: c.inkSoft),
               overflow: TextOverflow.ellipsis),
         ]),
       ),
@@ -542,6 +549,7 @@ class _StoryAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     final first = stories.first;
     return GestureDetector(
       onTap: onTap,
@@ -556,7 +564,7 @@ class _StoryAvatar extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(first['username'] ?? 'User',
-              style: const TextStyle(fontSize: 10, color: kMuted),
+              style: TextStyle(fontSize: 10, color: c.inkSoft),
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center),
         ]),
@@ -574,19 +582,20 @@ class _StoryRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Container(
       width: size,
       height: size,
       padding: const EdgeInsets.all(2.5),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: hasStory ? kStoryGradient : null,
-        color: hasStory ? null : kBorder,
+        gradient: hasStory ? c.storyGradient : null,
+        color: hasStory ? null : c.ink.withOpacity(0.12),
       ),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: kBg,
+          color: c.bg,
         ),
         padding: const EdgeInsets.all(2),
         child: ClipOval(
@@ -594,9 +603,9 @@ class _StoryRing extends StatelessWidget {
               ? CachedNetworkImage(
                   imageUrl: url!, fit: BoxFit.cover)
               : Container(
-                  color: kSurface2,
-                  child: const Icon(Icons.person_rounded,
-                      color: kMuted)),
+                  color: c.surface2,
+                  child: Icon(Icons.person_rounded,
+                      color: c.inkSoft)),
         ),
       ),
     );
@@ -608,14 +617,15 @@ class _SmallAvatar extends StatelessWidget {
   const _SmallAvatar({this.url});
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return ClipOval(
       child: Container(
         width: 36,
         height: 36,
-        color: kSurface2,
+        color: c.surface2,
         child: url != null
             ? CachedNetworkImage(imageUrl: url!, fit: BoxFit.cover)
-            : const Icon(Icons.person_rounded, color: kMuted, size: 20),
+            : Icon(Icons.person_rounded, color: c.inkSoft, size: 20),
       ),
     );
   }
@@ -629,17 +639,18 @@ class _SheetTile extends StatelessWidget {
       {required this.icon, required this.label, required this.onTap});
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return ListTile(
       leading: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-            color: kSurface2, borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, color: kAccentLit, size: 20),
+            color: c.surface2, borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, color: c.accent, size: 20),
       ),
       title: Text(label,
-          style: const TextStyle(
-              color: kText, fontWeight: FontWeight.w500)),
+          style: TextStyle(
+              color: c.ink, fontWeight: FontWeight.w500)),
       onTap: onTap,
     );
   }
