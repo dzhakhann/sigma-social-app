@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
-import '../constants.dart';
+import '../theme/brutal_theme.dart';
 
 class ReelsScreen extends StatefulWidget {
   final Map user;
@@ -37,24 +37,28 @@ class _ReelsScreenState extends State<ReelsScreen> {
         maxDuration: const Duration(seconds: 60));
     if (file == null) return;
 
+    final c = context.k;
     final captionCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: kCard,
-        title: const Text('Add caption'),
-        content: TextField(
-            controller: captionCtrl,
-            decoration: const InputDecoration(hintText: 'Caption...')),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Upload', style: TextStyle(color: kGold))),
-        ],
-      ),
+      builder: (ctx) {
+        final dc = ctx.k;
+        return AlertDialog(
+          backgroundColor: dc.surface,
+          title: const Text('Add caption'),
+          content: TextField(
+              controller: captionCtrl,
+              decoration: const InputDecoration(hintText: 'Caption...')),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('Cancel', style: TextStyle(color: dc.inkSoft))),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('Upload', style: TextStyle(color: dc.accent))),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
 
@@ -84,11 +88,12 @@ class _ReelsScreenState extends State<ReelsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(children: [
         _isLoading
-            ? const Center(child: CircularProgressIndicator(color: kGold))
+            ? Center(child: CircularProgressIndicator(color: c.accent))
             : _reels.isEmpty
                 ? Center(
                     child: Column(
@@ -209,6 +214,7 @@ class _ReelItemState extends State<ReelItem> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     final reel = widget.reel;
     final isLiked = reel['is_liked'] == true;
 
@@ -220,8 +226,8 @@ class _ReelItemState extends State<ReelItem> {
                   width: _ctrl!.value.size.width,
                   height: _ctrl!.value.size.height,
                   child: VideoPlayer(_ctrl!)))
-          : const Center(
-              child: CircularProgressIndicator(color: kGold)),
+          : Center(
+              child: CircularProgressIndicator(color: c.accent)),
       GestureDetector(
         onTap: () {
           if (_ctrl?.value.isPlaying == true) {
@@ -268,7 +274,7 @@ class _ReelItemState extends State<ReelItem> {
                 onTap: widget.onLike,
                 child: Icon(
                     isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: isLiked ? Colors.red : Colors.white,
+                    color: isLiked ? c.danger : Colors.white,
                     size: 32),
               ),
               Text('${reel['likes_count'] ?? 0}',
