@@ -99,68 +99,27 @@ class BrutalTheme {
 // ─── MATURE PALETTES ──────────────────────────────────────────────────────────
 const List<BrutalTheme> kThemes = [
 
-  // 0 · OBSIDIAN — near-black, muted steel-blue accent. Calm, focused.
+  // SIGMA — the one modest dark theme. bg #0F1015, cards #171923, blue accent.
   BrutalTheme(
-    id: 'obsidian',
-    nameEn: 'Obsidian',
-    nameRu: 'Обсидиан',
+    id: 'sigma',
+    nameEn: 'Sigma',
+    nameRu: 'Sigma',
     c: BrutalColors(
-      bg:       Color(0xFF0C0C0E), // almost true black
-      surface:  Color(0xFF141417), // very dark gray
-      surface2: Color(0xFF1E1E22), // slightly lighter panel
-      ink:      Color(0xFFE8E8ED), // soft white text
-      inkSoft:  Color(0xFF62626E), // quiet muted gray
-      accent:   Color(0xFF4F7CFF), // calm steel-blue (not neon)
-      accent2:  Color(0xFF2EC4B6), // muted teal
+      bg:       Color(0xFF0F1015), // page background
+      surface:  Color(0xFF171923), // cards / panels
+      surface2: Color(0xFF1F2230), // inputs / chips
+      ink:      Color(0xFFE9EBF1), // primary text
+      inkSoft:  Color(0xFF878DA0), // muted text
+      accent:   Color(0xFF4F7CFF), // blue accent
+      accent2:  Color(0xFF6E92FF), // lighter blue
       accent3:  Color(0xFF9B7FFF), // soft lavender
-      danger:   Color(0xFFD95F5F), // muted red for likes
-      shadow:   Color(0x40000000),
+      danger:   Color(0xFFE5556B), // likes / destructive
+      shadow:   Color(0x66000000), // soft shadow
       onAccent: Color(0xFFFFFFFF),
       isDark:   true,
     ),
   ),
 
-  // 1 · PARCHMENT — warm off-white, deep navy accent. Newspaper-clean.
-  BrutalTheme(
-    id: 'parchment',
-    nameEn: 'Parchment',
-    nameRu: 'Пергамент',
-    c: BrutalColors(
-      bg:       Color(0xFFF4F3EF), // warm paper
-      surface:  Color(0xFFFFFFFF), // white card
-      surface2: Color(0xFFECEBE6), // warm gray input
-      ink:      Color(0xFF18181A), // near-black text
-      inkSoft:  Color(0xFF7A7A80), // medium warm gray
-      accent:   Color(0xFF2D4EE8), // deep calm blue
-      accent2:  Color(0xFF0D9488), // forest teal
-      accent3:  Color(0xFFC2502C), // warm terra cotta
-      danger:   Color(0xFFBF3A3A), // muted red
-      shadow:   Color(0x18000000),
-      onAccent: Color(0xFFFFFFFF),
-      isDark:   false,
-    ),
-  ),
-
-  // 2 · SLATE — cool charcoal, no blue tint, olive-khaki accent. Masculine.
-  BrutalTheme(
-    id: 'slate',
-    nameEn: 'Slate',
-    nameRu: 'Сланец',
-    c: BrutalColors(
-      bg:       Color(0xFF111214), // cool near-black
-      surface:  Color(0xFF1A1B1E), // dark charcoal
-      surface2: Color(0xFF26272C), // medium charcoal
-      ink:      Color(0xFFDFE0E6), // cool white
-      inkSoft:  Color(0xFF6B6C73), // cool medium gray
-      accent:   Color(0xFF7EB8A4), // muted sage-green
-      accent2:  Color(0xFFC4A882), // warm beige/khaki
-      accent3:  Color(0xFF8899BB), // dusty blue
-      danger:   Color(0xFFCC5F5F), // muted crimson
-      shadow:   Color(0x35000000),
-      onAccent: Color(0xFF0C0C0E),
-      isDark:   true,
-    ),
-  ),
 ];
 
 // ─── APP CONFIG ───────────────────────────────────────────────────────────────

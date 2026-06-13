@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/brutal_theme.dart';
-import '../l10n/app_strings.dart';
+import '../widgets/brutal.dart';
 import '../services/socket_service.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
@@ -37,52 +37,28 @@ class _MainScreenState extends State<MainScreen> {
     final c = context.k;
     return Scaffold(
       backgroundColor: c.bg,
-      body: IndexedStack(index: _tab, children: _screens),
-      bottomNavigationBar: _BrutalNav(
-        index: _tab,
-        onTap: (i) => setState(() => _tab = i),
-      ),
-    );
-  }
-}
-
-class _BrutalNav extends StatelessWidget {
-  final int index;
-  final ValueChanged<int> onTap;
-  const _BrutalNav({required this.index, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.k;
-    final items = <_NavItem>[
-      _NavItem(Icons.bolt_rounded, context.t('home')),
-      _NavItem(Icons.travel_explore_rounded, context.t('discover')),
-      _NavItem(Icons.forum_rounded, context.t('chats')),
-      _NavItem(Icons.notifications_active_rounded, context.t('alerts')),
-      _NavItem(Icons.face_rounded, context.t('me')),
-    ];
-    return Container(
-      decoration: BoxDecoration(
-        color: c.surface,
-        border: Border(top: BorderSide(color: c.ink, width: 3)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              for (int i = 0; i < items.length; i++)
-                Expanded(
-                  child: _NavButton(
-                    item: items[i],
-                    active: i == index,
-                    onTap: () => onTap(i),
-                  ),
-                ),
-            ],
+      body: Stack(
+        children: [
+          Positioned.fill(
+            // keep every screen clear of the floating right-side nav
+            child: Padding(
+              padding: const EdgeInsets.only(right: 58),
+              child: IndexedStack(index: _tab, children: _screens),
+            ),
           ),
-        ),
+          // Floating glass nav pinned to the right edge for one-handed reach.
+          Positioned(
+            right: 8,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: _SideNav(
+                index: _tab,
+                onTap: (i) => setState(() => _tab = i),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -90,16 +66,53 @@ class _BrutalNav extends StatelessWidget {
 
 class _NavItem {
   final IconData icon;
-  final String label;
-  const _NavItem(this.icon, this.label);
+  const _NavItem(this.icon);
+}
+
+class _SideNav extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  const _SideNav({required this.index, required this.onTap});
+
+  static const _items = <_NavItem>[
+    _NavItem(Icons.home_rounded),
+    _NavItem(Icons.explore_rounded),
+    _NavItem(Icons.chat_bubble_rounded),
+    _NavItem(Icons.notifications_rounded),
+    _NavItem(Icons.person_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: GlassPanel(
+        radius: 26,
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < _items.length; i++)
+              Padding(
+                padding: EdgeInsets.only(bottom: i == _items.length - 1 ? 0 : 8),
+                child: _NavButton(
+                  icon: _items[i].icon,
+                  active: i == index,
+                  onTap: () => onTap(i),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _NavButton extends StatelessWidget {
-  final _NavItem item;
+  final IconData icon;
   final bool active;
   final VoidCallback onTap;
   const _NavButton(
-      {required this.item, required this.active, required this.onTap});
+      {required this.icon, required this.active, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -108,41 +121,26 @@ class _NavButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        padding: const EdgeInsets.symmetric(vertical: 7),
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        width: 46,
+        height: 46,
         decoration: BoxDecoration(
           color: active ? c.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: active ? c.ink : Colors.transparent,
-            width: 2.5,
-          ),
+          borderRadius: BorderRadius.circular(15),
           boxShadow: active
-              ? [BoxShadow(color: c.shadow, offset: const Offset(3, 3), blurRadius: 0)]
+              ? [
+                  BoxShadow(
+                      color: c.accent.withOpacity(0.4),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4))
+                ]
               : null,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              item.icon,
-              size: 22,
-              color: active ? c.onAccent : c.inkSoft,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              item.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                color: active ? c.onAccent : c.inkSoft,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ],
+        child: Icon(
+          icon,
+          size: 23,
+          color: active ? c.onAccent : c.inkSoft,
         ),
       ),
     );

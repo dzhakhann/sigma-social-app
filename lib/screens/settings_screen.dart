@@ -32,26 +32,6 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          // ── APPEARANCE ──────────────────────────────────────────────
-          BrutalLabel(context.t('appearance')),
-          const SizedBox(height: 14),
-          Text(
-            context.t('pickTheme'),
-            style: TextStyle(
-                fontWeight: FontWeight.w900, fontSize: 17, color: c.ink),
-          ),
-          const SizedBox(height: 12),
-          for (int i = 0; i < kThemes.length; i++) ...[
-            _ThemeRow(
-              theme: kThemes[i],
-              lang: lang,
-              selected: i == config.themeIndex,
-              onTap: () => _setTheme(i),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          const SizedBox(height: 16),
           // ── LANGUAGE ────────────────────────────────────────────────
           Text(
             context.t('pickLang'),

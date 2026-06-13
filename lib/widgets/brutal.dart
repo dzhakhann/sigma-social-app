@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../theme/brutal_theme.dart';
 
@@ -23,7 +24,7 @@ class BrutalTap extends StatefulWidget {
     this.onTap,
     this.fill,
     this.borderColor,
-    this.radius = 14,
+    this.radius = 16,
     this.border = 0,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     this.shadowOffset = const Offset(0, 2),
@@ -90,7 +91,7 @@ class BrutalCard extends StatelessWidget {
     required this.child,
     this.fill,
     this.borderColor,
-    this.radius = 16,
+    this.radius = 18,
     this.border = 0,
     this.padding = const EdgeInsets.all(16),
     this.shadowOffset = const Offset(0, 2),
@@ -103,6 +104,46 @@ class BrutalCard extends StatelessWidget {
       padding: padding,
       decoration: cleanCard(c, fill: fill, radius: radius),
       child: child,
+    );
+  }
+}
+
+/// Frosted-glass panel: translucent fill + backdrop blur + hairline border.
+/// Use sparingly (blur is GPU-costly) — e.g. the floating side nav.
+class GlassPanel extends StatelessWidget {
+  final Widget child;
+  final double radius;
+  final EdgeInsets padding;
+  final double blur;
+  const GlassPanel({
+    super.key,
+    required this.child,
+    this.radius = 22,
+    this.padding = const EdgeInsets.all(8),
+    this.blur = 18,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: c.surface.withOpacity(0.62),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            boxShadow: [
+              BoxShadow(
+                  color: c.shadow, blurRadius: 24, offset: const Offset(0, 8)),
+            ],
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }

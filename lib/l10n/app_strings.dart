@@ -8,8 +8,8 @@ import '../theme/brutal_theme.dart';
 class S {
   static const Map<String, Map<String, String>> _v = {
     'en': {
-      'appName': 'PULSE',
-      'tagline': 'feel the pulse',
+      'appName': 'Sigma Social',
+      'tagline': 'your space',
       // auth
       'email': 'Email',
       'password': 'Password',
@@ -87,8 +87,8 @@ class S {
       'wordLabel': 'Word',
     },
     'ru': {
-      'appName': 'PULSE',
-      'tagline': 'почувствуй ритм',
+      'appName': 'Sigma Social',
+      'tagline': 'твоё пространство',
       // auth
       'email': 'Почта',
       'password': 'Пароль',

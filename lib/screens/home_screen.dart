@@ -152,25 +152,31 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
       child: Row(
         children: [
-          // wordmark with an accent underline block
-          Stack(
-            children: [
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 2,
-                child: Container(height: 10, color: c.accent.withOpacity(0.9)),
-              ),
-              Text(
-                context.t('appName'),
+          // SS badge
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              gradient: c.buttonGradient,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            alignment: Alignment.center,
+            child: const Text('SS',
                 style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  color: c.ink,
-                  letterSpacing: -1.5,
-                ),
-              ),
-            ],
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5)),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            context.t('appName'),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: c.ink,
+              letterSpacing: -0.5,
+            ),
           ),
           const Spacer(),
           BrutalTap(
