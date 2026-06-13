@@ -159,20 +159,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     messenger.showSnackBar(
         const SnackBar(content: Text('Sending photo...')));
     final bytes = await File(file.path).readAsBytes();
-    final fileName =
-        '${widget.user['id']}_msg_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final res = await http.put(
-      Uri.parse('$kSupabaseUrl/storage/v1/object/avatars/$fileName'),
-      headers: {
-        'Authorization': 'Bearer $kSupabaseKey',
-        'Content-Type': 'image/jpeg',
-        'x-upsert': 'true',
-      },
-      body: bytes,
+    final url = await ApiService.uploadMedia(
+      bytes,
+      folder: 'msg',
+      ext: 'jpg',
+      contentType: 'image/jpeg',
+      userId: widget.user['id'].toString(),
     );
-    if (res.statusCode == 200 || res.statusCode == 201) {
-      final url =
-          '$kSupabaseUrl/storage/v1/object/public/avatars/$fileName';
+    if (url != null) {
       await _send(text: '', mediaUrl: url, type: 'image');
     }
     messenger.hideCurrentSnackBar();
@@ -199,20 +193,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     messenger.showSnackBar(
         const SnackBar(content: Text('Отправляем видеокружок...')));
     final bytes = await file.readAsBytes();
-    final fileName =
-        '${widget.user['id']}_vid_${DateTime.now().millisecondsSinceEpoch}.mp4';
-    final res = await http.put(
-      Uri.parse('$kSupabaseUrl/storage/v1/object/avatars/$fileName'),
-      headers: {
-        'Authorization': 'Bearer $kSupabaseKey',
-        'Content-Type': 'video/mp4',
-        'x-upsert': 'true',
-      },
-      body: bytes,
+    final url = await ApiService.uploadMedia(
+      bytes,
+      folder: 'vid',
+      ext: 'mp4',
+      contentType: 'video/mp4',
+      userId: widget.user['id'].toString(),
     );
-    if (res.statusCode == 200 || res.statusCode == 201) {
-      final url =
-          '$kSupabaseUrl/storage/v1/object/public/avatars/$fileName';
+    if (url != null) {
       await _send(text: '', mediaUrl: url, type: 'video');
     }
     messenger.hideCurrentSnackBar();
@@ -268,20 +256,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     messenger.showSnackBar(
         const SnackBar(content: Text('Sending voice...')));
     final bytes = await File(path).readAsBytes();
-    final fileName =
-        '${widget.user['id']}_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    final res = await http.put(
-      Uri.parse('$kSupabaseUrl/storage/v1/object/avatars/$fileName'),
-      headers: {
-        'Authorization': 'Bearer $kSupabaseKey',
-        'Content-Type': 'audio/m4a',
-        'x-upsert': 'true',
-      },
-      body: bytes,
+    final url = await ApiService.uploadMedia(
+      bytes,
+      folder: 'voice',
+      ext: 'm4a',
+      contentType: 'audio/m4a',
+      userId: widget.user['id'].toString(),
     );
-    if (res.statusCode == 200 || res.statusCode == 201) {
-      final url =
-          '$kSupabaseUrl/storage/v1/object/public/avatars/$fileName';
+    if (url != null) {
       final dur = '${_recordSecs}s';
       await _send(text: dur, mediaUrl: url, type: 'voice');
     }

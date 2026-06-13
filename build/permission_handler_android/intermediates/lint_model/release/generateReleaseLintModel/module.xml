@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="C:\Users\user\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-12.0.13\android"
+    name=":permission_handler_android"
+    type="LIBRARY"
+    maven="com.baseflow.permissionhandler:permission_handler_android:"
+    agpVersion="8.3.0"
+    buildFolder="C:\Users\user\sigma_social_app\build\permission_handler_android"
+    bootClassPath="C:\Users\user\AppData\Local\Android\Sdk\platforms\android-34\android.jar;C:\Users\user\AppData\Local\Android\Sdk\build-tools\34.0.0\core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-34"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

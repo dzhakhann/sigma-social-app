@@ -3,41 +3,84 @@ import 'package:http/http.dart' as http;
 import '../constants.dart';
 
 class ApiService {
+  // ─── SESSION ────────────────────────────────────────────────────────────────
+  // JWT issued by the server on login/register/recover. Attached to every
+  // request so the server knows who is acting — the client no longer needs to
+  // be trusted to send its own user id on writes.
+  static String? _token;
+  static void setToken(String? token) => _token = token;
+  static void clearToken() => _token = null;
+  static bool get isAuthed => _token != null;
+
+  static Map<String, String> _headers({bool json = false}) {
+    return {
+      if (json) 'Content-Type': 'application/json',
+      if (_token != null) 'Authorization': 'Bearer $_token',
+    };
+  }
+
   static Future<Map<String, dynamic>> _get(String path) async {
-    final res = await http.get(Uri.parse('$kApiUrl$path'));
+    final res = await http.get(Uri.parse('$kApiUrl$path'), headers: _headers());
     return jsonDecode(res.body);
   }
 
   static Future<Map<String, dynamic>> _post(String path, Map body) async {
     final res = await http.post(Uri.parse('$kApiUrl$path'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body));
+        headers: _headers(json: true), body: jsonEncode(body));
     return jsonDecode(res.body);
   }
 
   static Future<Map<String, dynamic>> _delete(String path) async {
-    final res = await http.delete(Uri.parse('$kApiUrl$path'));
+    final res =
+        await http.delete(Uri.parse('$kApiUrl$path'), headers: _headers());
     return jsonDecode(res.body);
   }
 
   static Future<Map<String, dynamic>> _put(String path, Map body) async {
     final res = await http.put(Uri.parse('$kApiUrl$path'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body));
+        headers: _headers(json: true), body: jsonEncode(body));
     return jsonDecode(res.body);
   }
 
   // ─── AUTH ─────────────────────────────────────────────────────────────────
 
-  static Future<Map> register(String email, String password) =>
+  static Future<Map> register(String username, String password) =>
       _post('/auth/register', {
-        'email': email,
-        'username': email.split('@')[0],
+        'username': username,
         'password': password,
       });
 
-  static Future<Map> login(String email, String password) =>
-      _post('/auth/login', {'email': email, 'password': password});
+  static Future<Map> login(String username, String password) =>
+      _post('/auth/login', {'username': username, 'password': password});
+
+  // Reset password using the recovery phrase — no email/phone needed.
+  static Future<Map> recover(
+          String username, String phrase, String newPassword) =>
+      _post('/auth/recover', {
+        'username': username,
+        'phrase': phrase,
+        'new_password': newPassword,
+      });
+
+  // ─── MEDIA ────────────────────────────────────────────────────────────────
+  // Upload bytes through the server (which holds the Supabase key) and get back
+  // a public URL. The client never touches the storage key.
+  static Future<String?> uploadMedia(
+    List<int> bytes, {
+    String folder = 'upload',
+    String ext = 'jpg',
+    String contentType = 'image/jpeg',
+    String? userId,
+  }) async {
+    final d = await _post('/upload', {
+      'file_base64': base64Encode(bytes),
+      'user_id': userId,
+      'folder': folder,
+      'ext': ext,
+      'content_type': contentType,
+    });
+    return d['success'] == true ? d['url'] as String? : null;
+  }
 
   // ─── USERS ────────────────────────────────────────────────────────────────
 
@@ -192,23 +235,9 @@ class ApiService {
 
   static Future<Map> uploadReelVideo(
       String userId, List<int> bytes, String filename) async {
-    final request = http.MultipartRequest(
-      'PUT',
-      Uri.parse(
-          '$kSupabaseUrl/storage/v1/object/avatars/reels_${userId}_$filename'),
-    )
-      ..headers['Authorization'] = 'Bearer $kSupabaseKey'
-      ..headers['x-upsert'] = 'true'
-      ..files.add(http.MultipartFile.fromBytes('file', bytes,
-          filename: filename));
-    final streamed = await request.send();
-    if (streamed.statusCode == 200 || streamed.statusCode == 201) {
-      return {
-        'success': true,
-        'url':
-            '$kSupabaseUrl/storage/v1/object/public/avatars/reels_${userId}_$filename'
-      };
-    }
+    final url = await uploadMedia(bytes,
+        folder: 'reel', ext: 'mp4', contentType: 'video/mp4', userId: userId);
+    if (url != null) return {'success': true, 'url': url};
     return {'success': false, 'error': 'Upload failed'};
   }
 }

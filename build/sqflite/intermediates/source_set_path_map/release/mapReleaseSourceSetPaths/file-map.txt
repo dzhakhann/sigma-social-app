@@ -1,0 +1,11 @@
+com.tekartik.sqflite-core-1.6.0-0 C:\Users\user\.gradle\caches\transforms-4\4c190ce11ee723fd47fd0ec13905324d\transformed\core-1.6.0\res
+com.tekartik.sqflite-jetified-window-1.0.0-beta04-1 C:\Users\user\.gradle\caches\transforms-4\8b1e3dd5dc776597e9de9a1b3d6aa03a\transformed\jetified-window-1.0.0-beta04\res
+com.tekartik.sqflite-jetified-annotation-experimental-1.1.0-2 C:\Users\user\.gradle\caches\transforms-4\99e90b8a923f5adfabc4d40b34794808\transformed\jetified-annotation-experimental-1.1.0\res
+com.tekartik.sqflite-jetified-window-java-1.0.0-beta04-3 C:\Users\user\.gradle\caches\transforms-4\e7c485fc68ca28905cef7509ec041085\transformed\jetified-window-java-1.0.0-beta04\res
+com.tekartik.sqflite-main-4 C:\Users\user\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.3.3+1\android\src\main\res
+com.tekartik.sqflite-release-5 C:\Users\user\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.3.3+1\android\src\release\res
+com.tekartik.sqflite-pngs-6 C:\Users\user\sigma_social_app\build\sqflite\generated\res\pngs\release
+com.tekartik.sqflite-resValues-7 C:\Users\user\sigma_social_app\build\sqflite\generated\res\resValues\release
+com.tekartik.sqflite-mergeReleaseResources-8 C:\Users\user\sigma_social_app\build\sqflite\intermediates\incremental\release\mergeReleaseResources\merged.dir
+com.tekartik.sqflite-mergeReleaseResources-9 C:\Users\user\sigma_social_app\build\sqflite\intermediates\incremental\release\mergeReleaseResources\stripped.dir
+com.tekartik.sqflite-release-10 C:\Users\user\sigma_social_app\build\sqflite\intermediates\merged_res\release\mergeReleaseResources

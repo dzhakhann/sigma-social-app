@@ -1,0 +1,26 @@
+<lint-module
+    format="1"
+    dir="C:\Users\user\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.0\android"
+    name=":audioplayers_android"
+    type="LIBRARY"
+    maven="xyz.luan.audioplayers:audioplayers_android:"
+    agpVersion="8.3.0"
+    buildFolder="C:\Users\user\sigma_social_app\build\audioplayers_android"
+    bootClassPath="C:\Users\user\AppData\Local\Android\Sdk\platforms\android-35\android.jar;C:\Users\user\AppData\Local\Android\Sdk\build-tools\34.0.0\core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-35"
+    neverShrinking="true">
+  <lintOptions
+      disable="InvalidPackage"
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true">
+    <severities>
+      <severity
+        id="InvalidPackage"
+        severity="IGNORE" />
+    </severities>
+  </lintOptions>
+  <variant name="release"/>
+</lint-module>

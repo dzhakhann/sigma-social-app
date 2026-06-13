@@ -2,10 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import '../constants.dart' show kSupabaseUrl, kSupabaseKey;
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -76,20 +74,13 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       String? imageUrl;
       if (_imageB64 != null) {
-        final name =
-            '${widget.user['id']}_post_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final res = await http.put(
-          Uri.parse('$kSupabaseUrl/storage/v1/object/avatars/$name'),
-          headers: {
-            'Authorization': 'Bearer $kSupabaseKey',
-            'Content-Type': 'image/jpeg',
-            'x-upsert': 'true',
-          },
-          body: base64Decode(_imageB64!),
+        imageUrl = await ApiService.uploadMedia(
+          base64Decode(_imageB64!),
+          folder: 'post',
+          ext: 'jpg',
+          contentType: 'image/jpeg',
+          userId: widget.user['id'].toString(),
         );
-        if (res.statusCode == 200 || res.statusCode == 201) {
-          imageUrl = '$kSupabaseUrl/storage/v1/object/public/avatars/$name';
-        }
       }
       await ApiService.createPost(widget.user['id'], _composerCtrl.text.trim(),
           imageUrl: imageUrl);

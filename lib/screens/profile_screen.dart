@@ -116,20 +116,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => isUploadingAvatar = true);
     try {
       final bytes = await file.readAsBytes();
-      final fileName = '${widget.user['id']}_avatar.jpg';
-      final res = await http.put(
-        Uri.parse(
-            '$kSupabaseUrl/storage/v1/object/avatars/$fileName'),
-        headers: {
-          'Authorization': 'Bearer $kSupabaseKey',
-          'Content-Type': 'image/jpeg',
-          'x-upsert': 'true',
-        },
-        body: bytes,
+      final uploaded = await ApiService.uploadMedia(
+        bytes,
+        folder: 'avatar',
+        ext: 'jpg',
+        contentType: 'image/jpeg',
+        userId: widget.user['id'].toString(),
       );
-      if (res.statusCode == 200 || res.statusCode == 201) {
+      if (uploaded != null) {
         final url =
-            '$kSupabaseUrl/storage/v1/object/public/avatars/$fileName?t=${DateTime.now().millisecondsSinceEpoch}';
+            '$uploaded?t=${DateTime.now().millisecondsSinceEpoch}';
         await ApiService.updateUser(widget.user['id'], {
           'username': userProfile['username'],
           'bio': userProfile['bio'] ?? '',
