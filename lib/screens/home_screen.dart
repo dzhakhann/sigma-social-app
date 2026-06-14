@@ -11,6 +11,7 @@ import '../widgets/brutal.dart';
 import 'comments_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
+import 'chat_detail_screen.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  HOME · "PULSE"
@@ -57,6 +58,39 @@ class _HomeScreenState extends State<HomeScreen> {
   void _addEnergy(double amount) {
     HapticFeedback.lightImpact();
     setState(() => _energy = (_energy + amount).clamp(0.0, 1.0));
+  }
+
+  // ─── Spatial navigation (swipe on a post) ───────────────────────────────────
+  void _openAuthorProfile(Map post) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProfileScreen(
+          user: widget.user,
+          targetUserId: post['user_id'],
+          isOwnProfile: post['user_id'] == widget.user['id'],
+        ),
+      ),
+    );
+  }
+
+  void _openChat(Map post) {
+    if (post['user_id'] == widget.user['id']) return; // don't DM yourself
+    final target = {
+      'id': post['user_id'],
+      'username': post['username'],
+      'avatar_url': post['user_avatar'] ?? post['avatar_url'],
+    };
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailScreen(
+          chat: {'name': post['username']},
+          user: widget.user,
+          targetUser: target,
+        ),
+      ),
+    );
   }
 
   Future<void> _pickImage() async {
@@ -130,10 +164,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (_, i) => Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: _PulseCard(
-                        post: _posts[i],
-                        user: widget.user,
-                        onEnergy: _addEnergy,
+                      // Spatial gestures: swipe right → message author,
+                      // swipe left → open author's profile.
+                      child: GestureDetector(
+                        onHorizontalDragEnd: (d) {
+                          final v = d.primaryVelocity ?? 0;
+                          if (v > 250) {
+                            _openChat(_posts[i]);
+                          } else if (v < -250) {
+                            _openAuthorProfile(_posts[i]);
+                          }
+                        },
+                        child: _PulseCard(
+                          post: _posts[i],
+                          user: widget.user,
+                          onEnergy: _addEnergy,
+                        ),
                       ),
                     ),
                     childCount: _posts.length,
@@ -394,8 +440,6 @@ class _PulseCardState extends State<_PulseCard>
     with SingleTickerProviderStateMixin {
   late bool _liked;
   late int _likes;
-  int _boosts = 0;
-  bool _boosted = false;
   late final AnimationController _pop;
 
   @override
@@ -431,12 +475,33 @@ class _PulseCardState extends State<_PulseCard>
     }
   }
 
-  void _boost() {
-    setState(() {
-      _boosted = !_boosted;
-      _boosts += _boosted ? 1 : -1;
-    });
-    if (_boosted) widget.onEnergy(0.05);
+  Future<void> _repost() async {
+    HapticFeedback.lightImpact();
+    final username = (widget.post['username'] ?? 'user').toString();
+    final content = (widget.post['content'] ?? '').toString();
+    final image = widget.post['image_url'];
+    final text = '🔁 @$username: $content'.trim();
+    await ApiService.createPost(
+      widget.user['id'].toString(),
+      text,
+      imageUrl: image?.toString(),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.t('reposted'))),
+      );
+    }
+  }
+
+  void _share() {
+    final username = (widget.post['username'] ?? 'user').toString();
+    final content = (widget.post['content'] ?? '').toString();
+    Clipboard.setData(
+        ClipboardData(text: 'Sigma Social · @$username: $content'));
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.t('linkCopied'))),
+    );
   }
 
   String _time() {
@@ -558,10 +623,12 @@ class _PulseCardState extends State<_PulseCard>
               children: [
                 Expanded(
                   child: _ReactBtn(
-                    icon: Icons.bolt_rounded,
-                    label: _likes > 0 ? '$_likes' : context.t('amplify'),
+                    icon: _liked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    label: '$_likes',
                     active: _liked,
-                    activeColor: c.accent,
+                    activeColor: c.danger,
                     pop: _pop,
                     onTap: _react,
                   ),
@@ -585,11 +652,21 @@ class _PulseCardState extends State<_PulseCard>
                 const SizedBox(width: 8),
                 Expanded(
                   child: _ReactBtn(
-                    icon: Icons.waves_rounded,
-                    label: _boosts > 0 ? '$_boosts' : context.t('boost'),
-                    active: _boosted,
+                    icon: Icons.repeat_rounded,
+                    label: context.t('repost'),
+                    active: false,
                     activeColor: c.accent2,
-                    onTap: _boost,
+                    onTap: _repost,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ReactBtn(
+                    icon: Icons.ios_share_rounded,
+                    label: context.t('share'),
+                    active: false,
+                    activeColor: c.accent2,
+                    onTap: _share,
                   ),
                 ),
               ],

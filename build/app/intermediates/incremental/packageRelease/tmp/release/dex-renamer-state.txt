@@ -1,4 +1,4 @@
-#Sun Jun 14 20:15:15 UZT 2026
+#Sun Jun 14 20:53:15 UZT 2026
 base.0=C\:\\Users\\user\\sigma_social_app\\build\\app\\intermediates\\dex\\release\\minifyReleaseWithR8\\classes.dex
 path.0=classes.dex
 renamed.0=classes.dex
