@@ -4,6 +4,9 @@
       jars="C:\Users\user\sigma_social_app\build\app\intermediates\flutter\release\libs.jar"
       resolved="__local_aars__:C:\Users\user\sigma_social_app\build\app\intermediates\flutter\release\libs.jar:unspecified"/>
   <library
+      name=":@@:shared_preferences_android::release"
+      project=":shared_preferences_android"/>
+  <library
       name=":@@:permission_handler_android::release"
       project=":permission_handler_android"/>
   <library

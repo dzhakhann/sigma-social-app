@@ -558,12 +558,10 @@ class _PulseCardState extends State<_PulseCard>
               children: [
                 Expanded(
                   child: _ReactBtn(
-                    icon: _liked
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    label: '$_likes',
+                    icon: Icons.bolt_rounded,
+                    label: _likes > 0 ? '$_likes' : context.t('amplify'),
                     active: _liked,
-                    activeColor: c.danger,
+                    activeColor: c.accent,
                     pop: _pop,
                     onTap: _react,
                   ),
@@ -587,10 +585,10 @@ class _PulseCardState extends State<_PulseCard>
                 const SizedBox(width: 8),
                 Expanded(
                   child: _ReactBtn(
-                    icon: Icons.rocket_launch_rounded,
+                    icon: Icons.waves_rounded,
                     label: _boosts > 0 ? '$_boosts' : context.t('boost'),
                     active: _boosted,
-                    activeColor: c.accent,
+                    activeColor: c.accent2,
                     onTap: _boost,
                   ),
                 ),

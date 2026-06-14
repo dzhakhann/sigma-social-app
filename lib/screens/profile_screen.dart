@@ -38,6 +38,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String get _targetId =>
       widget.isOwnProfile ? widget.user['id'] : widget.targetUserId!;
 
+  // ─── REPUTATION & TIER (derived from activity — no backend needed) ──────────
+  int get _totalLikes =>
+      userPosts.fold<int>(0, (s, p) => s + ((p['likes_count'] ?? 0) as int));
+  int get _postCount => userPosts.length;
+  int get _followers => (userProfile['followers_count'] ?? 0) as int;
+
+  int get _resonance => (_totalLikes * 6 + _postCount * 3).clamp(0, 100).toInt();
+  int get _influence => (_followers * 7 + _postCount * 2).clamp(0, 100).toInt();
+  int get _reliability {
+    var s = 35 + _postCount * 4;
+    if ((userProfile['avatar_url'] ?? '').toString().isNotEmpty) s += 15;
+    if ((userProfile['about'] ?? userProfile['bio'] ?? '')
+        .toString()
+        .trim()
+        .isNotEmpty) s += 15;
+    if ((userProfile['headline'] ?? '').toString().trim().isNotEmpty) s += 10;
+    return s.clamp(0, 100).toInt();
+  }
+
+  int get _power => _totalLikes + _followers * 2 + _postCount * 3;
+  // 0 = Newcomer · 1 = Active · 2 = Top author
+  int get _tier => _power >= 40 ? 2 : (_power >= 12 ? 1 : 0);
+
   @override
   void initState() {
     super.initState();
@@ -181,6 +204,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           _headerCard(c),
           const SizedBox(height: 14),
+          _reputationCard(c),
+          const SizedBox(height: 14),
           if (isEditing || (_aboutCtrl.text.trim().isNotEmpty))
             _aboutCard(c),
           if (isEditing ||
@@ -200,8 +225,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ─── HEADER ─────────────────────────────────────────────────────────────────
   Widget _headerCard(BrutalColors c) {
     final avatarUrl = userProfile['avatar_url'];
-    return BrutalCard(
+    return Container(
       padding: const EdgeInsets.all(18),
+      decoration: _tierDecoration(c, _tier),
       child: Column(
         children: [
           GestureDetector(
@@ -266,6 +292,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     fontSize: 14, color: c.inkSoft, fontWeight: FontWeight.w500),
               ),
             ],
+            const SizedBox(height: 10),
+            _tierBadge(c, _tier),
           ] else ...[
             _editField(c, _usernameCtrl, 'Username'),
             const SizedBox(height: 10),
@@ -489,6 +517,132 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // ─── REPUTATION / TIER UI ───────────────────────────────────────────────────
+  BoxDecoration _tierDecoration(BrutalColors c, int tier) {
+    if (tier >= 2) {
+      return BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            c.accent.withOpacity(0.22),
+            c.accent3.withOpacity(0.16),
+            c.surface,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent.withOpacity(0.45), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+              color: c.accent.withOpacity(0.22),
+              blurRadius: 24,
+              offset: const Offset(0, 8)),
+        ],
+      );
+    }
+    if (tier == 1) {
+      return BoxDecoration(
+        gradient: LinearGradient(
+          colors: [c.accent.withOpacity(0.10), c.surface],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent.withOpacity(0.20)),
+        boxShadow: [
+          BoxShadow(color: c.shadow, blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      );
+    }
+    return BoxDecoration(
+      color: c.surface,
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: [
+        BoxShadow(color: c.shadow, blurRadius: 8, offset: const Offset(0, 2)),
+      ],
+    );
+  }
+
+  Widget _tierBadge(BrutalColors c, int tier) {
+    final ru = AppScope.of(context).lang == 'ru';
+    IconData icon;
+    String label;
+    Color col;
+    if (tier >= 2) {
+      icon = Icons.workspace_premium_rounded;
+      label = ru ? 'Топ-автор' : 'Top author';
+      col = c.accent;
+    } else if (tier == 1) {
+      icon = Icons.bolt_rounded;
+      label = ru ? 'Активный' : 'Active';
+      col = c.accent2;
+    } else {
+      icon = Icons.spa_rounded;
+      label = ru ? 'Новичок' : 'Newcomer';
+      col = c.inkSoft;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: col.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: col.withOpacity(0.4)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 15, color: col),
+        const SizedBox(width: 6),
+        Text(label,
+            style: TextStyle(
+                color: col, fontSize: 12.5, fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
+
+  Widget _reputationCard(BrutalColors c) {
+    final ru = AppScope.of(context).lang == 'ru';
+    return BrutalCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle(c, ru ? 'Репутация' : 'Reputation'),
+          const SizedBox(height: 14),
+          _repRow(c, ru ? 'Резонанс' : 'Resonance', _resonance, c.accent),
+          const SizedBox(height: 12),
+          _repRow(c, ru ? 'Влияние' : 'Influence', _influence, c.accent2),
+          const SizedBox(height: 12),
+          _repRow(c, ru ? 'Надёжность' : 'Reliability', _reliability, c.accent3),
+        ],
+      ),
+    );
+  }
+
+  Widget _repRow(BrutalColors c, String label, int value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Text(label,
+              style: TextStyle(
+                  color: c.ink, fontSize: 14, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Text('$value',
+              style: TextStyle(
+                  color: color, fontSize: 15, fontWeight: FontWeight.w800)),
+        ]),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: value / 100,
+            minHeight: 8,
+            backgroundColor: c.surface2,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
     );
   }
 

@@ -4,6 +4,20 @@
       jars="C:\Users\user\sigma_social_app\build\app\intermediates\flutter\release\libs.jar"
       resolved="__local_aars__:C:\Users\user\sigma_social_app\build\app\intermediates\flutter\release\libs.jar:unspecified"/>
   <library
+      name=":@@:shared_preferences_android::release"
+      jars="C:\Users\user\.gradle\caches\transforms-4\d59ee7f41fe02fcab0152a4a2c8733c6\transformed\out\jars\classes.jar;C:\Users\user\.gradle\caches\transforms-4\d59ee7f41fe02fcab0152a4a2c8733c6\transformed\out\jars\libs\R.jar"
+      resolved="io.flutter.plugins.sharedpreferences:shared_preferences_android:unspecified"
+      partialResultsDir="C:\Users\user\sigma_social_app\build\shared_preferences_android\intermediates\lint_vital_partial_results\release\lintVitalAnalyzeRelease\out"
+      folder="C:\Users\user\.gradle\caches\transforms-4\d59ee7f41fe02fcab0152a4a2c8733c6\transformed\out"
+      manifest="AndroidManifest.xml"
+      resFolder="res"
+      assetsFolder="assets"
+      lintJar="lint.jar"
+      publicResources="public.txt"
+      symbolFile="R.txt"
+      externalAnnotations="annotations.zip"
+      proguardRules="proguard.txt"/>
+  <library
       name=":@@:permission_handler_android::release"
       jars="C:\Users\user\.gradle\caches\transforms-4\f3a5f51aef1bff732853bd2ff5af3c02\transformed\out\jars\classes.jar;C:\Users\user\.gradle\caches\transforms-4\f3a5f51aef1bff732853bd2ff5af3c02\transformed\out\jars\libs\R.jar"
       resolved="com.baseflow.permissionhandler:permission_handler_android:unspecified"

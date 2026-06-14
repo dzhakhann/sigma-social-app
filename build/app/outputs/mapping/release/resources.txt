@@ -220,9 +220,9 @@ nv21
 F3311
 FocalPlaneYResolution
 CPH1609
+onLoss
 0123456789ABCDEF
 KEY
-onLoss
 mcv5a
 twi
 android.hardware.type.automotive
@@ -231,6 +231,7 @@ CIPAACDecoder
 hb2000
 SegmentURL
 dev.flutter.pigeon.PathProviderApi.ge...
+dev.flutter.pigeon.SharedPreferencesA...
 CUSTOM_ACTION
 initialization
 :Padding
@@ -357,6 +358,7 @@ lightgreen
 pause
 CAP
 Gospel
+dev.flutter.pigeon.SharedPreferencesA...
 HDMI
 android.permission.ACTIVITY_RECOGNITION
 getUri
@@ -423,8 +425,8 @@ invokeSuspend
 getResPackage
 transparent
 linethrough
-audioFocus
 logLevel
+audioFocus
 background_mode
 StripOffsets
 defaultDisplay
@@ -513,8 +515,8 @@ Cabaret
 Primus
 SENTENCES
 READY
-init
 TextInput.finishAutofillContext
+init
 V_MPEG4/ISO/ASP
 SsaDecoder
 primary.prof
@@ -578,8 +580,8 @@ birthDateMonth
 ListenableEditingState
 audioMode
 separator
-entries
 audioSamplingRate
+entries
 GCamera:MicroVideoOffset
 TT2
 null
@@ -683,8 +685,8 @@ min
 kotlinx.coroutines.channels.defaultBu...
 ExoPlayer:WakeLockManager
 ExoPlayerLib/2.18.7
-usageType
 android.type.verbatim
+usageType
 TYE
 echoCancel
 middle
@@ -823,8 +825,8 @@ lavenderblush
 NOTE
 M5c
 voicePerformance
-postfix
 unset:
+postfix
 portraitUp
 opaque
 .%02X
@@ -841,6 +843,7 @@ DAVC
 mediumslateblue
 AccessibilityBridge
 marlin
+dev.flutter.pigeon.SharedPreferencesA...
 exception
 urn:dolby:dash:audio_channel_configur...
 StandardOutputSensitivity
@@ -854,6 +857,7 @@ setFlashModeFailed
 Symphony
 urn:mpeg:dash:utc:direct:2012
 android.util.LongArray
+FlutterSharedPreferences
 stpp
 AD
 setExposureMode
@@ -1035,6 +1039,7 @@ darkgray
 android.settings.NOTIFICATION_POLICY_...
 com.google.android.gms.provider.extra...
 nan
+dev.flutter.pigeon.SharedPreferencesA...
 ID
 IE
 TextInputType.none
@@ -1063,8 +1068,8 @@ JP
 android.intent.extra.TEXT
 IS_LINK
 cell
-URI
 safeCast
+URI
 URL
 PAUSE
 kotlin.Long
@@ -1237,8 +1242,8 @@ SH
 V_THEORA
 SI
 SJ
-delimiters
 MediaCodecInfo
+delimiters
 SK
 .cmf
 SL
@@ -1336,6 +1341,7 @@ namePrefix
 external_surround_sound_enabled
 bg_lime
 WS
+SharedPreferencesPlugin
 Slate_Pro
 L153
 http://schemas.microsoft.com/DRM/2007...
@@ -1375,6 +1381,7 @@ com.google.android.exoplayer2.ext.opu...
 RelatedSoundFile
 mediumblue
 ZM
+dev.flutter.pigeon.SharedPreferencesA...
 PUBLIC
 android.settings.MANAGE_UNKNOWN_APP_S...
 ZW
@@ -1394,8 +1401,8 @@ p212
 EBM
 LAZY
 wel
-SendQueued
 marinelteatt
+SendQueued
 AviStreamHeaderChunk
 darkorchid
 VP8L
@@ -1454,8 +1461,8 @@ VbriSeeker
 flutter_image_picker_error_code
 MediaSourceList
 android.permission.READ_PHONE_STATE
-MEDIA_ERROR_UNSUPPORTED
 DeviceSettingDescription
+MEDIA_ERROR_UNSUPPORTED
 getModule
 extent
 DefaultDrmSession
@@ -1492,6 +1499,7 @@ SystemSoundType.click
 br
 bs
 android.permission.READ_MEDIA_VIDEO
+dev.flutter.pigeon.SharedPreferencesA...
 secondaryActivityIntent
 video/3gpp
 flo
@@ -1502,11 +1510,13 @@ flounder_lte
 cy
 availableCameras
 defaultSource
+VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGxpc3Qu
 config
 de
 MEDIUM_IMPACT
 PlaybackDurationRemaining
 TALB
+dev.flutter.pigeon.SharedPreferencesA...
 video/wvc1
 USHORT
 darkturquoise
@@ -1548,8 +1558,8 @@ INDEPENDENT
 setExposurePointFailed
 fr
 playerMode
-extendedAddress
 dev.flutter.pigeon.AndroidVideoPlayer...
+extendedAddress
 content
 android.media.extra.AUDIO_PLUG_STATE
 firebrick
@@ -1584,6 +1594,7 @@ DefaultRenderersFactory
 BRAVIA
 ExoPlayer:Playback
 in
+dev.flutter.pigeon.SharedPreferencesA...
 index
 is
 it
@@ -1875,8 +1886,8 @@ asset
 data
 recorderListener
 STATE_CAPTURING
-IS_ENABLED
 sound
+IS_ENABLED
 RECORD
 CPY83_I00
 amrNb
@@ -2128,6 +2139,7 @@ accessibility
 password
 kotlinx.coroutines.scheduler.keep.ali...
 CONTENT_TYPE
+VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu
 CompanionObject
 secondaryActivityStack.activities
 goog.exo.decoder
@@ -2281,9 +2293,9 @@ S_DVBSUB
 androidSetLocale
 consumerIndex
 com.llfbandit.record/events/
-MEDIA_ERROR_MALFORMED
 point
 getLatency
+MEDIA_ERROR_MALFORMED
 $ex
 slategray
 alias
@@ -2576,9 +2588,9 @@ binding
 expectedSize
 getViewRootImpl
 permissions
-delimiter
 superclass
 TrackEncryptionBox
+delimiter
 OMX.Exynos.AVC.Decoder.secure
 setPlaybackRate
 tel:123123
@@ -2651,8 +2663,8 @@ ThumbnailImage
 olivedrab
 Software
 HORIZONTAL
-dataSource
 replacement
+dataSource
 videoRecordingFailed
 Psytrance
 goog.exo.smoothstreaming
@@ -2765,8 +2777,8 @@ FlashpixVersion
 WhiteBalance
 Z80
 SET_SELECTION
-oldValue
 av01
+oldValue
 MotionPhoto
 resultCallback
 image/png
@@ -2936,8 +2948,8 @@ landscapeRight
 GPSLatitudeRef
 TextInputClient.updateEditingStateWit...
 XingSeeker
-PROTECTED
 IsLive
+PROTECTED
 arm
 santoni
 backgroundColor
@@ -3008,8 +3020,8 @@ Dispatchers.Main
 boreal
 arraySize
 FlutterSurfaceView
-QX1
 Cancelled
+QX1
 target
 PrimaryChromaticities
 GiONEE_CBL7513
@@ -3098,8 +3110,8 @@ SplitPairFilter
 Q427
 CANCELLED
 SCROLL_UP
-kotlin.collections.Iterator
 CLOSED_EMPTY
+kotlin.collections.Iterator
 job
 TextInputClient.requestExistingInputS...
 INF
@@ -3201,6 +3213,7 @@ SRATIONAL
 com.google.android.exoplayer2.ext.fla...
 DOCUMENTS
 statusBarColor
+VGhpcyBpcyB0aGUgcHJlZml4IGZvciBCaWdJb...
 contentCommitMimeTypes
 AssetIdentifier
 over
@@ -3460,8 +3473,8 @@ filter
 SystemChrome.setPreferredOrientations
 phoneNumberDevice
 ShutterSpeedValue
-elements
 android.settings.REQUEST_IGNORE_BATTE...
+elements
 URI_MASKABLE
 suggestedPresentationDelay
 ON_CREATE
@@ -3470,9 +3483,9 @@ ON_RESUME
 greenyellow
 asyncTraceBegin
 TextCapitalization.characters
-$1_$2
 JpgFromRaw
 InteroperabilityIFDPointer
+$1_$2
 android.permission.READ_MEDIA_VISUAL_...
 TRANSFORM
 NewSubfileType

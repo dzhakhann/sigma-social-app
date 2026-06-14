@@ -12468,6 +12468,18 @@ io.flutter.plugins.pathprovider.PathProviderPlugin:
     public static void registerWith(io.flutter.plugin.common.PluginRegistry$Registrar)
 io.flutter.plugins.pathprovider.R
 io.flutter.plugins.pathprovider.StorageDirectoryMapper
+io.flutter.plugins.sharedpreferences.Messages$FlutterError:
+    public void <init>(java.lang.String,java.lang.String,java.lang.Object)
+io.flutter.plugins.sharedpreferences.Messages:
+    public void <init>()
+io.flutter.plugins.sharedpreferences.R
+io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin:
+    private static final java.lang.String BIG_INTEGER_PREFIX
+    private static final java.lang.String DOUBLE_PREFIX
+    private static final java.lang.String LIST_IDENTIFIER
+    private static final java.lang.String SHARED_PREFERENCES_NAME
+    private static final java.lang.String TAG
+    public static void registerWith(io.flutter.plugin.common.PluginRegistry$Registrar)
 io.flutter.plugins.videoplayer.Messages$CreateMessage$Builder
 io.flutter.plugins.videoplayer.Messages$FlutterError:
     public void <init>(java.lang.String,java.lang.String,java.lang.Object)
@@ -19651,6 +19663,8 @@ io.flutter.plugins.camera.MethodCallHandlerImpl:
     static final synthetic boolean $assertionsDisabled
 io.flutter.plugins.pathprovider.Messages$$InternalSyntheticThrowCCEIfNotNull$13$f69ab4e902e6cfc6cf41298230acde580fb084a54ec1896a376ab56b8d1a8b3d$0
 io.flutter.plugins.pathprovider.Messages$FlutterError
+io.flutter.plugins.sharedpreferences.Messages$$InternalSyntheticThrowCCEIfNotNull$13$5b48f655c5f50b1342fdcaa63f56b3dd66f9660695daa6c98fd694497522b89c$0
+io.flutter.plugins.sharedpreferences.Messages$FlutterError
 io.flutter.plugins.videoplayer.CustomSSLSocketFactory
 io.flutter.plugins.videoplayer.Messages$$InternalSyntheticThrowCCEIfNotNull$13$d46c181a2a4c01a92e3645337e97c0dfc559b1f24186965eea024ef8efe33cbf$0
 io.flutter.plugins.videoplayer.Messages$FlutterError
