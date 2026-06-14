@@ -126,10 +126,16 @@ const List<BrutalTheme> kThemes = [
 class AppConfig {
   final int themeIndex;
   final String lang;
-  const AppConfig({this.themeIndex = 0, this.lang = 'ru'});
+  final String navSide; // 'right' | 'left'
+  const AppConfig(
+      {this.themeIndex = 0, this.lang = 'ru', this.navSide = 'right'});
 
-  AppConfig copyWith({int? themeIndex, String? lang}) =>
-      AppConfig(themeIndex: themeIndex ?? this.themeIndex, lang: lang ?? this.lang);
+  AppConfig copyWith({int? themeIndex, String? lang, String? navSide}) =>
+      AppConfig(
+        themeIndex: themeIndex ?? this.themeIndex,
+        lang: lang ?? this.lang,
+        navSide: navSide ?? this.navSide,
+      );
 
   BrutalTheme get theme => kThemes[themeIndex.clamp(0, kThemes.length - 1)];
 }

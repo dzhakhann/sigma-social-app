@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/brutal_theme.dart';
 import '../widgets/brutal.dart';
@@ -17,6 +18,8 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _tab = 0;
+  bool _navVisible = true;
+  Timer? _hideTimer;
   late final List<Widget> _screens;
 
   @override
@@ -30,31 +33,98 @@ class _MainScreenState extends State<MainScreen> {
       NotificationsScreen(user: widget.user),
       ProfileScreen(user: widget.user, isOwnProfile: true),
     ];
+    _scheduleHide();
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  // Auto-hide the nav a few seconds after it appears, so content gets the
+  // whole screen.
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(milliseconds: 2800), () {
+      if (mounted) setState(() => _navVisible = false);
+    });
+  }
+
+  void _showNav() {
+    _hideTimer?.cancel();
+    if (!_navVisible) setState(() => _navVisible = true);
+    _scheduleHide();
+  }
+
+  void _hideNav() {
+    _hideTimer?.cancel();
+    if (_navVisible) setState(() => _navVisible = false);
+  }
+
+  void _onTab(int i) {
+    setState(() => _tab = i);
+    _showNav();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.k;
+    final isRight = AppScope.of(context).config.navSide != 'left';
+
     return Scaffold(
       backgroundColor: c.bg,
       body: Stack(
         children: [
+          // Content uses the full screen; the nav floats over it on demand.
           Positioned.fill(
-            // keep every screen clear of the floating right-side nav
-            child: Padding(
-              padding: const EdgeInsets.only(right: 58),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n is ScrollUpdateNotification &&
+                    (n.scrollDelta?.abs() ?? 0) > 1.5) {
+                  _hideNav();
+                }
+                return false;
+              },
               child: IndexedStack(index: _tab, children: _screens),
             ),
           ),
-          // Floating glass nav pinned to the right edge for one-handed reach.
+
+          // Thin edge strip that reveals the nav when touched.
           Positioned(
-            right: 8,
             top: 0,
             bottom: 0,
+            left: isRight ? null : 0,
+            right: isRight ? 0 : null,
+            width: 28,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapDown: (_) => _showNav(),
+              onHorizontalDragStart: (_) => _showNav(),
+            ),
+          ),
+
+          // The floating nav itself — slides off the edge when hidden.
+          Positioned(
+            top: 0,
+            bottom: 0,
+            left: isRight ? null : 8,
+            right: isRight ? 8 : null,
             child: Center(
-              child: _SideNav(
-                index: _tab,
-                onTap: (i) => setState(() => _tab = i),
+              child: IgnorePointer(
+                ignoring: !_navVisible,
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  offset: _navVisible
+                      ? Offset.zero
+                      : Offset(isRight ? 1.6 : -1.6, 0),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: _navVisible ? 1 : 0,
+                    child: _SideNav(index: _tab, onTap: _onTab),
+                  ),
+                ),
               ),
             ),
           ),
@@ -93,7 +163,8 @@ class _SideNav extends StatelessWidget {
           children: [
             for (int i = 0; i < _items.length; i++)
               Padding(
-                padding: EdgeInsets.only(bottom: i == _items.length - 1 ? 0 : 8),
+                padding:
+                    EdgeInsets.only(bottom: i == _items.length - 1 ? 0 : 8),
                 child: _NavButton(
                   icon: _items[i].icon,
                   active: i == index,

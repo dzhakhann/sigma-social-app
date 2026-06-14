@@ -13,6 +13,8 @@ class SettingsScreen extends StatelessWidget {
       appConfig.value = appConfig.value.copyWith(themeIndex: i);
   void _setLang(String l) =>
       appConfig.value = appConfig.value.copyWith(lang: l);
+  void _setNav(String s) =>
+      appConfig.value = appConfig.value.copyWith(navSide: s);
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +58,36 @@ class SettingsScreen extends StatelessWidget {
                   label: context.t('english'),
                   active: lang == 'en',
                   onTap: () => _setLang('en'),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+          // ── NAVIGATION SIDE ─────────────────────────────────────────
+          Text(
+            context.t('navigation'),
+            style: TextStyle(
+                fontWeight: FontWeight.w900, fontSize: 17, color: c.ink),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _LangCard(
+                  flag: '➡️',
+                  label: context.t('navRight'),
+                  active: config.navSide != 'left',
+                  onTap: () => _setNav('right'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _LangCard(
+                  flag: '⬅️',
+                  label: context.t('navLeft'),
+                  active: config.navSide == 'left',
+                  onTap: () => _setNav('left'),
                 ),
               ),
             ],
