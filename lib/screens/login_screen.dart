@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import '../services/session.dart';
 import '../theme/brutal_theme.dart';
 import 'main_screen.dart';
 import 'recovery_phrase_screen.dart';
@@ -95,8 +96,8 @@ class _LoginScreenState extends State<LoginScreen>
       final data = await ApiService.login(username, password);
       if (data['success'] == true) {
         HapticFeedback.lightImpact();
-        ApiService.setToken(data['data']['token']);
         final user = data['data']['user'];
+        await Session.save(data['data']['token'], user);
         if (mounted) {
           if (recoveryPhrase != null && recoveryPhrase.isNotEmpty) {
             // First time: show the one-time recovery phrase before entering.

@@ -90,12 +90,22 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
 
-          // Thin edge strip that reveals the nav when touched.
+          // Either edge reveals the nav when touched (left OR right).
           Positioned(
             top: 0,
             bottom: 0,
-            left: isRight ? null : 0,
-            right: isRight ? 0 : null,
+            left: 0,
+            width: 28,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapDown: (_) => _showNav(),
+              onHorizontalDragStart: (_) => _showNav(),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
             width: 28,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,

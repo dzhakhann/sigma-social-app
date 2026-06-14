@@ -120,7 +120,7 @@ class GlassPanel extends StatelessWidget {
     required this.child,
     this.radius = 22,
     this.padding = const EdgeInsets.all(8),
-    this.blur = 18,
+    this.blur = 26,
   });
 
   @override
@@ -133,9 +133,9 @@ class GlassPanel extends StatelessWidget {
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: c.surface.withOpacity(0.62),
+            color: c.surface.withOpacity(0.30),
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(color: Colors.white.withOpacity(0.12)),
             boxShadow: [
               BoxShadow(
                   color: c.shadow, blurRadius: 24, offset: const Offset(0, 8)),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import '../services/session.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import 'main_screen.dart';
@@ -41,7 +42,7 @@ class _RecoverScreenState extends State<RecoverScreen> {
       final res = await ApiService.recover(username, phrase, pass);
       if (res['success'] == true) {
         HapticFeedback.lightImpact();
-        ApiService.setToken(res['data']['token']);
+        await Session.save(res['data']['token'], res['data']['user']);
         if (mounted) {
           Navigator.pushAndRemoveUntil(
             context,

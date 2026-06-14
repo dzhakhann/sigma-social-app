@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/brutal_theme.dart';
+import 'services/session.dart';
 import 'screens/login_screen.dart';
+import 'screens/main_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const PulseApp());
+  // Restore a saved session so the user stays signed in across restarts.
+  final savedUser = await Session.load();
+  runApp(PulseApp(initialUser: savedUser));
 }
 
 /// Root widget. Rebuilds the entire MaterialApp whenever the user switches
 /// theme or language from Settings, and exposes the active config to every
 /// screen through [AppScope] + the active palette through ThemeData.
 class PulseApp extends StatelessWidget {
-  const PulseApp({super.key});
+  final Map? initialUser;
+  const PulseApp({super.key, this.initialUser});
 
   @override
   Widget build(BuildContext context) {
@@ -31,10 +36,12 @@ class PulseApp extends StatelessWidget {
           child: AppScope(
             config: config,
             child: MaterialApp(
-              title: 'Pulse',
+              title: 'Sigma Social',
               debugShowCheckedModeBanner: false,
               theme: buildBrutalTheme(theme),
-              home: const LoginScreen(),
+              home: initialUser != null
+                  ? MainScreen(user: initialUser!)
+                  : const LoginScreen(),
             ),
           ),
         );

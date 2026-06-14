@@ -245,22 +245,15 @@ class _VideoCircleRecorderScreenState
             right: 0,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Hint text
-              if (!_recording)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 24),
-                  child: Text(
-                    'Нажмите для записи',
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
-                  ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Text(
+                  _recording
+                      ? 'Отпустите, чтобы отправить'
+                      : 'Зажмите кнопку для записи',
+                  style: const TextStyle(color: Colors.white54, fontSize: 14),
                 ),
-              if (_recording)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 24),
-                  child: Text(
-                    'Нажмите ещё раз чтобы отправить',
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
-                  ),
-                ),
+              ),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -282,9 +275,10 @@ class _VideoCircleRecorderScreenState
                     ),
                   ),
 
-                  // Record / Stop button
+                  // Record button — press and HOLD to record, release to send.
                   GestureDetector(
-                    onTap: _recording ? _stopAndSend : _startRecording,
+                    onLongPressStart: (_) => _startRecording(),
+                    onLongPressEnd: (_) => _stopAndSend(),
                     child: AnimatedBuilder(
                       animation: _pulseAnim,
                       builder: (_, child) => Transform.scale(

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import '../widgets/brutal.dart';
-import '../services/api_service.dart';
+import '../services/session.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -109,7 +109,7 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 16),
             shadowOffset: const Offset(4, 4),
             onTap: () {
-              ApiService.clearToken();
+              Session.clear();
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
