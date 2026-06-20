@@ -240,4 +240,24 @@ class ApiService {
     if (url != null) return {'success': true, 'url': url};
     return {'success': false, 'error': 'Upload failed'};
   }
+
+  // ─── ADMIN ──────────────────────────────────────────────────────────────────
+  static Future<Map> adminStats() => _get('/admin/stats');
+
+  static Future<List> adminUsers() async {
+    final d = await _get('/admin/users');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  static Future<Map> adminDeleteUser(String id) => _delete('/admin/users/$id');
+
+  static Future<Map> adminToggleAdmin(String id) =>
+      _post('/admin/users/$id/toggle-admin', {});
+
+  static Future<List> adminPosts() async {
+    final d = await _get('/admin/posts');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  static Future<Map> adminDeletePost(String id) => _delete('/admin/posts/$id');
 }

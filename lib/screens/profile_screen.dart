@@ -278,10 +278,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 14),
           if (!isEditing) ...[
-            Text(
-              userProfile['username'] ?? 'User',
-              style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800, color: c.ink),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    userProfile['username'] ?? 'User',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: c.ink),
+                  ),
+                ),
+                if (userProfile['is_verified'] == true) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.verified_rounded, size: 20, color: c.accent),
+                ],
+              ],
             ),
             if ((userProfile['headline'] ?? '').toString().trim().isNotEmpty) ...[
               const SizedBox(height: 4),

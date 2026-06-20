@@ -652,12 +652,24 @@ class _PulseCardState extends State<_PulseCard>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '@$username',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 15,
-                              color: c.ink),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '@$username',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                    color: c.ink),
+                              ),
+                            ),
+                            if (widget.post['is_verified'] == true) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.verified_rounded,
+                                  size: 15, color: c.accent),
+                            ],
+                          ],
                         ),
                         Text(
                           _time(),
