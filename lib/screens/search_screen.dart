@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import 'profile_screen.dart';
+import 'channels_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   final Map user;
@@ -44,6 +45,44 @@ class _SearchScreenState extends State<SearchScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Search')),
       body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ChannelsScreen(user: widget.user)),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [c.accent.withOpacity(0.22), c.accent.withOpacity(0.08)],
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: c.accent.withOpacity(0.3)),
+              ),
+              child: Row(children: [
+                Icon(Icons.dashboard_customize_rounded, color: c.accent),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Channels',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 15)),
+                      Text('News · Sport · Movies · Tech · Nature & more',
+                          style: TextStyle(color: c.inkSoft, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: c.inkSoft),
+              ]),
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.all(14),
           child: TextField(

@@ -218,6 +218,12 @@ class ApiService {
     return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
+  // ─── CHANNELS (content bots you can subscribe to) ──────────────────────────
+  static Future<List> getChannels(String userId) async {
+    final d = await _get('/channels?userId=$userId');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
   // ─── REELS (kept for backward compat) ─────────────────────────────────────
 
   static Future<List> getReels(String userId) async {
