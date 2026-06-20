@@ -29,6 +29,18 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
+
+# Run `dart run flutter_launcher_icons` to (re)generate Android & iOS app icons.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/sigma_maskable.png"
+  adaptive_icon_background: "#2D5BFF"
+  adaptive_icon_foreground: "assets/icon/sigma_fg.png"
+  web:
+    generate: false

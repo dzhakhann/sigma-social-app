@@ -33,7 +33,7 @@
     },
     {
         "merged": "com.example.sigma_social_app-release-23:/xml_flutter_image_picker_file_paths.xml.flat",
-        "source": "com.example.sigma_social_app-release-26:/xml/flutter_image_picker_file_paths.xml"
+        "source": "com.example.sigma_social_app-release-27:/xml/flutter_image_picker_file_paths.xml"
     },
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable-hdpi-v4_notification_bg_low_normal.9.png.flat",
@@ -64,8 +64,20 @@
         "source": "com.example.sigma_social_app-core-1.10.1-6:/drawable-xhdpi-v4/ic_call_answer.png"
     },
     {
+        "merged": "com.example.sigma_social_app-release-23:/drawable-hdpi_ic_launcher_foreground.png.flat",
+        "source": "com.example.sigma_social_app-main-16:/drawable-hdpi/ic_launcher_foreground.png"
+    },
+    {
         "merged": "com.example.sigma_social_app-release-23:/drawable_notification_tile_bg.xml.flat",
         "source": "com.example.sigma_social_app-core-1.10.1-6:/drawable/notification_tile_bg.xml"
+    },
+    {
+        "merged": "com.example.sigma_social_app-release-23:/drawable-xxhdpi_ic_launcher_foreground.png.flat",
+        "source": "com.example.sigma_social_app-main-16:/drawable-xxhdpi/ic_launcher_foreground.png"
+    },
+    {
+        "merged": "com.example.sigma_social_app-release-23:/drawable-xxxhdpi_ic_launcher_foreground.png.flat",
+        "source": "com.example.sigma_social_app-main-16:/drawable-xxxhdpi/ic_launcher_foreground.png"
     },
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable-v21_launch_background.xml.flat",
@@ -114,6 +126,10 @@
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable_notification_bg_low.xml.flat",
         "source": "com.example.sigma_social_app-core-1.10.1-6:/drawable/notification_bg_low.xml"
+    },
+    {
+        "merged": "com.example.sigma_social_app-release-23:/drawable-xhdpi_ic_launcher_foreground.png.flat",
+        "source": "com.example.sigma_social_app-main-16:/drawable-xhdpi/ic_launcher_foreground.png"
     },
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable-mdpi-v4_notification_bg_normal.9.png.flat",
@@ -166,6 +182,10 @@
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable-xhdpi-v4_notification_bg_low_pressed.9.png.flat",
         "source": "com.example.sigma_social_app-core-1.10.1-6:/drawable-xhdpi-v4/notification_bg_low_pressed.9.png"
+    },
+    {
+        "merged": "com.example.sigma_social_app-release-23:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.example.sigma_social_app-main-16:/mipmap-anydpi-v26/ic_launcher.xml"
     },
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable-mdpi-v4_ic_call_answer_low.png.flat",
@@ -250,6 +270,10 @@
     {
         "merged": "com.example.sigma_social_app-release-23:/drawable-xhdpi-v4_ic_call_answer_low.png.flat",
         "source": "com.example.sigma_social_app-core-1.10.1-6:/drawable-xhdpi-v4/ic_call_answer_low.png"
+    },
+    {
+        "merged": "com.example.sigma_social_app-release-23:/drawable-mdpi_ic_launcher_foreground.png.flat",
+        "source": "com.example.sigma_social_app-main-16:/drawable-mdpi/ic_launcher_foreground.png"
     },
     {
         "merged": "com.example.sigma_social_app-release-23:/mipmap-xhdpi_ic_launcher.png.flat",

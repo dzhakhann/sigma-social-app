@@ -3491,6 +3491,7 @@ com.baseflow.permissionhandler.PermissionUtils:
     static final java.lang.String SHARED_PREFERENCES_PERMISSION_WAS_DENIED_BEFORE_KEY
     public void <init>()
 com.baseflow.permissionhandler.R
+com.example.sigma_social_app.R$color
 com.example.sigma_social_app.R$drawable
 com.example.sigma_social_app.R$mipmap
 com.example.sigma_social_app.R$style

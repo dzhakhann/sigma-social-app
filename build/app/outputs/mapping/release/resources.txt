@@ -3544,8 +3544,8 @@ Marking attr:secondaryActivityName:2130771992 used because it matches string poo
 Marking id:text:2131034185 used because it matches string pool constant text
 Marking id:text2:2131034186 used because it matches string pool constant text
 Marking xml:flutter_image_picker_file_paths:2131492864 used because it matches string pool constant flutter
-Marking color:notification_action_color_filter:2130837508 used because it matches string pool constant notification
-Marking color:notification_icon_bg_color:2130837509 used because it matches string pool constant notification
+Marking color:notification_action_color_filter:2130837509 used because it matches string pool constant notification
+Marking color:notification_icon_bg_color:2130837510 used because it matches string pool constant notification
 Marking dimen:notification_action_icon_size:2130903047 used because it matches string pool constant notification
 Marking dimen:notification_action_text_size:2130903048 used because it matches string pool constant notification
 Marking dimen:notification_big_circle_margin:2130903049 used because it matches string pool constant notification
@@ -3561,17 +3561,17 @@ Marking dimen:notification_small_icon_size_as_large:2130903058 used because it m
 Marking dimen:notification_subtext_size:2130903059 used because it matches string pool constant notification
 Marking dimen:notification_top_pad:2130903060 used because it matches string pool constant notification
 Marking dimen:notification_top_pad_large_text:2130903061 used because it matches string pool constant notification
-Marking drawable:notification_action_background:2130968583 used because it matches string pool constant notification
-Marking drawable:notification_bg:2130968584 used because it matches string pool constant notification
-Marking drawable:notification_bg_low:2130968585 used because it matches string pool constant notification
-Marking drawable:notification_bg_low_normal:2130968586 used because it matches string pool constant notification
-Marking drawable:notification_bg_low_pressed:2130968587 used because it matches string pool constant notification
-Marking drawable:notification_bg_normal:2130968588 used because it matches string pool constant notification
-Marking drawable:notification_bg_normal_pressed:2130968589 used because it matches string pool constant notification
-Marking drawable:notification_icon_background:2130968590 used because it matches string pool constant notification
-Marking drawable:notification_template_icon_bg:2130968591 used because it matches string pool constant notification
-Marking drawable:notification_template_icon_low_bg:2130968592 used because it matches string pool constant notification
-Marking drawable:notification_tile_bg:2130968593 used because it matches string pool constant notification
+Marking drawable:notification_action_background:2130968584 used because it matches string pool constant notification
+Marking drawable:notification_bg:2130968585 used because it matches string pool constant notification
+Marking drawable:notification_bg_low:2130968586 used because it matches string pool constant notification
+Marking drawable:notification_bg_low_normal:2130968587 used because it matches string pool constant notification
+Marking drawable:notification_bg_low_pressed:2130968588 used because it matches string pool constant notification
+Marking drawable:notification_bg_normal:2130968589 used because it matches string pool constant notification
+Marking drawable:notification_bg_normal_pressed:2130968590 used because it matches string pool constant notification
+Marking drawable:notification_icon_background:2130968591 used because it matches string pool constant notification
+Marking drawable:notification_template_icon_bg:2130968592 used because it matches string pool constant notification
+Marking drawable:notification_template_icon_low_bg:2130968593 used because it matches string pool constant notification
+Marking drawable:notification_tile_bg:2130968594 used because it matches string pool constant notification
 Marking id:notification_background:2131034165 used because it matches string pool constant notification
 Marking id:notification_main_column:2131034166 used because it matches string pool constant notification
 Marking id:notification_main_column_container:2131034167 used because it matches string pool constant notification
@@ -3718,6 +3718,7 @@ Marking attr:queryPatterns:2130771990 used because it matches string pool consta
 @color/androidx_core_secondary_text_default_material_light : reachable=true
 @color/call_notification_answer_color : reachable=true
 @color/call_notification_decline_color : reachable=true
+@color/ic_launcher_background : reachable=false
 @color/notification_action_color_filter : reachable=true
     @color/androidx_core_secondary_text_default_material_light
 @color/notification_icon_bg_color : reachable=true
@@ -3749,6 +3750,7 @@ Marking attr:queryPatterns:2130771990 used because it matches string pool consta
 @drawable/ic_call_answer_video_low : reachable=false
 @drawable/ic_call_decline : reachable=false
 @drawable/ic_call_decline_low : reachable=false
+@drawable/ic_launcher_foreground : reachable=false
 @drawable/launch_background : reachable=false
 @drawable/notification_action_background : reachable=true
     @color/androidx_core_ripple_material_light
@@ -3883,6 +3885,8 @@ Marking attr:queryPatterns:2130771990 used because it matches string pool consta
 @layout/notification_template_part_time : reachable=true
     @style/TextAppearance_Compat_Notification_Time
 @mipmap/ic_launcher : reachable=true
+    @color/ic_launcher_background
+    @drawable/ic_launcher_foreground
 @string/androidx_startup : reachable=true
 @string/call_notification_answer_action : reachable=true
 @string/call_notification_answer_video_action : reachable=true
@@ -3932,8 +3936,8 @@ The root reachable resources are:
  color:androidx_core_secondary_text_default_material_light:2130837505
  color:call_notification_answer_color:2130837506
  color:call_notification_decline_color:2130837507
- color:notification_action_color_filter:2130837508
- color:notification_icon_bg_color:2130837509
+ color:notification_action_color_filter:2130837509
+ color:notification_icon_bg_color:2130837510
  dimen:notification_action_icon_size:2130903047
  dimen:notification_action_text_size:2130903048
  dimen:notification_big_circle_margin:2130903049
@@ -3949,17 +3953,17 @@ The root reachable resources are:
  dimen:notification_subtext_size:2130903059
  dimen:notification_top_pad:2130903060
  dimen:notification_top_pad_large_text:2130903061
- drawable:notification_action_background:2130968583
- drawable:notification_bg:2130968584
- drawable:notification_bg_low:2130968585
- drawable:notification_bg_low_normal:2130968586
- drawable:notification_bg_low_pressed:2130968587
- drawable:notification_bg_normal:2130968588
- drawable:notification_bg_normal_pressed:2130968589
- drawable:notification_icon_background:2130968590
- drawable:notification_template_icon_bg:2130968591
- drawable:notification_template_icon_low_bg:2130968592
- drawable:notification_tile_bg:2130968593
+ drawable:notification_action_background:2130968584
+ drawable:notification_bg:2130968585
+ drawable:notification_bg_low:2130968586
+ drawable:notification_bg_low_normal:2130968587
+ drawable:notification_bg_low_pressed:2130968588
+ drawable:notification_bg_normal:2130968589
+ drawable:notification_bg_normal_pressed:2130968590
+ drawable:notification_icon_background:2130968591
+ drawable:notification_template_icon_bg:2130968592
+ drawable:notification_template_icon_low_bg:2130968593
+ drawable:notification_tile_bg:2130968594
  id:accessibility_action_clickable_span:2131034112
  id:accessibility_custom_action_0:2131034113
  id:accessibility_custom_action_1:2131034114
