@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -47,7 +48,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    // Show the cached feed instantly, then refresh in the background.
+    final cached = await _readCache();
+    if (mounted) {
+      setState(() {
+        if (cached != null && _posts.isEmpty) _posts = cached;
+        _loading = _posts.isEmpty;
+      });
+    }
     final data = await ApiService.getPosts(widget.user['id']);
     if (mounted) {
       setState(() {
@@ -55,7 +63,25 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
     }
+    _saveCache(data);
     _loadStories();
+  }
+
+  Future<List?> _readCache() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final s = p.getString('feed_cache');
+      return s == null ? null : (jsonDecode(s) as List);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveCache(List data) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('feed_cache', jsonEncode(data));
+    } catch (_) {}
   }
 
   Future<void> _loadStories() async {
