@@ -1,11 +1,11 @@
 {
-    "name": "sigma_social_app",
-    "short_name": "sigma_social_app",
+    "name": "Sigma Social",
+    "short_name": "Sigma",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0F1015",
+    "theme_color": "#0F1015",
+    "description": "Sigma Social — your space.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

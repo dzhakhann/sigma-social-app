@@ -39,6 +39,7 @@ class PulseApp extends StatelessWidget {
               title: 'Sigma Social',
               debugShowCheckedModeBanner: false,
               theme: buildBrutalTheme(theme),
+              builder: (context, child) => _Responsive(child: child!),
               home: initialUser != null
                   ? MainScreen(user: initialUser!)
                   : const LoginScreen(),
@@ -46,6 +47,50 @@ class PulseApp extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// On phones the app fills the screen. On wide screens (PC/tablet) it is
+/// centred in a phone-width column on a dark backdrop — so links open looking
+/// like a polished app, not a stretched page. MediaQuery is overridden inside
+/// the frame so every screen lays itself out as a phone.
+class _Responsive extends StatelessWidget {
+  final Widget child;
+  const _Responsive({required this.child});
+
+  static const double _frameWidth = 460;
+  static const double _breakpoint = 600;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final size = media.size;
+    if (size.width < _breakpoint) return child;
+
+    final bg = Theme.of(context).extension<BrutalColors>()?.bg ??
+        const Color(0xFF0F1015);
+
+    return ColoredBox(
+      color: const Color(0xFF000000),
+      child: Center(
+        child: SizedBox(
+          width: _frameWidth,
+          height: size.height,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: bg, boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.6),
+                  blurRadius: 40,
+                  spreadRadius: 4),
+            ]),
+            child: MediaQuery(
+              data: media.copyWith(size: Size(_frameWidth, size.height)),
+              child: child,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
