@@ -449,20 +449,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final type = msg['message_type'] ?? 'text';
     final mediaUrl = msg['media_url'] as String?;
 
-    // Video circles are NOT wrapped in a bubble — they stand alone
+    // Video circles are NOT wrapped in a bubble — they stand alone.
+    // Long-press your own circle to delete it.
     if (type == 'video') {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment:
-              isOwn ? MainAxisAlignment.end : MainAxisAlignment.start,
-          children: [
-            if (!isOwn)
-              _CircleAvatar(
-                  url: widget.targetUser?['avatar_url'], size: 24),
-            if (!isOwn) const SizedBox(width: 6),
-            _VideoCircle(url: mediaUrl ?? '', size: 200),
-          ],
+      return GestureDetector(
+        onLongPress: () => _showOptions(msg),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            mainAxisAlignment:
+                isOwn ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!isOwn)
+                _CircleAvatar(
+                    url: widget.targetUser?['avatar_url'], size: 24),
+              if (!isOwn) const SizedBox(width: 6),
+              _VideoCircle(url: mediaUrl ?? '', size: 200),
+            ],
+          ),
         ),
       );
     }

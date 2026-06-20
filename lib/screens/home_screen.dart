@@ -12,6 +12,7 @@ import 'comments_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'chat_detail_screen.dart';
+import 'story_view_screen.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  HOME · "PULSE"
@@ -27,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List _posts = [];
+  List _stories = [];
   bool _loading = false;
 
   // dopamine state
@@ -53,6 +55,87 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
     }
+    _loadStories();
+  }
+
+  Future<void> _loadStories() async {
+    final data = await ApiService.getStories();
+    if (mounted) setState(() => _stories = data);
+  }
+
+  // group stories by author (excluding mine, which get the "your story" tile)
+  Map<String, List> get _grouped {
+    final Map<String, List> g = {};
+    for (var s in _stories) {
+      final uid = s['user_id']?.toString();
+      if (uid == null || uid == widget.user['id'].toString()) continue;
+      g.putIfAbsent(uid, () => []).add(s);
+    }
+    return g;
+  }
+
+  void _openStory(List uStories) {
+    final all = _grouped.values.toList();
+    int gi = 0;
+    for (int i = 0; i < all.length; i++) {
+      if (all[i].isNotEmpty &&
+          all[i][0]['user_id'] == uStories[0]['user_id']) {
+        gi = i;
+        break;
+      }
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StoryViewScreen(
+          stories: uStories,
+          allGroups: all,
+          groupIndex: gi,
+          startIndex: 0,
+          user: widget.user,
+          onStoryDeleted: _loadStories,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addStory() async {
+    final c = context.k;
+    final src = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: c.ink.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 18),
+          _SheetTile(
+              icon: Icons.camera_alt_rounded,
+              label: 'Camera',
+              onTap: () => Navigator.pop(context, ImageSource.camera)),
+          _SheetTile(
+              icon: Icons.photo_library_rounded,
+              label: 'Gallery',
+              onTap: () => Navigator.pop(context, ImageSource.gallery)),
+        ]),
+      ),
+    );
+    if (src == null) return;
+    final picker = ImagePicker();
+    final img =
+        await picker.pickImage(source: src, maxWidth: 800, imageQuality: 70);
+    if (img == null) return;
+    final bytes = await img.readAsBytes();
+    final data =
+        await ApiService.uploadStory(widget.user['id'], base64Encode(bytes));
+    if (data['success'] == true) _loadStories();
   }
 
   void _addEnergy(double amount) {
@@ -147,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(child: _header(c)),
-              SliverToBoxAdapter(child: _energyPanel(c)),
+              SliverToBoxAdapter(child: _storiesRow(c)),
               SliverToBoxAdapter(child: _composer(c)),
               if (_loading)
                 SliverToBoxAdapter(
@@ -241,70 +324,48 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _energyPanel(BrutalColors c) {
+  Widget _storiesRow(BrutalColors c) {
+    final myStories = _stories
+        .where(
+            (s) => s['user_id'].toString() == widget.user['id'].toString())
+        .toList();
+    final grouped = _grouped;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: BrutalCard(
-        fill: c.surface,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SizedBox(
+        height: 92,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           children: [
-            Row(
-              children: [
-                BrutalLabel(context.t('energy')),
-                const Spacer(),
-                Text(
-                  '${(_energy * 100).round()}%',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900, fontSize: 16, color: c.ink),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // energy track
-            LayoutBuilder(
-              builder: (context, cons) {
-                return Container(
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: c.surface2,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: c.ink, width: 2),
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 450),
-                      curve: Curves.easeOutBack,
-                      width: (cons.maxWidth - 4) * _energy,
-                      height: 14,
-                      margin: const EdgeInsets.all(1),
-                      decoration: BoxDecoration(
-                        color: c.accent,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: c.ink, width: 1.5),
+            _MyStoryBtn(
+              user: widget.user,
+              hasStory: myStories.isNotEmpty,
+              onAdd: _addStory,
+              onView: () {
+                if (myStories.isNotEmpty) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StoryViewScreen(
+                        stories: myStories,
+                        allGroups: [myStories],
+                        groupIndex: 0,
+                        startIndex: 0,
+                        user: widget.user,
+                        onStoryDeleted: _loadStories,
                       ),
                     ),
-                  ),
-                );
+                  );
+                } else {
+                  _addStory();
+                }
               },
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.local_fire_department_rounded,
-                    color: c.accent3, size: 20),
-                const SizedBox(width: 6),
-                Text(
-                  '$_streak ${context.t('days')} · ${context.t('streak')}',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: c.inkSoft),
-                ),
-              ],
-            ),
+            ...grouped.values.map((uStories) => _StoryAvatar(
+                  stories: uStories,
+                  onTap: () => _openStory(uStories),
+                )),
           ],
         ),
       ),
@@ -740,6 +801,137 @@ class _ReactBtn extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── STORY WIDGETS ────────────────────────────────────────────────────────────
+class _MyStoryBtn extends StatelessWidget {
+  final Map user;
+  final bool hasStory;
+  final VoidCallback onAdd;
+  final VoidCallback onView;
+  const _MyStoryBtn({
+    required this.user,
+    required this.hasStory,
+    required this.onAdd,
+    required this.onView,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return GestureDetector(
+      onTap: hasStory ? onView : onAdd,
+      child: SizedBox(
+        width: 66,
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Stack(children: [
+            _StoryRing(url: user['avatar_url'], hasStory: hasStory, size: 56),
+            Positioned(
+              bottom: 0,
+              right: 4,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                    color: c.accent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: c.bg, width: 2)),
+                child: const Icon(Icons.add, size: 12, color: Colors.white),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 5),
+          Text('You',
+              style: TextStyle(fontSize: 11, color: c.inkSoft),
+              overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
+  }
+}
+
+class _StoryAvatar extends StatelessWidget {
+  final List stories;
+  final VoidCallback onTap;
+  const _StoryAvatar({required this.stories, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    final first = stories.first;
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12),
+        child: SizedBox(
+          width: 66,
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _StoryRing(url: first['user_avatar'], hasStory: true, size: 56),
+            const SizedBox(height: 5),
+            Text(first['username'] ?? 'User',
+                style: TextStyle(fontSize: 11, color: c.inkSoft),
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _StoryRing extends StatelessWidget {
+  final String? url;
+  final bool hasStory;
+  final double size;
+  const _StoryRing(
+      {required this.url, required this.hasStory, required this.size});
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(2.5),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: hasStory ? c.storyGradient : null,
+        color: hasStory ? null : c.surface2,
+      ),
+      child: Container(
+        decoration: BoxDecoration(shape: BoxShape.circle, color: c.bg),
+        padding: const EdgeInsets.all(2),
+        child: ClipOval(
+          child: url != null
+              ? CachedNetworkImage(imageUrl: url!, fit: BoxFit.cover)
+              : Container(
+                  color: c.surface2,
+                  child: Icon(Icons.person_rounded, color: c.inkSoft)),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _SheetTile(
+      {required this.icon, required this.label, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+            color: c.surface2, borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, color: c.accent, size: 20),
+      ),
+      title: Text(label,
+          style: TextStyle(color: c.ink, fontWeight: FontWeight.w500)),
+      onTap: onTap,
     );
   }
 }
