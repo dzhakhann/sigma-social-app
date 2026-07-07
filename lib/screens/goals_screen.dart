@@ -1,0 +1,485 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/api_service.dart';
+import '../theme/brutal_theme.dart';
+import 'year_review_screen.dart';
+
+// Goal categories: id → (label, icon, color-picker)
+class GoalCat {
+  final String id;
+  final String label;
+  final IconData icon;
+  const GoalCat(this.id, this.label, this.icon);
+}
+
+const List<GoalCat> kCats = [
+  GoalCat('study', 'Учёба', Icons.school_outlined),
+  GoalCat('career', 'Карьера', Icons.work_outline_rounded),
+  GoalCat('health', 'Здоровье', Icons.favorite_outline_rounded),
+  GoalCat('finance', 'Финансы', Icons.savings_outlined),
+  GoalCat('relationships', 'Отношения', Icons.people_outline_rounded),
+  GoalCat('hobby', 'Хобби', Icons.brush_outlined),
+  GoalCat('personal', 'Личное', Icons.star_outline_rounded),
+  GoalCat('other', 'Другое', Icons.category_outlined),
+];
+
+GoalCat catOf(String? id) =>
+    kCats.firstWhere((c) => c.id == id, orElse: () => kCats.last);
+
+Color catColor(BrutalColors c, String id) {
+  switch (id) {
+    case 'career':
+      return c.accent;
+    case 'study':
+      return c.accent2;
+    case 'health':
+      return c.danger;
+    case 'finance':
+      return c.accent3;
+    case 'relationships':
+      return c.danger;
+    case 'hobby':
+      return c.accent3;
+    default:
+      return c.inkSoft;
+  }
+}
+
+class GoalsScreen extends StatefulWidget {
+  final Map user;
+  const GoalsScreen({Key? key, required this.user}) : super(key: key);
+  @override
+  State<GoalsScreen> createState() => _GoalsScreenState();
+}
+
+class _GoalsScreenState extends State<GoalsScreen> {
+  final int year = DateTime.now().year;
+  List _goals = [];
+  bool _loading = true;
+
+  String get _uid => widget.user['id'].toString();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final data = await ApiService.getGoals(_uid, year: year);
+    if (mounted) setState(() { _goals = data; _loading = false; });
+  }
+
+  int get _done => _goals.where((g) => g['status'] == 'done').length;
+  int get _avg => _goals.isEmpty
+      ? 0
+      : (_goals.fold<int>(0, (s, g) => s + ((g['progress'] ?? 0) as int)) /
+              _goals.length)
+          .round();
+
+  // ─── Add / edit sheets ─────────────────────────────────────────────────────
+  Future<void> _addGoal() async {
+    final ctrl = TextEditingController();
+    String cat = 'personal';
+    final c = context.k;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            left: 18, right: 18, top: 18,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 18,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Новая цель на $year',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(hintText: 'Например: выучить английский'),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8, runSpacing: 8,
+                children: kCats.map((k) {
+                  final sel = k.id == cat;
+                  final col = catColor(c, k.id);
+                  return GestureDetector(
+                    onTap: () => setSheet(() => cat = k.id),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: sel ? col.withOpacity(0.18) : c.surface2,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: sel ? col : Colors.transparent, width: 1.2),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(k.icon, size: 16, color: sel ? col : c.inkSoft),
+                        const SizedBox(width: 6),
+                        Text(k.label,
+                            style: TextStyle(
+                                color: sel ? c.ink : c.inkSoft,
+                                fontWeight: FontWeight.w600, fontSize: 13)),
+                      ]),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: c.accent,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14))),
+                  onPressed: () async {
+                    if (ctrl.text.trim().isEmpty) return;
+                    Navigator.pop(ctx);
+                    await ApiService.createGoal(ctrl.text.trim(), cat, year);
+                    _load();
+                  },
+                  child: const Text('Добавить цель',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editGoal(Map g) async {
+    double prog = ((g['progress'] ?? 0) as int).toDouble();
+    final c = context.k;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(g['title'] ?? '',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text('Прогресс: ${prog.round()}%',
+                  style: TextStyle(color: c.inkSoft)),
+              Slider(
+                value: prog, min: 0, max: 100, divisions: 20,
+                activeColor: c.accent,
+                label: '${prog.round()}%',
+                onChanged: (v) => setSheet(() => prog = v),
+              ),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: c.accent,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await ApiService.updateGoal(
+                          g['id'].toString(), {'progress': prog.round()});
+                      _load();
+                    },
+                    child: const Text('Сохранить'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: c.accent2,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        side: BorderSide(color: c.accent2),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await ApiService.updateGoal(
+                          g['id'].toString(), {'status': 'done'});
+                      await _load();
+                      _celebrate();
+                    },
+                    child: const Text('Выполнено ✓'),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await ApiService.updateGoal(
+                          g['id'].toString(), {'status': 'paused'});
+                      _load();
+                    },
+                    icon: Icon(Icons.pause_circle_outline,
+                        color: c.inkSoft, size: 20),
+                    label: Text('Отложить', style: TextStyle(color: c.inkSoft)),
+                  ),
+                ),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await ApiService.deleteGoal(g['id'].toString());
+                      _load();
+                    },
+                    icon: Icon(Icons.delete_outline, color: c.danger, size: 20),
+                    label: Text('Удалить', style: TextStyle(color: c.danger)),
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _celebrate() {
+    HapticFeedback.mediumImpact();
+    final c = context.k;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) {
+        Future.delayed(const Duration(milliseconds: 1300), () {
+          if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
+        });
+        return Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.5, end: 1.0),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.elasticOut,
+            builder: (_, v, __) => Transform.scale(
+              scale: v,
+              child: Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                    color: c.surface, borderRadius: BorderRadius.circular(24)),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.check_circle_rounded, color: c.accent2, size: 64),
+                  const SizedBox(height: 12),
+                  Text('Цель выполнена! 🎉',
+                      style: TextStyle(
+                          color: c.ink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18)),
+                ]),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Мои цели · $year'),
+        actions: [
+          IconButton(
+            tooltip: 'Мой год',
+            icon: Icon(Icons.auto_awesome_rounded, color: c.accent),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => YearReviewScreen(user: widget.user, year: year)),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: c.accent,
+        onPressed: _addGoal,
+        icon: const Icon(Icons.add),
+        label: const Text('Цель'),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 96),
+                children: [
+                  _header(c),
+                  const SizedBox(height: 16),
+                  if (_goals.isEmpty)
+                    _empty(c)
+                  else
+                    ..._goals.map((g) => _goalCard(c, g)),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _header(BrutalColors c) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+            colors: [c.accent.withOpacity(0.22), c.accent3.withOpacity(0.12)]),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.accent.withOpacity(0.25)),
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 64, height: 64,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: _avg / 100),
+            duration: const Duration(milliseconds: 850),
+            curve: Curves.easeOutCubic,
+            builder: (_, v, __) => Stack(alignment: Alignment.center, children: [
+              SizedBox(
+                width: 64, height: 64,
+                child: CircularProgressIndicator(
+                  value: v,
+                  strokeWidth: 6,
+                  backgroundColor: c.surface2,
+                  valueColor: AlwaysStoppedAnimation(c.accent),
+                ),
+              ),
+              Text('${(v * 100).round()}%',
+                  style:
+                      const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            ]),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Твой $year',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('$_done из ${_goals.length} целей выполнено',
+                  style: TextStyle(color: c.inkSoft, fontSize: 13)),
+              const SizedBox(height: 4),
+              Text(_motivation(),
+                  style: TextStyle(
+                      color: c.accent2,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  String _motivation() {
+    if (_goals.isEmpty) return 'Начни с одной цели ✨';
+    if (_avg >= 80) return 'Ты почти у цели — держись! 🔥';
+    if (_avg >= 50) return 'Отличный темп, продолжай! 💪';
+    if (_avg >= 20) return 'Хорошее начало, не сбавляй 🚀';
+    return 'Сделай сегодня один шаг 👟';
+  }
+
+  Widget _empty(BrutalColors c) => Padding(
+        padding: const EdgeInsets.only(top: 60),
+        child: Column(children: [
+          Icon(Icons.flag_outlined, size: 54, color: c.inkSoft),
+          const SizedBox(height: 12),
+          Text('Пока нет целей на $year',
+              style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Text('Поставь первую цель — в конце года\nсоберём красивый отчёт',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.inkSoft, fontSize: 13, height: 1.4)),
+        ]),
+      );
+
+  Widget _goalCard(BrutalColors c, Map g) {
+    final cat = catOf(g['category']);
+    final col = catColor(c, cat.id);
+    final prog = (g['progress'] ?? 0) as int;
+    final done = g['status'] == 'done';
+    final paused = g['status'] == 'paused';
+    return GestureDetector(
+      onTap: () => _editGoal(g),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.ink.withOpacity(0.06)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                    color: col.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(10)),
+                child: Icon(cat.icon, size: 18, color: col),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(g['title'] ?? '',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        decoration: done ? TextDecoration.lineThrough : null,
+                        color: done ? c.inkSoft : c.ink)),
+              ),
+              if (done)
+                Icon(Icons.check_circle_rounded, color: c.accent2, size: 22)
+              else if (paused)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.pause_circle_outline, color: c.inkSoft, size: 18),
+                  const SizedBox(width: 4),
+                  Text('отложена',
+                      style: TextStyle(color: c.inkSoft, fontSize: 12)),
+                ])
+              else
+                Text('$prog%',
+                    style: TextStyle(
+                        color: c.inkSoft, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: prog / 100),
+                duration: const Duration(milliseconds: 700),
+                curve: Curves.easeOutCubic,
+                builder: (_, v, __) => LinearProgressIndicator(
+                  value: v,
+                  minHeight: 7,
+                  backgroundColor: c.surface2,
+                  valueColor: AlwaysStoppedAnimation(done ? c.accent2 : col),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

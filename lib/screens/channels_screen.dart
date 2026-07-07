@@ -122,7 +122,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                           if (ch['is_verified'] == true) ...[
                             const SizedBox(width: 4),
                             Icon(Icons.verified_rounded,
-                                size: 15, color: c.accent),
+                                size: 15, color: c.ink),
                           ],
                         ],
                       ),

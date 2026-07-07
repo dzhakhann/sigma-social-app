@@ -128,6 +128,24 @@ class ApiService {
   static Future<Map> likePost(String postId, String userId) =>
       _post('/posts/$postId/like', {'user_id': userId});
 
+  static Future<Map> deletePost(String postId) => _delete('/posts/$postId');
+
+  // A user's own posts (incl. reposts) — for the profile.
+  static Future<List> getUserPosts(String targetId, String viewerId) async {
+    final d = await _get('/users/$targetId/posts?userId=$viewerId');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  // A single post by id — for opening a post from a notification.
+  static Future<Map?> getPost(String postId, String viewerId) async {
+    final d = await _get('/posts/$postId?userId=$viewerId');
+    return d['success'] == true ? (d['data'] as Map?) : null;
+  }
+
+  // Repost: server creates the repost row + notifies followers.
+  static Future<Map> repostPost(String postId) =>
+      _post('/posts/$postId/repost', {});
+
   // ─── COMMENTS ─────────────────────────────────────────────────────────────
 
   static Future<List> getComments(String postId) async {
@@ -143,6 +161,9 @@ class ApiService {
   static Future<Map> deleteComment(String commentId) =>
       _delete('/comments/$commentId');
 
+  static Future<Map> editComment(String commentId, String content) =>
+      _put('/comments/$commentId', {'content': content});
+
   // ─── STORIES ──────────────────────────────────────────────────────────────
 
   static Future<List> getStories() async {
@@ -156,6 +177,12 @@ class ApiService {
 
   static Future<Map> deleteStory(String storyId) =>
       _delete('/stories/$storyId');
+
+  // All of a user's stories incl. expired — for the profile History archive.
+  static Future<List> getUserStories(String userId) async {
+    final d = await _get('/stories/user/$userId');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
 
   // ─── CHATS ────────────────────────────────────────────────────────────────
 
@@ -218,10 +245,79 @@ class ApiService {
     return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
+  static Future<List> getTrendingPosts(String userId) async {
+    final d = await _get('/posts/trending?userId=$userId');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  static Future<List> searchPosts(String query, String userId) async {
+    if (query.isEmpty) return [];
+    final d = await _get(
+        '/search/posts?q=${Uri.encodeComponent(query)}&userId=$userId');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
   // ─── CHANNELS (content bots you can subscribe to) ──────────────────────────
   static Future<List> getChannels(String userId) async {
     final d = await _get('/channels?userId=$userId');
     return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  // ─── GOALS (yearly goals + Wrapped) ────────────────────────────────────────
+  static Future<List> getGoals(String userId, {int? year}) async {
+    final y = year != null ? '&year=$year' : '';
+    final d = await _get('/goals?userId=$userId$y');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  static Future<Map> createGoal(String title, String category, int year,
+          {String note = ''}) =>
+      _post('/goals', {
+        'title': title,
+        'category': category,
+        'year': year,
+        'note': note,
+      });
+
+  static Future<Map> updateGoal(String id, Map fields) =>
+      _post('/goals/$id/update', fields);
+
+  static Future<Map> deleteGoal(String id) => _delete('/goals/$id');
+
+  static Future<Map> getWrapped(String userId, {int? year}) async {
+    final y = year != null ? '&year=$year' : '';
+    final d = await _get('/goals/wrapped?userId=$userId$y');
+    return d['success'] == true ? (d['data'] ?? {}) : {};
+  }
+
+  // ─── AI (Gemini via backend) ───────────────────────────────────────────────
+  // messages: [{'role':'user'|'model','text':'...'}]
+  static Future<String> aiChat(List<Map<String, String>> messages) async {
+    final d = await _post('/ai/chat', {'messages': messages});
+    return (d['reply'] ?? 'ИИ недоступен.').toString();
+  }
+
+  static Future<String> aiRecommend() async {
+    final d = await _get('/ai/recommend');
+    return (d['text'] ?? '').toString();
+  }
+
+  // ─── GIFs (Tenor via backend) ──────────────────────────────────────────────
+  static Future<List> searchGifs(String query) async {
+    final d = await _get('/gifs?q=${Uri.encodeComponent(query)}');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  // ─── Link preview (Open Graph unfurl) ──────────────────────────────────────
+  static final Map<String, Map> _linkCache = {};
+  static Future<Map> linkPreview(String url) async {
+    if (_linkCache.containsKey(url)) return _linkCache[url]!;
+    final d = await _get('/link-preview?url=${Uri.encodeComponent(url)}');
+    final data = d['success'] == true ? (d['data'] ?? {}) : {};
+    if (data is Map && (data['title'] != null || data['image'] != null)) {
+      _linkCache[url] = Map<String, dynamic>.from(data);
+    }
+    return _linkCache[url] ?? {};
   }
 
   // ─── REELS (kept for backward compat) ─────────────────────────────────────

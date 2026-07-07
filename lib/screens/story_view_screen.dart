@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/emoji_picker.dart';
 
 class StoryViewScreen extends StatefulWidget {
   final List stories;
@@ -34,6 +35,7 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   Timer? _timer;
   bool _isPaused = false;
   bool _isClosing = false;
+  final _replyCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -104,6 +106,37 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
       widget.onStoryDeleted?.call();
       _closeScreen();
     } catch (_) {}
+  }
+
+  Future<void> _dmAuthor(Map story, String text) async {
+    if (text.trim().isEmpty) return;
+    final authorId = story['user_id'].toString();
+    final r = await ApiService.getOrCreateChat(
+        widget.user['id'].toString(), authorId);
+    if (r['success'] == true && r['data'] != null) {
+      await ApiService.sendMessage(r['data']['id'].toString(),
+          widget.user['id'].toString(), text);
+    }
+  }
+
+  Future<void> _sendReply(Map story, String text) async {
+    if (text.trim().isEmpty) return;
+    await _dmAuthor(story, 'Ответ на историю: ${text.trim()}');
+    if (!mounted) return;
+    _replyCtrl.clear();
+    FocusScope.of(context).unfocus();
+    setState(() => _isPaused = false);
+    _startTimer();
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ответ отправлен')));
+  }
+
+  Future<void> _likeStory(Map story) async {
+    await _dmAuthor(story, '❤️ понравилась твоя история');
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('❤️ Отправлено')));
+    }
   }
 
   @override
@@ -261,6 +294,53 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
               ]),
             ),
           ),
+          if (!isOwn)
+            Positioned(
+              left: 0, right: 0, bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                  child: Row(children: [
+                    EmojiPickerButton(
+                        controller: _replyCtrl, color: Colors.white70),
+                    Expanded(
+                      child: TextField(
+                        controller: _replyCtrl,
+                        style: const TextStyle(color: Colors.white),
+                        onTap: () {
+                          _timer?.cancel();
+                          setState(() => _isPaused = true);
+                        },
+                        onSubmitted: (t) => _sendReply(story, t),
+                        decoration: InputDecoration(
+                          filled: false,
+                          isDense: true,
+                          hintText: 'Ответить…',
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide:
+                                  const BorderSide(color: Colors.white54)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: const BorderSide(color: Colors.white)),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _likeStory(story),
+                      icon: const Icon(Icons.favorite_border,
+                          color: Colors.white, size: 28),
+                    ),
+                    IconButton(
+                      onPressed: () => _sendReply(story, _replyCtrl.text),
+                      icon: const Icon(Icons.send, color: Colors.white, size: 24),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
         ]),
       ),
     );
@@ -269,6 +349,7 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _replyCtrl.dispose();
     super.dispose();
   }
 }

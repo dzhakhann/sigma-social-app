@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
-import 'main_screen.dart';
+import 'onboarding_screen.dart';
 
 /// Trust Wallet-style confirmation: the app asks for a few specific positions
 /// ("Word #4") and the user picks the correct word from multiple choices.
@@ -84,9 +84,10 @@ class _RecoveryVerifyScreenState extends State<RecoveryVerifyScreen> {
     }
     if (ok) {
       HapticFeedback.mediumImpact();
+      // New account → collect the full profile before entering the app.
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => MainScreen(user: widget.user)),
+        MaterialPageRoute(builder: (_) => OnboardingScreen(user: widget.user)),
         (r) => false,
       );
     } else {

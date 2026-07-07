@@ -1,0 +1,11 @@
+# Keep GitHub's language stats focused on the real Flutter/Dart code.
+# Build output and platform scaffolding are auto-generated — exclude them.
+build/**            linguist-generated=true
+linux/**            linguist-vendored=true
+windows/**          linguist-vendored=true
+macos/**            linguist-vendored=true
+web/**              linguist-vendored=true
+ios/**              linguist-vendored=true
+android/**          linguist-vendored=true
+**/*.g.dart         linguist-generated=true
+**/*.freezed.dart   linguist-generated=true

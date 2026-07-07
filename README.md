@@ -1,16 +1,94 @@
-# sigma_social_app
+# Sigmacta — социальная сеть для личностного роста
 
-A new Flutter project.
+**Sigmacta** — это полноценная мобильная социальная сеть, где люди делятся прогрессом, ставят цели на год и в конце получают красивый годовой отчёт (в стиле Spotify Wrapped). Условно — «LinkedIn встречает Spotify Wrapped».
 
-## Getting Started
+Проект написан с нуля: мобильное приложение на **Flutter** и собственный бэкенд на **Node.js/Express + Supabase** с realtime-чатом и ИИ-функциями.
 
-This project is a starting point for a Flutter application.
+> 📱 Клиент (этот репозиторий) · 🔗 Бэкенд: [sigma-social-backend](https://github.com/dzhakhann/sigma-social-backend)
 
-A few resources to get you started if this is your first Flutter project:
+---
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## 📸 Скриншоты
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+> Скриншоты лежат в папке [`/screenshots`](screenshots). Добавь туда 3–6 изображений (лента, профиль, чат, сторис, уведомления) — они подтянутся ниже.
+
+| Лента | Профиль | Чат |
+|-------|---------|-----|
+| ![Лента](screenshots/feed.png) | ![Профиль](screenshots/profile.png) | ![Чат](screenshots/chat.png) |
+
+---
+
+## ✨ Возможности
+
+- **Регистрация с seed-фразой** — восстановление аккаунта по секретной фразе (в стиле крипто-кошельков), с проверкой слов.
+- **Богатый профиль** — имя, образование, работа, навыки, о себе и др., с **приватностью по каждому полю** (показать/скрыть).
+- **Лента в стиле Threads** — две вкладки: **«Для вас»** (рекомендации) и **«Подписки»**; текст, фото, GIF, превью ссылок (unfurl в стиле Telegram).
+- **Сторис** — исчезающие публикации на 24 часа.
+- **Комментарии** — тред с публикацией сверху, инлайн-редактирование в стиле Telegram.
+- **Репосты** — не засоряют ленту: попадают в профиль, а подписчики получают уведомление.
+- **Уведомления** — лайки, комментарии, репосты, подписки; тап открывает нужный пост или профиль (как в Instagram).
+- **Реалтайм-чат** — личные сообщения через Socket.IO + закреплённый **ИИ-помощник**.
+- **Цели на год** и годовой отчёт **«Year in Review»** — визуализация прогресса.
+- **Sigmacta Pro** — подписка: галочка верификации и отключение рекламы.
+- **Единая тёмная тема** с кастомной дизайн-системой (`ThemeExtension`) и собственной i18n.
+
+---
+
+## 🛠 Технологии
+
+**Клиент (Flutter / Dart)**
+- Flutter (Material 3), кастомная дизайн-система через `ThemeExtension`
+- `http` — REST API · `socket_io_client` — realtime-чат
+- `image_picker`, `camera`, `video_player` — медиа
+- `cached_network_image`, shimmer-скелетоны, `timeago`
+- `shared_preferences` — сессия и локальный кэш ленты
+
+**Бэкенд** ([отдельный репозиторий](https://github.com/dzhakhann/sigma-social-backend))
+- Node.js + Express (ESM), Supabase (PostgreSQL + Storage)
+- JWT-авторизация (HS256), bcrypt, rate-limiting
+- Socket.IO — сообщения в реальном времени
+- Интеграция ИИ (Google Gemini) для коуча и рекомендаций
+
+---
+
+## 🏗 Архитектура
+
+```
+┌──────────────────────┐     REST + WebSocket      ┌──────────────────────┐
+│   Flutter (Android)  │  ───────────────────────▶ │  Node.js / Express   │
+│  UI · State · Cache  │ ◀───────────────────────  │   JWT · Socket.IO    │
+└──────────────────────┘                           └──────────┬───────────┘
+                                                               │
+                                                     ┌─────────▼─────────┐
+                                                     │      Supabase     │
+                                                     │ PostgreSQL·Storage│
+                                                     └───────────────────┘
+```
+
+---
+
+## 🚀 Запуск локально
+
+```bash
+# 1. Зависимости
+flutter pub get
+
+# 2. Указать адрес бэкенда в lib/constants.dart
+#    const kApiUrl = 'https://<your-backend>/api';
+
+# 3. Запуск на устройстве/эмуляторе
+flutter run
+
+# Сборка релизного APK
+flutter build apk --release
+```
+
+Требуется Flutter SDK 3.6+ и запущенный [бэкенд](https://github.com/dzhakhann/sigma-social-backend).
+
+---
+
+## 👤 Автор
+
+**Jaxangir** — идея, дизайн, мобильный клиент и бэкенд.
+
+> Пет-проект для практики полного цикла разработки мобильного продукта: от идеи и UX до сервера, базы данных и сборки под Android.

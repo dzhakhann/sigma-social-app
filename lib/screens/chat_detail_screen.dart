@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:record/record.dart';
@@ -11,8 +10,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
-import '../constants.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/emoji_picker.dart';
 import 'video_circle_recorder_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -695,33 +694,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       child: SafeArea(
         top: false,
         child: Row(children: [
-          // Attach photo
-          GestureDetector(
-            onTap: _sendPhoto,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Icon(Icons.image_rounded, color: c.inkSoft, size: 22),
-            ),
-          ),
-          // Record video circle (Telegram-style)
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              _sendVideo();
-            },
-            child: Container(
-              width: 38,
-              height: 38,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: c.accent.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.videocam_rounded, color: c.accent, size: 20),
-            ),
-          ),
-
-          const SizedBox(width: 4),
+          // Chat is text + emoji only (no media files).
+          EmojiPickerButton(controller: _msgCtrl),
 
           // Text field
           Expanded(

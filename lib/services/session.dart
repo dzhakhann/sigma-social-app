@@ -30,6 +30,19 @@ class Session {
     }
   }
 
+  /// Merge [fields] into the saved user and persist — so profile/avatar edits
+  /// survive an app restart and stay consistent everywhere.
+  static Future<void> patch(Map fields) async {
+    final p = await SharedPreferences.getInstance();
+    final userStr = p.getString(_kUser);
+    if (userStr == null) return;
+    try {
+      final user = jsonDecode(userStr) as Map;
+      user.addAll(fields);
+      await p.setString(_kUser, jsonEncode(user));
+    } catch (_) {}
+  }
+
   /// Clear on logout.
   static Future<void> clear() async {
     final p = await SharedPreferences.getInstance();

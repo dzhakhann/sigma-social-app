@@ -1,11 +1,11 @@
 {
-    "name": "Sigma Social",
-    "short_name": "Sigma",
+    "name": "Sigmacta",
+    "short_name": "Sigmacta",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0F1015",
     "theme_color": "#0F1015",
-    "description": "Sigma Social — your space.",
+    "description": "Sigmacta — your year, wrapped.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

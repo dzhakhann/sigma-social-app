@@ -6,6 +6,7 @@ import '../theme/brutal_theme.dart';
 import 'main_screen.dart';
 import 'recovery_phrase_screen.dart';
 import 'recover_screen.dart';
+import 'onboarding_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -109,10 +110,14 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             );
           } else {
+            // New account with no phrase → still collect the profile.
+            // Existing login → straight to the app.
             Navigator.pushReplacement(
               context,
               PageRouteBuilder(
-                pageBuilder: (_, __, ___) => MainScreen(user: user),
+                pageBuilder: (_, __, ___) => _registerMode
+                    ? OnboardingScreen(user: user)
+                    : MainScreen(user: user),
                 transitionsBuilder: (_, anim, __, child) =>
                     FadeTransition(opacity: anim, child: child),
                 transitionDuration: const Duration(milliseconds: 400),
@@ -408,23 +413,14 @@ class _SigmaLogo extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 12),
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('SIGMA',
-            style: TextStyle(
-              color: c.ink,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1,
-              height: 1,
-            )),
-        Text('SOCIAL',
-            style: TextStyle(
-              color: c.inkSoft,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 3,
-            )),
-      ]),
+      Text('Sigmacta',
+          style: TextStyle(
+            color: c.ink,
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+            height: 1,
+          )),
     ]);
   }
 }

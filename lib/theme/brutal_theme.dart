@@ -205,12 +205,12 @@ ThemeData buildBrutalTheme(BrutalTheme t) {
       selectedItemColor: c.accent,
       unselectedItemColor: c.inkSoft,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: c.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: c.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     ),

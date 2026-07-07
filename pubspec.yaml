@@ -1,11 +1,11 @@
 name: sigma_social_app
-description: "Sigma Social Network - Flutter Mobile App"
+description: "Sigmacta - Flutter Mobile App"
 publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.3 <4.0.0'
+  sdk: '>=3.6.2 <4.0.0'
 
 dependencies:
   flutter:
@@ -18,12 +18,25 @@ dependencies:
   video_player: ^2.8.3
   cached_network_image: ^3.3.1
   timeago: ^3.6.0
-  record: ^5.0.4
+  record: 5.2.0
   audioplayers: ^6.0.0
   path_provider: ^2.1.3
   permission_handler: ^11.3.1
   camera: ^0.10.5+9
   shared_preferences: ^2.2.2
+  matrix: ^7.4.0
+  flutter_vodozemac: ^0.5.0
+  sqflite: ^2.4.2
+  path: ^1.9.0
+
+dependency_overrides:
+  # record_linux 0.7.2 (its latest) only implements platform-interface 1.2.0,
+  # so pin the whole record stack to a consistent, compiling set.
+  record_platform_interface: 1.2.0
+  record_android: 1.3.0
+  record_web: 1.1.4
+  record_windows: 1.0.4
+  record_linux: 0.7.2
 
 dev_dependencies:
   flutter_test:

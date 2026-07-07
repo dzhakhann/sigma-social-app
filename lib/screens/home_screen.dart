@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,17 +9,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
-import '../widgets/brutal.dart';
 import 'comments_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
-import 'chat_detail_screen.dart';
 import 'story_view_screen.dart';
+import 'notifications_screen.dart';
+import 'login_screen.dart';
+import '../services/session.dart';
+import '../widgets/link_preview.dart';
+import '../widgets/shimmer.dart';
+import '../services/events.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
-//  HOME · "PULSE"
-//  Not a feed clone — a tactile board with an ENERGY meter + streak that grow
-//  as you interact. Oversized, satisfying reaction blocks = dopamine.
+//  HOME — Threads-style feed with stories row + FAB for compose.
 // ════════════════════════════════════════════════════════════════════════════
 class HomeScreen extends StatefulWidget {
   final Map user;
@@ -31,24 +34,19 @@ class _HomeScreenState extends State<HomeScreen> {
   List _posts = [];
   List _stories = [];
   bool _loading = false;
-
-  // dopamine state
-  double _energy = 0.12;
-  int _streak = 1;
-  bool _postedToday = false;
-
-  final _composerCtrl = TextEditingController();
-  String? _imageB64;
-  bool _posting = false;
+  int _tab = 0; // 0 = Для вас (рекомендации), 1 = Подписки
+  final Map<int, List> _tabCache = {}; // in-memory feed per tab for instant switch
 
   @override
   void initState() {
     super.initState();
     _load();
+    feedRefresh.addListener(_onFeedRefresh);
   }
 
+  void _onFeedRefresh() => _load();
+
   Future<void> _load() async {
-    // Show the cached feed instantly, then refresh in the background.
     final cached = await _readCache();
     if (mounted) {
       setState(() {
@@ -56,15 +54,41 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = _posts.isEmpty;
       });
     }
-    final data = await ApiService.getPosts(widget.user['id']);
+    // "Для вас" = recommendations/recent; "Подписки" = following (with fallback
+    // to recent so a new user's feed is never blank).
+    List data;
+    if (_tab == 1) {
+      data = await ApiService.getFollowingPosts(widget.user['id']);
+      if (data.isEmpty) {
+        data = await ApiService.getPosts(widget.user['id'].toString());
+      }
+    } else {
+      data = await ApiService.getPosts(widget.user['id'].toString());
+    }
+    _tabCache[_tab] = data;
     if (mounted) {
-      setState(() {
-        _posts = data;
-        _loading = false;
-      });
+      setState(() { _posts = data; _loading = false; });
     }
     _saveCache(data);
     _loadStories();
+  }
+
+  void _setTab(int i) {
+    if (_tab == i) return;
+    HapticFeedback.selectionClick();
+    final cached = _tabCache[i];
+    setState(() {
+      _tab = i;
+      if (cached != null) {
+        // Instant switch to already-loaded feed; refresh silently in the bg.
+        _posts = cached;
+        _loading = false;
+      } else {
+        _posts = [];
+        _loading = true;
+      }
+    });
+    _load();
   }
 
   Future<List?> _readCache() async {
@@ -72,9 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final p = await SharedPreferences.getInstance();
       final s = p.getString('feed_cache');
       return s == null ? null : (jsonDecode(s) as List);
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
   Future<void> _saveCache(List data) async {
@@ -89,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _stories = data);
   }
 
-  // group stories by author (excluding mine, which get the "your story" tile)
   Map<String, List> get _grouped {
     final Map<String, List> g = {};
     for (var s in _stories) {
@@ -125,33 +146,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _addStory() async {
+  Future<void> _addStory({ImageSource? source}) async {
     final c = context.k;
-    final src = await showModalBottomSheet<ImageSource>(
+    final src = source ?? await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: c.ink.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 18),
-          _SheetTile(
-              icon: Icons.camera_alt_rounded,
-              label: 'Camera',
-              onTap: () => Navigator.pop(context, ImageSource.camera)),
-          _SheetTile(
-              icon: Icons.photo_library_rounded,
-              label: 'Gallery',
-              onTap: () => Navigator.pop(context, ImageSource.gallery)),
-        ]),
-      ),
+      builder: (_) => _StoryPickerSheet(c: c),
     );
     if (src == null) return;
     final picker = ImagePicker();
@@ -164,82 +166,149 @@ class _HomeScreenState extends State<HomeScreen> {
     if (data['success'] == true) _loadStories();
   }
 
-  void _addEnergy(double amount) {
+
+  // ─── Reactions ───────────────────────────────────────────────────────────
+  Future<void> _react(Map post, int index) async {
+    final wasLiked = post['is_liked'] == true;
+    setState(() {
+      _posts[index]['is_liked'] = !wasLiked;
+      _posts[index]['likes_count'] =
+          (post['likes_count'] ?? 0) + (wasLiked ? -1 : 1);
+    });
     HapticFeedback.lightImpact();
-    setState(() => _energy = (_energy + amount).clamp(0.0, 1.0));
-  }
-
-  // ─── Spatial navigation (swipe on a post) ───────────────────────────────────
-  void _openAuthorProfile(Map post) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProfileScreen(
-          user: widget.user,
-          targetUserId: post['user_id'],
-          isOwnProfile: post['user_id'] == widget.user['id'],
-        ),
-      ),
-    );
-  }
-
-  void _openChat(Map post) {
-    if (post['user_id'] == widget.user['id']) return; // don't DM yourself
-    final target = {
-      'id': post['user_id'],
-      'username': post['username'],
-      'avatar_url': post['user_avatar'] ?? post['avatar_url'],
-    };
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatDetailScreen(
-          chat: {'name': post['username']},
-          user: widget.user,
-          targetUser: target,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 1080, imageQuality: 85);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    setState(() => _imageB64 = base64Encode(bytes));
-  }
-
-  Future<void> _drop() async {
-    if (_composerCtrl.text.trim().isEmpty && _imageB64 == null) return;
-    setState(() => _posting = true);
-    try {
-      String? imageUrl;
-      if (_imageB64 != null) {
-        imageUrl = await ApiService.uploadMedia(
-          base64Decode(_imageB64!),
-          folder: 'post',
-          ext: 'jpg',
-          contentType: 'image/jpeg',
-          userId: widget.user['id'].toString(),
-        );
-      }
-      await ApiService.createPost(widget.user['id'], _composerCtrl.text.trim(),
-          imageUrl: imageUrl);
-      _composerCtrl.clear();
+    final res = await ApiService.likePost(
+        post['id'].toString(), widget.user['id'].toString());
+    if (res['success'] == true && mounted) {
       setState(() {
-        _imageB64 = null;
-        if (!_postedToday) {
-          _postedToday = true;
-          _streak += 1;
-        }
+        _posts[index]['likes_count'] = res['likes_count'] ?? _posts[index]['likes_count'];
+        _posts[index]['is_liked'] = res['liked'] == true;
       });
-      _addEnergy(0.18);
-      await _load();
-    } finally {
-      if (mounted) setState(() => _posting = false);
     }
+  }
+
+  Future<void> _repost(Map post) async {
+    HapticFeedback.lightImpact();
+    // Repost lives on the profile + notifies followers; it does NOT enter the
+    // feed. So we don't touch _posts here.
+    final res = await ApiService.repostPost(post['id'].toString());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res['success'] == true
+              ? 'Репост опубликован в вашем профиле'
+              : 'Не удалось сделать репост')));
+    }
+  }
+
+  void _share(Map post) {
+    final username = (post['username'] ?? 'user').toString();
+    final content = (post['content'] ?? '').toString();
+    Clipboard.setData(
+        ClipboardData(text: 'Sigmacta · @$username: $content'));
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.t('linkCopied'))),
+    );
+  }
+
+  void _postMenu(Map post, int index) {
+    final c = context.k;
+    final isOwn =
+        post['user_id'].toString() == widget.user['id'].toString();
+
+    void done(String msg) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg)));
+    }
+
+    void soon() => done('Скоро будет доступно');
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 10),
+            Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                    color: c.ink.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 10),
+            _SheetTile(
+                icon: Icons.link_rounded,
+                label: 'Копировать ссылку',
+                onTap: () {
+                  Clipboard.setData(ClipboardData(
+                      text: 'https://sigmacta.app/post/${post['id']}'));
+                  done('Ссылка скопирована');
+                }),
+            _SheetTile(
+                icon: Icons.translate_rounded,
+                label: 'Перевести',
+                onTap: soon),
+            _SheetTile(
+                icon: Icons.bookmark_border_rounded,
+                label: 'Сохранить',
+                onTap: soon),
+            _SheetTile(
+                icon: Icons.not_interested_rounded,
+                label: 'Не интересует',
+                onTap: () {
+                  Navigator.pop(context);
+                  if (mounted) setState(() => _posts.removeAt(index));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Учтём. Меньше похожего в ленте.')));
+                }),
+            if (!isOwn) ...[
+              _SheetTile(
+                  icon: Icons.visibility_off_outlined,
+                  label: 'Скрыть пользователя',
+                  onTap: () {
+                    Navigator.pop(context);
+                    final uid = post['user_id'].toString();
+                    if (mounted) {
+                      setState(() => _posts.removeWhere(
+                          (p) => p['user_id'].toString() == uid));
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(
+                            'Публикации ${post['username'] ?? 'этого пользователя'} скрыты')));
+                  }),
+              _SheetTile(
+                  icon: Icons.shield_outlined,
+                  label: 'Установить ограничения',
+                  onTap: soon),
+              _SheetTile(
+                  icon: Icons.block_rounded,
+                  label: 'Заблокировать',
+                  color: c.danger,
+                  onTap: soon),
+              _SheetTile(
+                  icon: Icons.flag_outlined,
+                  label: 'Пожаловаться',
+                  color: c.danger,
+                  onTap: () => done('Жалоба отправлена. Спасибо!')),
+            ],
+            if (isOwn)
+              _SheetTile(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Удалить публикацию',
+                  color: c.danger,
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await ApiService.deletePost(post['id'].toString());
+                    if (mounted) setState(() => _posts.removeAt(index));
+                  }),
+            const SizedBox(height: 10),
+          ]),
+        ),
+      ),
+    );
   }
 
   @override
@@ -257,44 +326,44 @@ class _HomeScreenState extends State<HomeScreen> {
             slivers: [
               SliverToBoxAdapter(child: _header(c)),
               SliverToBoxAdapter(child: _storiesRow(c)),
-              SliverToBoxAdapter(child: _composer(c)),
+              SliverToBoxAdapter(child: _tabsRow(c)),
+              SliverToBoxAdapter(
+                  child: Divider(height: 1, color: c.ink.withOpacity(0.07))),
               if (_loading)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 60),
-                    child: Center(
-                        child: CircularProgressIndicator(color: c.accent2)),
-                  ),
-                )
+                const SliverToBoxAdapter(child: FeedSkeleton())
               else if (_posts.isEmpty)
                 SliverToBoxAdapter(child: _empty(c))
               else
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (_, i) => Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      // Spatial gestures: swipe right → message author,
-                      // swipe left → open author's profile.
-                      child: GestureDetector(
-                        onHorizontalDragEnd: (d) {
-                          final v = d.primaryVelocity ?? 0;
-                          if (v > 250) {
-                            _openChat(_posts[i]);
-                          } else if (v < -250) {
-                            _openAuthorProfile(_posts[i]);
-                          }
-                        },
-                        child: _PulseCard(
-                          post: _posts[i],
-                          user: widget.user,
-                          onEnergy: _addEnergy,
+                    (_, i) => _ThreadsPost(
+                      post: _posts[i],
+                      user: widget.user,
+                      onLike: () => _react(_posts[i], i),
+                      onComment: () => CommentsScreen.show(
+                        context,
+                        post: _posts[i],
+                        user: widget.user,
+                      ).then((_) => _load()),
+                      onRepost: () => _repost(_posts[i]),
+                      onShare: () => _share(_posts[i]),
+                      onMore: () => _postMenu(_posts[i], i),
+                      onProfileTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfileScreen(
+                            user: widget.user,
+                            targetUserId: _posts[i]['user_id'],
+                            isOwnProfile:
+                                _posts[i]['user_id'] == widget.user['id'],
+                          ),
                         ),
                       ),
                     ),
                     childCount: _posts.length,
                   ),
                 ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
             ],
           ),
         ),
@@ -304,49 +373,168 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _header(BrutalColors c) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       child: Row(
         children: [
-          // SS badge
+          // Logo
           Container(
-            width: 36,
-            height: 36,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               gradient: c.buttonGradient,
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(9),
             ),
             alignment: Alignment.center,
-            child: const Text('SS',
+            child: const Text('Σ',
                 style: TextStyle(
                     color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5)),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            context.t('appName'),
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: c.ink,
-              letterSpacing: -0.5,
-            ),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800)),
           ),
           const Spacer(),
-          BrutalTap(
-            padding: const EdgeInsets.all(10),
-            radius: 12,
-            shadowOffset: const Offset(3, 3),
+          GestureDetector(
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (_) => SettingsScreen(user: widget.user)),
+                  builder: (_) => NotificationsScreen(user: widget.user)),
             ),
-            child: Icon(Icons.tune_rounded, color: c.ink, size: 22),
+            child: Icon(Icons.notifications_none_rounded, color: c.ink, size: 25),
+          ),
+          const SizedBox(width: 18),
+          GestureDetector(
+            onTap: _openFeeds,
+            child: Icon(Icons.menu, color: c.ink, size: 24),
           ),
         ],
       ),
+    );
+  }
+
+  // Segmented "Для вас / Подписки" tabs (Threads/Twitter-style).
+  Widget _tabsRow(BrutalColors c) {
+    Widget tab(String label, int i) {
+      final sel = _tab == i;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _setTab(i),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        color: sel ? c.ink : c.inkSoft,
+                        fontSize: 14.5,
+                        fontWeight: sel ? FontWeight.w800 : FontWeight.w600)),
+                const SizedBox(height: 8),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: 2.5,
+                  width: sel ? 34 : 0,
+                  decoration: BoxDecoration(
+                      color: c.accent, borderRadius: BorderRadius.circular(2)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(children: [tab('Для вас', 0), tab('Подписки', 1)]);
+  }
+
+  // "Ленты" side panel opened by the hamburger — mirrors the Figma prototype.
+  void _openFeeds() {
+    final c = context.k;
+    Widget item(IconData icon, String label, VoidCallback onTap,
+        {Color? color}) {
+      return ListTile(
+        leading: Icon(icon, color: color ?? c.ink, size: 22),
+        title: Text(label,
+            style: TextStyle(
+                color: color ?? c.ink,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600)),
+        onTap: onTap,
+      );
+    }
+
+    void soon() {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Скоро будет доступно')));
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 10),
+            Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                    color: c.ink.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Ленты',
+                    style: TextStyle(
+                        color: c.ink,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800)),
+              ),
+            ),
+            item(Icons.favorite_border_rounded, 'Понравилось', soon),
+            item(Icons.bookmark_border_rounded, 'Сохранённое', soon),
+            item(Icons.auto_awesome_rounded, 'Для вас', () {
+              Navigator.pop(context);
+              _setTab(0);
+            }),
+            item(Icons.group_outlined, 'Подписки', () {
+              Navigator.pop(context);
+              _setTab(1);
+            }),
+            item(Icons.history_toggle_off_rounded, 'Исчезающие публикации',
+                soon),
+            Divider(height: 12, color: c.ink.withOpacity(0.07)),
+            item(Icons.settings_outlined, 'Настройки', () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => SettingsScreen(user: widget.user)),
+              );
+            }),
+            item(Icons.lock_outline_rounded, 'Приватность', soon),
+            item(Icons.help_outline_rounded, 'Помощь', soon),
+            item(Icons.logout_rounded, 'Выйти', () {
+              Navigator.pop(context);
+              _logout();
+            }, color: c.danger),
+            const SizedBox(height: 10),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    await Session.clear();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (r) => false,
     );
   }
 
@@ -357,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList();
     final grouped = _grouped;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: SizedBox(
         height: 92,
         child: ListView(
@@ -367,24 +555,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _MyStoryBtn(
               user: widget.user,
               hasStory: myStories.isNotEmpty,
-              onAdd: _addStory,
-              onView: () {
-                if (myStories.isNotEmpty) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => StoryViewScreen(
-                        stories: myStories,
-                        allGroups: [myStories],
-                        groupIndex: 0,
-                        startIndex: 0,
-                        user: widget.user,
-                        onStoryDeleted: _loadStories,
-                      ),
-                    ),
-                  );
-                } else {
+              onTap: () {
+                if (myStories.isEmpty) {
                   _addStory();
+                } else {
+                  _showStoryOptions(myStories);
                 }
               },
             ),
@@ -398,108 +573,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _composer(BrutalColors c) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-      child: BrutalCard(
-        fill: c.surface,
-        padding: const EdgeInsets.all(14),
-        shadowOffset: const Offset(5, 5),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _composerCtrl,
-              maxLines: null,
-              minLines: 1,
-              style: TextStyle(
-                  color: c.ink, fontSize: 17, fontWeight: FontWeight.w600),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: context.t('whatsUp'),
-                hintStyle: TextStyle(
-                    color: c.inkSoft, fontSize: 17, fontWeight: FontWeight.w600),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            if (_imageB64 != null) ...[
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.memory(
-                  base64Decode(_imageB64!),
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                BrutalTap(
-                  onTap: _pickImage,
-                  padding: const EdgeInsets.all(10),
-                  radius: 10,
-                  shadowOffset: const Offset(3, 3),
-                  child: Icon(Icons.add_photo_alternate_rounded,
-                      color: c.accent2, size: 20),
-                ),
-                const Spacer(),
-                BrutalTap(
-                  onTap: _posting ? null : _drop,
-                  fill: c.accent,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                  radius: 10,
-                  shadowOffset: const Offset(4, 4),
-                  child: _posting
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.5, color: c.onAccent),
-                        )
-                      : Text(
-                          context.t('drop'),
-                          style: TextStyle(
-                            color: c.onAccent,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                ),
-              ],
-            ),
-          ],
-        ),
+  void _showStoryOptions(List myStories) {
+    final c = context.k;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: c.ink.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 18),
+          _SheetTile(
+              icon: Icons.camera_alt_rounded,
+              label: 'Camera',
+              onTap: () {
+                Navigator.pop(context);
+                _addStory(source: ImageSource.camera);
+              }),
+          _SheetTile(
+              icon: Icons.photo_library_rounded,
+              label: 'Gallery',
+              onTap: () {
+                Navigator.pop(context);
+                _addStory(source: ImageSource.gallery);
+              }),
+          _SheetTile(
+              icon: Icons.visibility_rounded,
+              label: 'View my stories',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StoryViewScreen(
+                      stories: myStories,
+                      allGroups: [myStories],
+                      groupIndex: 0,
+                      startIndex: 0,
+                      user: widget.user,
+                      onStoryDeleted: _loadStories,
+                    ),
+                  ),
+                );
+              }),
+        ]),
       ),
     );
   }
 
   Widget _empty(BrutalColors c) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
       child: Column(
         children: [
-          Icon(Icons.bolt_rounded, size: 64, color: c.accent),
+          Icon(Icons.dynamic_feed_rounded, size: 56, color: c.inkSoft),
           const SizedBox(height: 14),
-          Text(
-            context.t('nothingYet'),
-            style: TextStyle(
-                fontWeight: FontWeight.w900, fontSize: 20, color: c.ink),
-          ),
+          Text(context.t('nothingYet'),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 18, color: c.ink)),
           const SizedBox(height: 6),
-          Text(
-            context.t('beFirst'),
-            textAlign: TextAlign.center,
-            style: TextStyle(color: c.inkSoft, fontSize: 14),
-          ),
+          Text(context.t('beFirst'),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.inkSoft, fontSize: 14)),
         ],
       ),
     );
@@ -507,265 +649,206 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _composerCtrl.dispose();
+    feedRefresh.removeListener(_onFeedRefresh);
     super.dispose();
   }
 }
 
-// ─── PULSE CARD ───────────────────────────────────────────────────────────────
-class _PulseCard extends StatefulWidget {
+// ─── THREADS-STYLE POST ───────────────────────────────────────────────────────
+class _ThreadsPost extends StatelessWidget {
   final Map post;
   final Map user;
-  final void Function(double) onEnergy;
-  const _PulseCard(
-      {required this.post, required this.user, required this.onEnergy});
-  @override
-  State<_PulseCard> createState() => _PulseCardState();
-}
+  final VoidCallback onLike;
+  final VoidCallback onComment;
+  final VoidCallback onRepost;
+  final VoidCallback onShare;
+  final VoidCallback onProfileTap;
+  final VoidCallback onMore;
 
-class _PulseCardState extends State<_PulseCard>
-    with SingleTickerProviderStateMixin {
-  late bool _liked;
-  late int _likes;
-  late final AnimationController _pop;
-
-  @override
-  void initState() {
-    super.initState();
-    _liked = widget.post['is_liked'] == true;
-    _likes = (widget.post['likes_count'] ?? 0) as int;
-    _pop = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-      lowerBound: 0.0,
-      upperBound: 1.0,
-    );
-  }
-
-  Future<void> _react() async {
-    final wasLiked = _liked;
-    setState(() {
-      _liked = !wasLiked;
-      _likes += _liked ? 1 : -1;
-    });
-    if (_liked) {
-      _pop.forward(from: 0);
-      widget.onEnergy(0.06);
-    }
-    final res = await ApiService.likePost(
-        widget.post['id'].toString(), widget.user['id'].toString());
-    if (res['success'] == true && mounted) {
-      setState(() {
-        _likes = (res['likes_count'] ?? _likes) as int;
-        _liked = res['liked'] == true;
-      });
-    }
-  }
-
-  Future<void> _repost() async {
-    HapticFeedback.lightImpact();
-    final username = (widget.post['username'] ?? 'user').toString();
-    final content = (widget.post['content'] ?? '').toString();
-    final image = widget.post['image_url'];
-    final text = '🔁 @$username: $content'.trim();
-    await ApiService.createPost(
-      widget.user['id'].toString(),
-      text,
-      imageUrl: image?.toString(),
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.t('reposted'))),
-      );
-    }
-  }
-
-  void _share() {
-    final username = (widget.post['username'] ?? 'user').toString();
-    final content = (widget.post['content'] ?? '').toString();
-    Clipboard.setData(
-        ClipboardData(text: 'Sigma Social · @$username: $content'));
-    HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.t('linkCopied'))),
-    );
-  }
+  const _ThreadsPost({
+    required this.post,
+    required this.user,
+    required this.onLike,
+    required this.onComment,
+    required this.onRepost,
+    required this.onShare,
+    required this.onProfileTap,
+    required this.onMore,
+  });
 
   String _time() {
-    final raw = widget.post['created_at'];
+    final raw = post['created_at'];
     if (raw == null) return '';
     try {
-      return timeago.format(DateTime.parse(raw.toString()).toLocal());
-    } catch (_) {
-      return '';
-    }
+      return timeago.format(DateTime.parse(raw.toString()).toLocal(),
+          locale: 'en_short');
+    } catch (_) { return ''; }
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.k;
-    final username = (widget.post['username'] ?? 'user').toString();
-    final avatar = widget.post['user_avatar'] ?? widget.post['avatar_url'];
-    final content = (widget.post['content'] ?? '').toString();
-    final image = widget.post['image_url'];
+    final username = (post['username'] ?? 'user').toString();
+    final avatar = post['user_avatar'] ?? post['avatar_url'];
+    final content = (post['content'] ?? '').toString();
+    final image = post['image_url'];
+    final liked = post['is_liked'] == true;
+    final likes = (post['likes_count'] ?? 0);
+    final comments = (post['comments_count'] ?? 0);
 
-    return BrutalCard(
-      fill: c.surface,
-      padding: EdgeInsets.zero,
-      shadowOffset: const Offset(5, 5),
-      child: Column(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      decoration: BoxDecoration(
+        border: Border(
+            bottom: BorderSide(color: c.ink.withOpacity(0.06), width: 0.5)),
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // author
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-            child: GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ProfileScreen(
-                    user: widget.user,
-                    targetUserId: widget.post['user_id'],
-                    isOwnProfile:
-                        widget.post['user_id'] == widget.user['id'],
-                  ),
+          // ── Avatar + thread line ──────────────────────────────────
+          Column(
+            children: [
+              GestureDetector(
+                onTap: onProfileTap,
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: c.surface2,
+                  backgroundImage: avatar != null
+                      ? CachedNetworkImageProvider(avatar.toString())
+                      : null,
+                  child: avatar == null
+                      ? Text(
+                          (username.isNotEmpty ? username[0] : '?')
+                              .toUpperCase(),
+                          style: TextStyle(
+                              color: c.ink, fontWeight: FontWeight.w700))
+                      : null,
                 ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: c.surface2,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: c.ink, width: 2),
+              const SizedBox(height: 6),
+              Container(
+                width: 2,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: c.ink.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 10),
+
+          // ── Post content ─────────────────────────────────────────
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Username row — time + ⋯ pinned to the top-right corner.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: onProfileTap,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            username,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: c.ink),
+                          ),
+                        ),
+                      ),
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: avatar != null
-                        ? CachedNetworkImage(
-                            imageUrl: avatar.toString(), fit: BoxFit.cover)
-                        : Icon(Icons.person_rounded, color: c.inkSoft),
+                    if (post['is_verified'] == true) ...[
+                      const SizedBox(width: 4),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(Icons.verified_rounded, size: 14),
+                      ),
+                    ],
+                    const Spacer(),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(_time(),
+                          style: TextStyle(fontSize: 12, color: c.inkSoft)),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onMore,
+                      child: Icon(Icons.more_horiz, size: 20, color: c.inkSoft),
+                    ),
+                  ],
+                ),
+
+                // Content text
+                if (content.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    content,
+                    style: TextStyle(
+                        fontSize: 15, height: 1.35, color: c.ink),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                '@$username',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 15,
-                                    color: c.ink),
-                              ),
-                            ),
-                            if (widget.post['is_verified'] == true) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.verified_rounded,
-                                  size: 15, color: c.accent),
-                            ],
-                          ],
-                        ),
-                        Text(
-                          _time(),
-                          style: TextStyle(fontSize: 11, color: c.inkSoft),
-                        ),
-                      ],
+                ],
+
+                // Link preview (Telegram-style unfurl)
+                if (image == null && firstUrl(content) != null)
+                  LinkPreviewCard(url: firstUrl(content)!),
+
+                // Image
+                if (image != null) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: image.toString(),
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                          height: 200, color: c.surface2),
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-          // content
-          if (content.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Text(
-                content,
-                style: TextStyle(
-                    fontSize: 17,
-                    height: 1.3,
-                    fontWeight: FontWeight.w600,
-                    color: c.ink),
-              ),
-            ),
-          // image
-          if (image != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: c.ink, width: 2),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: CachedNetworkImage(
-                  imageUrl: image.toString(),
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-          // reactions
-          Container(
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: c.ink, width: 2)),
-            ),
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ReactBtn(
-                    icon: _liked
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    label: '$_likes',
-                    active: _liked,
-                    activeColor: c.danger,
-                    pop: _pop,
-                    onTap: _react,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ReactBtn(
-                    icon: Icons.mode_comment_outlined,
-                    label: context.t('comment'),
-                    active: false,
-                    activeColor: c.accent2,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CommentsScreen(
-                            post: widget.post, user: widget.user),
+
+                // ── Action buttons (Threads-style) ────────────────────
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    children: [
+                      _ActionIcon(
+                        icon: liked
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        label: likes > 0 ? '$likes' : '',
+                        color: liked ? c.danger : c.inkSoft,
+                        onTap: onLike,
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ReactBtn(
-                    icon: Icons.repeat_rounded,
-                    label: context.t('repost'),
-                    active: false,
-                    activeColor: c.accent2,
-                    onTap: _repost,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ReactBtn(
-                    icon: Icons.ios_share_rounded,
-                    label: context.t('share'),
-                    active: false,
-                    activeColor: c.accent2,
-                    onTap: _share,
+                      const SizedBox(width: 16),
+                      _ActionIcon(
+                        icon: Icons.mode_comment_outlined,
+                        label: comments > 0 ? '$comments' : '',
+                        color: c.inkSoft,
+                        onTap: onComment,
+                      ),
+                      const SizedBox(width: 16),
+                      _ActionIcon(
+                        icon: Icons.repeat_rounded,
+                        label: '',
+                        color: c.inkSoft,
+                        onTap: onRepost,
+                      ),
+                      const SizedBox(width: 16),
+                      _ActionIcon(
+                        icon: Icons.send_outlined,
+                        label: '',
+                        color: c.inkSoft,
+                        onTap: onShare,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -775,69 +858,39 @@ class _PulseCardState extends State<_PulseCard>
       ),
     );
   }
-
-  @override
-  void dispose() {
-    _pop.dispose();
-    super.dispose();
-  }
 }
 
-class _ReactBtn extends StatelessWidget {
+// ── Threads-style action icon with optional count label ─────────────────────
+class _ActionIcon extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool active;
-  final Color activeColor;
+  final Color color;
   final VoidCallback onTap;
-  final AnimationController? pop;
-  const _ReactBtn({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.activeColor,
-    required this.onTap,
-    this.pop,
-  });
+  const _ActionIcon(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final c = context.k;
-    final iconWidget = Icon(
-      icon,
-      size: 20,
-      color: active ? c.onAccent : c.ink,
-    );
-    return BrutalTap(
+    return GestureDetector(
       onTap: onTap,
-      fill: active ? activeColor : c.surface,
-      radius: 10,
-      shadowOffset: const Offset(3, 3),
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          pop != null
-              ? ScaleTransition(
-                  scale: Tween<double>(begin: 1.0, end: 1.5).animate(
-                    CurvedAnimation(parent: pop!, curve: Curves.elasticOut),
-                  ),
-                  child: iconWidget,
-                )
-              : iconWidget,
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-                color: active ? c.onAccent : c.ink,
-              ),
-            ),
-          ),
-        ],
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20, color: color),
+            if (label.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(
+                      color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -847,19 +900,17 @@ class _ReactBtn extends StatelessWidget {
 class _MyStoryBtn extends StatelessWidget {
   final Map user;
   final bool hasStory;
-  final VoidCallback onAdd;
-  final VoidCallback onView;
+  final VoidCallback onTap;
   const _MyStoryBtn({
     required this.user,
     required this.hasStory,
-    required this.onAdd,
-    required this.onView,
+    required this.onTap,
   });
   @override
   Widget build(BuildContext context) {
     final c = context.k;
     return GestureDetector(
-      onTap: hasStory ? onView : onAdd,
+      onTap: onTap,
       child: SizedBox(
         width: 66,
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -950,26 +1001,178 @@ class _StoryRing extends StatelessWidget {
   }
 }
 
+class _StoryPickerSheet extends StatelessWidget {
+  final BrutalColors c;
+  const _StoryPickerSheet({required this.c});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: c.ink.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(2))),
+        const SizedBox(height: 18),
+        _SheetTile(
+            icon: Icons.camera_alt_rounded,
+            label: 'Camera',
+            onTap: () => Navigator.pop(context, ImageSource.camera)),
+        _SheetTile(
+            icon: Icons.photo_library_rounded,
+            label: 'Gallery',
+            onTap: () => Navigator.pop(context, ImageSource.gallery)),
+      ]),
+    );
+  }
+}
+
 class _SheetTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Color? color;
   const _SheetTile(
-      {required this.icon, required this.label, required this.onTap});
+      {required this.icon, required this.label, required this.onTap, this.color});
   @override
   Widget build(BuildContext context) {
     final c = context.k;
+    final tint = color ?? c.accent;
     return ListTile(
       leading: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-            color: c.surface2, borderRadius: BorderRadius.circular(10)),
-        child: Icon(icon, color: c.accent, size: 20),
+            color: color?.withOpacity(0.12) ?? c.surface2,
+            borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, color: tint, size: 20),
       ),
       title: Text(label,
-          style: TextStyle(color: c.ink, fontWeight: FontWeight.w500)),
+          style: TextStyle(
+              color: color ?? c.ink, fontWeight: FontWeight.w500)),
       onTap: onTap,
     );
   }
+}
+
+// ─── HOME STATS FOOTER (animated donut of goal progress) ──────────────────────
+class _StatsFooter extends StatefulWidget {
+  final Map user;
+  const _StatsFooter({required this.user});
+  @override
+  State<_StatsFooter> createState() => _StatsFooterState();
+}
+
+class _StatsFooterState extends State<_StatsFooter> {
+  Map _w = {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final w = await ApiService.getWrapped(widget.user['id'].toString());
+    if (mounted) setState(() { _w = w; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    if (_loading) return const SizedBox.shrink();
+    final total = (_w['total'] ?? 0) as int;
+    if (total == 0) return const SizedBox.shrink();
+    final done = (_w['completed'] ?? 0) as int;
+    final rate = (_w['completionRate'] ?? 0) as int;
+    final avg = (_w['avgProgress'] ?? 0) as int;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.ink.withOpacity(0.06)),
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 84, height: 84,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: rate / 100),
+            duration: const Duration(milliseconds: 900),
+            curve: Curves.easeOutCubic,
+            builder: (_, v, __) => CustomPaint(
+              painter: _DonutPainter(v, c.accent, c.surface2),
+              child: Center(
+                child: Text('${(v * 100).round()}%',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: c.ink)),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Твой прогресс за год',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 15, color: c.ink)),
+              const SizedBox(height: 10),
+              _statRow(c, 'Целей выполнено', '$done из $total'),
+              _statRow(c, 'Средний прогресс', '$avg%'),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _statRow(BrutalColors c, String l, String v) => Padding(
+        padding: const EdgeInsets.only(bottom: 5),
+        child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(l, style: TextStyle(color: c.inkSoft, fontSize: 13)),
+              Text(v,
+                  style: TextStyle(
+                      color: c.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+            ]),
+      );
+}
+
+class _DonutPainter extends CustomPainter {
+  final double value;
+  final Color color;
+  final Color bg;
+  _DonutPainter(this.value, this.color, this.bg);
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 9.0;
+    final rect = Rect.fromLTWH(
+        stroke / 2, stroke / 2, size.width - stroke, size.height - stroke);
+    final bgPaint = Paint()
+      ..color = bg
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, 0, math.pi * 2, false, bgPaint);
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * value.clamp(0, 1), false,
+        fgPaint);
+  }
+
+  @override
+  bool shouldRepaint(_DonutPainter old) => old.value != value;
 }
