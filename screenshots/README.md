@@ -1,3 +1,3 @@
 # Скриншоты
 
-Положи сюда PNG: feed.png, profile.png, chat.png и другие.
+Скриншоты приложения Sigmacta, используемые в основном README.

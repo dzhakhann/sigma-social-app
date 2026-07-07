@@ -10,11 +10,17 @@
 
 ## 📸 Скриншоты
 
-> Скриншоты лежат в папке [`/screenshots`](screenshots). Добавь туда 3–6 изображений (лента, профиль, чат, сторис, уведомления) — они подтянутся ниже.
+<p align="center">
+  <img src="screenshots/feed.jpg" width="30%" alt="Лента"/>
+  <img src="screenshots/profile.jpg" width="30%" alt="Профиль"/>
+  <img src="screenshots/chat.jpg" width="30%" alt="Чат"/>
+</p>
+<p align="center">
+  <img src="screenshots/home.jpg" width="30%" alt="Главная"/>
+  <img src="screenshots/recommendations.jpg" width="30%" alt="Рекомендации"/>
+</p>
 
-| Лента | Профиль | Чат |
-|-------|---------|-----|
-| ![Лента](screenshots/feed.png) | ![Профиль](screenshots/profile.png) | ![Чат](screenshots/chat.png) |
+<p align="center"><i>Лента · Профиль · Чат · Главная · Рекомендации</i></p>
 
 ---
 
