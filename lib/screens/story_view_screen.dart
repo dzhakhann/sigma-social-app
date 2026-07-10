@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
 
 class StoryViewScreen extends StatefulWidget {
@@ -121,21 +122,21 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
 
   Future<void> _sendReply(Map story, String text) async {
     if (text.trim().isEmpty) return;
-    await _dmAuthor(story, 'Ответ на историю: ${text.trim()}');
+    await _dmAuthor(story, '${context.t('storyReplyPrefix')}${text.trim()}');
     if (!mounted) return;
     _replyCtrl.clear();
     FocusScope.of(context).unfocus();
     setState(() => _isPaused = false);
     _startTimer();
     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ответ отправлен')));
+        SnackBar(content: Text(context.t('replySent'))));
   }
 
   Future<void> _likeStory(Map story) async {
-    await _dmAuthor(story, '❤️ понравилась твоя история');
+    await _dmAuthor(story, context.t('storyLiked'));
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('❤️ Отправлено')));
+          .showSnackBar(SnackBar(content: Text(context.t('sentMark'))));
     }
   }
 
@@ -257,21 +258,21 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                             context: context,
                             builder: (ctx) => AlertDialog(
                               backgroundColor: c.surface,
-                              title: const Text('Delete story?'),
+                              title: Text(context.t('deleteStoryQ')),
                               actions: [
                                 TextButton(
                                     onPressed: () {
                                       Navigator.pop(ctx);
                                       _startTimer();
                                     },
-                                    child: Text('Cancel',
+                                    child: Text(context.t('cancelBtn'),
                                         style: TextStyle(color: c.inkSoft))),
                                 TextButton(
                                     onPressed: () {
                                       Navigator.pop(ctx);
                                       _deleteStory(story['id']);
                                     },
-                                    child: Text('Delete',
+                                    child: Text(context.t('deleteBtn'),
                                         style: TextStyle(color: c.danger))),
                               ],
                             ),
@@ -316,7 +317,7 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                         decoration: InputDecoration(
                           filled: false,
                           isDense: true,
-                          hintText: 'Ответить…',
+                          hintText: context.t('replyHint'),
                           hintStyle: const TextStyle(color: Colors.white54),
                           enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),

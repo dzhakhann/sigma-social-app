@@ -13,8 +13,12 @@ import 'comments_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'story_view_screen.dart';
+import 'story_editor_screen.dart';
 import 'notifications_screen.dart';
 import 'login_screen.dart';
+import 'search_screen.dart';
+import 'goals_screen.dart';
+import 'year_review_screen.dart';
 import '../services/session.dart';
 import '../widgets/link_preview.dart';
 import '../widgets/shimmer.dart';
@@ -31,11 +35,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List _posts = [];
   List _stories = [];
+  List _goals = [];
+  Map _wrapped = {};
+  String _ai = '';
+  Map _horo = {};
   bool _loading = false;
-  int _tab = 0; // 0 = Для вас (рекомендации), 1 = Подписки
-  final Map<int, List> _tabCache = {}; // in-memory feed per tab for instant switch
+  bool _aiLoading = false;
 
   @override
   void initState() {
@@ -46,64 +52,137 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onFeedRefresh() => _load();
 
+  // Home is now a personal dashboard: goals, AI advice, statistics.
   Future<void> _load() async {
-    final cached = await _readCache();
+    if (mounted && _goals.isEmpty) setState(() => _loading = true);
+    final uid = widget.user['id'].toString();
+    final goals = await ApiService.getGoals(uid);
+    final wrapped = await ApiService.getWrapped(uid);
     if (mounted) {
       setState(() {
-        if (cached != null && _posts.isEmpty) _posts = cached;
-        _loading = _posts.isEmpty;
+        _goals = goals;
+        _wrapped = wrapped;
+        _loading = false;
       });
     }
-    // "Для вас" = recommendations/recent; "Подписки" = following (with fallback
-    // to recent so a new user's feed is never blank).
-    List data;
-    if (_tab == 1) {
-      data = await ApiService.getFollowingPosts(widget.user['id']);
-      if (data.isEmpty) {
-        data = await ApiService.getPosts(widget.user['id'].toString());
-      }
-    } else {
-      data = await ApiService.getPosts(widget.user['id'].toString());
-    }
-    _tabCache[_tab] = data;
-    if (mounted) {
-      setState(() { _posts = data; _loading = false; });
-    }
-    _saveCache(data);
     _loadStories();
+    _loadAi();
+    _loadHoro();
   }
 
-  void _setTab(int i) {
-    if (_tab == i) return;
-    HapticFeedback.selectionClick();
-    final cached = _tabCache[i];
-    setState(() {
-      _tab = i;
+  // Horoscope is cached per week (updates only on Monday) so it's instant and
+  // doesn't hit the AI every time. The cache is per-language, so switching
+  // EN/RU regenerates it in the new language.
+  String _mondayKey() {
+    final now = DateTime.now();
+    final m = now.subtract(Duration(days: now.weekday - 1));
+    return '${m.year}-${m.month}-${m.day}';
+  }
+
+  // The AI daily tip refreshes once a day at 06:00 local time: everything
+  // before 6 AM still belongs to the previous day.
+  String _sixAmKey() {
+    final d = DateTime.now().subtract(const Duration(hours: 6));
+    return '${d.year}-${d.month}-${d.day}';
+  }
+
+  String get _lang => appConfig.value.lang;
+
+  Future<void> _loadHoro({bool force = false}) async {
+    final monday = _mondayKey();
+    final p = await SharedPreferences.getInstance();
+    if (!force) {
+      final cached = p.getString('horo_cache');
       if (cached != null) {
-        // Instant switch to already-loaded feed; refresh silently in the bg.
-        _posts = cached;
-        _loading = false;
-      } else {
-        _posts = [];
-        _loading = true;
+        try {
+          final m = jsonDecode(cached) as Map;
+          if (m['week'] == monday && m['lang'] == _lang) {
+            if (mounted) setState(() => _horo = Map.from(m));
+            return; // fresh for this week + language
+          }
+        } catch (_) {}
       }
-    });
-    _load();
-  }
-
-  Future<List?> _readCache() async {
+    }
     try {
-      final p = await SharedPreferences.getInstance();
-      final s = p.getString('feed_cache');
-      return s == null ? null : (jsonDecode(s) as List);
-    } catch (_) { return null; }
-  }
-
-  Future<void> _saveCache(List data) async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      await p.setString('feed_cache', jsonEncode(data));
+      final h = await ApiService.horoscope();
+      if ((h['sign'] ?? '').toString().isNotEmpty &&
+          (h['text'] ?? '').toString().isNotEmpty) {
+        final store = {
+          'week': monday,
+          'lang': _lang,
+          'sign': h['sign'],
+          'emoji': h['emoji'],
+          'text': h['text'],
+        };
+        await p.setString('horo_cache', jsonEncode(store));
+        if (mounted) setState(() => _horo = store);
+      } else if (mounted) {
+        setState(() => _horo = Map.from(h));
+      }
     } catch (_) {}
+  }
+
+  Future<void> _loadAi({bool force = false}) async {
+    final day = _sixAmKey();
+    final p = await SharedPreferences.getInstance();
+    if (!force) {
+      final cached = p.getString('ai_tip_cache');
+      if (cached != null) {
+        try {
+          final m = jsonDecode(cached) as Map;
+          if (m['day'] == day && m['lang'] == _lang) {
+            // Same day (6 AM boundary) + same language → reuse.
+            if (mounted) {
+              setState(() {
+                _ai = (m['text'] ?? '').toString();
+                _aiLoading = false;
+              });
+            }
+            return;
+          }
+        } catch (_) {}
+      }
+    }
+    if (mounted) setState(() => _aiLoading = true);
+    String text = '';
+    try {
+      text = await ApiService.aiRecommend();
+    } catch (_) {}
+    final clean = _cleanMarkdown(text);
+    if (clean.isNotEmpty) {
+      await p.setString('ai_tip_cache',
+          jsonEncode({'day': day, 'lang': _lang, 'text': clean}));
+    }
+    if (mounted) {
+      setState(() {
+        _ai = clean;
+        _aiLoading = false;
+      });
+    }
+  }
+
+  // Regenerate AI tip + horoscope when the user switches EN/RU.
+  String? _lastLang;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final lang = AppScope.of(context).lang;
+    if (_lastLang != null && _lastLang != lang) {
+      _loadAi();
+      _loadHoro();
+    }
+    _lastLang = lang;
+  }
+
+  // The AI sometimes replies in Markdown; show clean, plain text.
+  static String _cleanMarkdown(String s) {
+    var t = s;
+    t = t.replaceAll(RegExp(r'\*\*|__'), ''); // bold
+    t = t.replaceAll(RegExp(r'(?<!\w)[*_](?!\s)'), ''); // stray emphasis
+    t = t.replaceAll(RegExp(r'^\s*#{1,6}\s*', multiLine: true), ''); // headings
+    t = t.replaceAll(RegExp(r'^\s*[-*]\s+', multiLine: true), '• '); // bullets
+    t = t.replaceAll('`', '');
+    return t.trim();
   }
 
   Future<void> _loadStories() async {
@@ -158,155 +237,210 @@ class _HomeScreenState extends State<HomeScreen> {
     if (src == null) return;
     final picker = ImagePicker();
     final img =
-        await picker.pickImage(source: src, maxWidth: 800, imageQuality: 70);
+        await picker.pickImage(source: src, maxWidth: 1080, imageQuality: 85);
     if (img == null) return;
     final bytes = await img.readAsBytes();
+    if (!mounted) return;
+    // Instagram-style editor: preview + text overlay before publishing.
+    final edited = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => StoryEditorScreen(imageBytes: bytes)),
+    );
+    if (edited == null) return;
     final data =
-        await ApiService.uploadStory(widget.user['id'], base64Encode(bytes));
+        await ApiService.uploadStory(widget.user['id'], base64Encode(edited));
     if (data['success'] == true) _loadStories();
   }
 
 
-  // ─── Reactions ───────────────────────────────────────────────────────────
-  Future<void> _react(Map post, int index) async {
-    final wasLiked = post['is_liked'] == true;
-    setState(() {
-      _posts[index]['is_liked'] = !wasLiked;
-      _posts[index]['likes_count'] =
-          (post['likes_count'] ?? 0) + (wasLiked ? -1 : 1);
-    });
-    HapticFeedback.lightImpact();
-    final res = await ApiService.likePost(
-        post['id'].toString(), widget.user['id'].toString());
-    if (res['success'] == true && mounted) {
-      setState(() {
-        _posts[index]['likes_count'] = res['likes_count'] ?? _posts[index]['likes_count'];
-        _posts[index]['is_liked'] = res['liked'] == true;
-      });
-    }
-  }
-
-  Future<void> _repost(Map post) async {
-    HapticFeedback.lightImpact();
-    // Repost lives on the profile + notifies followers; it does NOT enter the
-    // feed. So we don't touch _posts here.
-    final res = await ApiService.repostPost(post['id'].toString());
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(res['success'] == true
-              ? 'Репост опубликован в вашем профиле'
-              : 'Не удалось сделать репост')));
-    }
-  }
-
-  void _share(Map post) {
-    final username = (post['username'] ?? 'user').toString();
-    final content = (post['content'] ?? '').toString();
-    Clipboard.setData(
-        ClipboardData(text: 'Sigmacta · @$username: $content'));
-    HapticFeedback.selectionClick();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.t('linkCopied'))),
+  // ─── Dashboard cards ──────────────────────────────────────────────────────
+  Widget _greeting(BrutalColors c) {
+    final name = (widget.user['first_name'] ?? widget.user['username'] ?? '')
+        .toString();
+    final hour = DateTime.now().hour;
+    final part = hour < 6
+        ? context.t('night')
+        : hour < 12
+            ? context.t('morning')
+            : hour < 18
+                ? context.t('afternoon')
+                : context.t('evening');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+      child: Text(
+        name.isEmpty ? part : '$part, $name',
+        style: TextStyle(
+            color: c.ink, fontSize: 22, fontWeight: FontWeight.w800),
+      ),
     );
   }
 
-  void _postMenu(Map post, int index) {
-    final c = context.k;
-    final isOwn =
-        post['user_id'].toString() == widget.user['id'].toString();
-
-    void done(String msg) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
-    }
-
-    void soon() => done('Скоро будет доступно');
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: c.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const SizedBox(height: 10),
-            Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                    color: c.ink.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 10),
-            _SheetTile(
-                icon: Icons.link_rounded,
-                label: 'Копировать ссылку',
-                onTap: () {
-                  Clipboard.setData(ClipboardData(
-                      text: 'https://sigmacta.app/post/${post['id']}'));
-                  done('Ссылка скопирована');
-                }),
-            _SheetTile(
-                icon: Icons.translate_rounded,
-                label: 'Перевести',
-                onTap: soon),
-            _SheetTile(
-                icon: Icons.bookmark_border_rounded,
-                label: 'Сохранить',
-                onTap: soon),
-            _SheetTile(
-                icon: Icons.not_interested_rounded,
-                label: 'Не интересует',
-                onTap: () {
-                  Navigator.pop(context);
-                  if (mounted) setState(() => _posts.removeAt(index));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Учтём. Меньше похожего в ленте.')));
-                }),
-            if (!isOwn) ...[
-              _SheetTile(
-                  icon: Icons.visibility_off_outlined,
-                  label: 'Скрыть пользователя',
-                  onTap: () {
-                    Navigator.pop(context);
-                    final uid = post['user_id'].toString();
-                    if (mounted) {
-                      setState(() => _posts.removeWhere(
-                          (p) => p['user_id'].toString() == uid));
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(
-                            'Публикации ${post['username'] ?? 'этого пользователя'} скрыты')));
-                  }),
-              _SheetTile(
-                  icon: Icons.shield_outlined,
-                  label: 'Установить ограничения',
-                  onTap: soon),
-              _SheetTile(
-                  icon: Icons.block_rounded,
-                  label: 'Заблокировать',
-                  color: c.danger,
-                  onTap: soon),
-              _SheetTile(
-                  icon: Icons.flag_outlined,
-                  label: 'Пожаловаться',
-                  color: c.danger,
-                  onTap: () => done('Жалоба отправлена. Спасибо!')),
-            ],
-            if (isOwn)
-              _SheetTile(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Удалить публикацию',
-                  color: c.danger,
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await ApiService.deletePost(post['id'].toString());
-                    if (mounted) setState(() => _posts.removeAt(index));
-                  }),
-            const SizedBox(height: 10),
+  Widget _aiCard(BrutalColors c) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [
+          c.accent.withOpacity(0.20),
+          c.accent3.withOpacity(0.10),
+        ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.auto_awesome_rounded, color: c.accent, size: 20),
+            const SizedBox(width: 8),
+            Text(context.t('aiTip'),
+                style: TextStyle(
+                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
+            const Spacer(),
+            GestureDetector(
+              onTap: _aiLoading ? null : () => _loadAi(force: true),
+              child: Icon(Icons.refresh_rounded, color: c.inkSoft, size: 20),
+            ),
           ]),
+          const SizedBox(height: 10),
+          if (_aiLoading)
+            Row(children: [
+              SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: c.accent)),
+              const SizedBox(width: 10),
+              Text(context.t('aiThinking'),
+                  style: TextStyle(color: c.inkSoft, fontSize: 13)),
+            ])
+          else
+            Text(
+              _ai.isEmpty ? context.t('aiEmpty') : _ai,
+              style: TextStyle(color: c.ink, height: 1.45, fontSize: 14),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _goalsHeader(BrutalColors c) {
+    final active = _goals.where((g) => g['status'] != 'done').length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+      child: Row(children: [
+        Text(context.t('myGoals'),
+            style: TextStyle(
+                color: c.ink, fontSize: 17, fontWeight: FontWeight.w800)),
+        const SizedBox(width: 8),
+        if (active > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+                color: c.accent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20)),
+            child: Text('$active ${context.t('active')}',
+                style: TextStyle(
+                    color: c.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ),
+        const Spacer(),
+        GestureDetector(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => GoalsScreen(user: widget.user)),
+          ).then((_) => _load()),
+          child: Text(context.t('seeAll'),
+              style: TextStyle(
+                  color: c.accent, fontSize: 13, fontWeight: FontWeight.w700)),
         ),
+      ]),
+    );
+  }
+
+  Widget _noGoals(BrutalColors c) => Container(
+        margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: c.surface, borderRadius: BorderRadius.circular(16)),
+        child: Column(children: [
+          Icon(Icons.flag_outlined, color: c.inkSoft, size: 34),
+          const SizedBox(height: 10),
+          Text(context.t('noGoals'),
+              style: TextStyle(color: c.ink, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(context.t('noGoalsHint'),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.inkSoft, fontSize: 13)),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => GoalsScreen(user: widget.user)),
+            ).then((_) => _load()),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+              decoration: BoxDecoration(
+                  gradient: c.buttonGradient,
+                  borderRadius: BorderRadius.circular(12)),
+              child: Text(context.t('setGoal'),
+                  style: TextStyle(
+                      color: c.onAccent, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+      );
+
+  Widget _goalTile(BrutalColors c, Map g) {
+    final done = g['status'] == 'done';
+    final progress = ((g['progress'] ?? (done ? 100 : 0)) as num).toDouble();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: done ? c.accent.withOpacity(0.35) : Colors.transparent),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(done ? Icons.check_circle_rounded : Icons.flag_rounded,
+                size: 18, color: done ? c.accent : c.inkSoft),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text((g['title'] ?? '').toString(),
+                  style: TextStyle(
+                      color: c.ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      decoration:
+                          done ? TextDecoration.lineThrough : null)),
+            ),
+            Text('${progress.toInt()}%',
+                style: TextStyle(
+                    color: c.inkSoft,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (progress / 100).clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: c.ink.withOpacity(0.08),
+              valueColor: AlwaysStoppedAnimation(c.accent),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -326,47 +460,117 @@ class _HomeScreenState extends State<HomeScreen> {
             slivers: [
               SliverToBoxAdapter(child: _header(c)),
               SliverToBoxAdapter(child: _storiesRow(c)),
-              SliverToBoxAdapter(child: _tabsRow(c)),
-              SliverToBoxAdapter(
-                  child: Divider(height: 1, color: c.ink.withOpacity(0.07))),
+              SliverToBoxAdapter(child: _greeting(c)),
+              SliverToBoxAdapter(child: _aiCard(c)),
+              SliverToBoxAdapter(child: _StatsFooter(user: widget.user)),
+              SliverToBoxAdapter(child: _goalsHeader(c)),
               if (_loading)
-                const SliverToBoxAdapter(child: FeedSkeleton())
-              else if (_posts.isEmpty)
-                SliverToBoxAdapter(child: _empty(c))
+                const SliverToBoxAdapter(
+                    child: Padding(
+                        padding: EdgeInsets.all(36),
+                        child: Center(child: CircularProgressIndicator())))
+              else if (_goals.isEmpty)
+                SliverToBoxAdapter(child: _noGoals(c))
               else
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (_, i) => _ThreadsPost(
-                      post: _posts[i],
-                      user: widget.user,
-                      onLike: () => _react(_posts[i], i),
-                      onComment: () => CommentsScreen.show(
-                        context,
-                        post: _posts[i],
-                        user: widget.user,
-                      ).then((_) => _load()),
-                      onRepost: () => _repost(_posts[i]),
-                      onShare: () => _share(_posts[i]),
-                      onMore: () => _postMenu(_posts[i], i),
-                      onProfileTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ProfileScreen(
-                            user: widget.user,
-                            targetUserId: _posts[i]['user_id'],
-                            isOwnProfile:
-                                _posts[i]['user_id'] == widget.user['id'],
-                          ),
-                        ),
-                      ),
-                    ),
-                    childCount: _posts.length,
+                    (_, i) => _goalTile(c, _goals[i]),
+                    childCount: _goals.length,
                   ),
                 ),
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              SliverToBoxAdapter(child: _horoCard(c)),
+              const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _horoCard(BrutalColors c) {
+    final sign = (_horo['sign'] ?? '').toString();
+    final emoji = (_horo['emoji'] ?? '✨').toString();
+    final text = (_horo['text'] ?? '').toString();
+    if (sign.isEmpty) {
+      // No birthday yet → gentle prompt.
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+            color: c.surface, borderRadius: BorderRadius.circular(18)),
+        child: Row(children: [
+          const Text('🔮', style: TextStyle(fontSize: 26)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+                context.t('horoFill'),
+                style: TextStyle(color: c.inkSoft, fontSize: 13, height: 1.4)),
+          ),
+        ]),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            c.accent3.withOpacity(0.22),
+            c.accent.withOpacity(0.10),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            // Round zodiac emblem
+            Container(
+              width: 52, height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: [
+                  c.accent.withOpacity(0.9),
+                  c.accent3.withOpacity(0.9),
+                ]),
+                boxShadow: [
+                  BoxShadow(
+                      color: c.accent.withOpacity(0.35),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3)),
+                ],
+              ),
+              child: Text(emoji, style: const TextStyle(fontSize: 26)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(sign,
+                      style: TextStyle(
+                          color: c.ink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17)),
+                  Text(context.t('horoWeek'),
+                      style: TextStyle(color: c.inkSoft, fontSize: 12)),
+                ],
+              ),
+            ),
+            GestureDetector(
+              onTap: () => _loadHoro(force: true),
+              child: Icon(Icons.refresh_rounded, color: c.inkSoft, size: 20),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Text(text.isEmpty ? context.t('loadingForecast') : text,
+              style: TextStyle(color: c.ink, height: 1.5, fontSize: 14)),
+        ],
       ),
     );
   }
@@ -396,6 +600,15 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
+                  builder: (_) => SearchScreen(user: widget.user)),
+            ),
+            child: Icon(Icons.search_rounded, color: c.ink, size: 25),
+          ),
+          const SizedBox(width: 18),
+          GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
                   builder: (_) => NotificationsScreen(user: widget.user)),
             ),
             child: Icon(Icons.notifications_none_rounded, color: c.ink, size: 25),
@@ -410,40 +623,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Segmented "Для вас / Подписки" tabs (Threads/Twitter-style).
-  Widget _tabsRow(BrutalColors c) {
-    Widget tab(String label, int i) {
-      final sel = _tab == i;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => _setTab(i),
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        color: sel ? c.ink : c.inkSoft,
-                        fontSize: 14.5,
-                        fontWeight: sel ? FontWeight.w800 : FontWeight.w600)),
-                const SizedBox(height: 8),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  height: 2.5,
-                  width: sel ? 34 : 0,
-                  decoration: BoxDecoration(
-                      color: c.accent, borderRadius: BorderRadius.circular(2)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Row(children: [tab('Для вас', 0), tab('Подписки', 1)]);
-  }
 
   // "Ленты" side panel opened by the hamburger — mirrors the Figma prototype.
   void _openFeeds() {
@@ -464,7 +643,7 @@ class _HomeScreenState extends State<HomeScreen> {
     void soon() {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Скоро будет доступно')));
+          SnackBar(content: Text(context.t('comingSoon'))));
     }
 
     showModalBottomSheet(
@@ -487,27 +666,33 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Ленты',
+                child: Text(context.t('menu'),
                     style: TextStyle(
                         color: c.ink,
                         fontSize: 20,
                         fontWeight: FontWeight.w800)),
               ),
             ),
-            item(Icons.favorite_border_rounded, 'Понравилось', soon),
-            item(Icons.bookmark_border_rounded, 'Сохранённое', soon),
-            item(Icons.auto_awesome_rounded, 'Для вас', () {
+            item(Icons.flag_outlined, context.t('myGoals'), () {
               Navigator.pop(context);
-              _setTab(0);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => GoalsScreen(user: widget.user)),
+              ).then((_) => _load());
             }),
-            item(Icons.group_outlined, 'Подписки', () {
+            item(Icons.insights_rounded, context.t('mYearReport'), () {
               Navigator.pop(context);
-              _setTab(1);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => YearReviewScreen(
+                        user: widget.user, year: DateTime.now().year)),
+              );
             }),
-            item(Icons.history_toggle_off_rounded, 'Исчезающие публикации',
-                soon),
+            item(Icons.bookmark_border_rounded, context.t('mSaved'), soon),
             Divider(height: 12, color: c.ink.withOpacity(0.07)),
-            item(Icons.settings_outlined, 'Настройки', () {
+            item(Icons.settings_outlined, context.t('settings'), () {
               Navigator.pop(context);
               Navigator.push(
                 context,
@@ -515,9 +700,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (_) => SettingsScreen(user: widget.user)),
               );
             }),
-            item(Icons.lock_outline_rounded, 'Приватность', soon),
-            item(Icons.help_outline_rounded, 'Помощь', soon),
-            item(Icons.logout_rounded, 'Выйти', () {
+            item(Icons.help_outline_rounded, context.t('mHelp'), () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: c.surface,
+                  title: Text(context.t('helpTitle'), style: TextStyle(color: c.ink)),
+                  content: Text(context.t('helpBody'),
+                      style: TextStyle(color: c.inkSoft, height: 1.4)),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(context.t('ok'))),
+                  ],
+                ),
+              );
+            }),
+            item(Icons.logout_rounded, context.t('logout'), () {
               Navigator.pop(context);
               _logout();
             }, color: c.danger),
@@ -592,21 +792,21 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 18),
           _SheetTile(
               icon: Icons.camera_alt_rounded,
-              label: 'Camera',
+              label: context.t('camera'),
               onTap: () {
                 Navigator.pop(context);
                 _addStory(source: ImageSource.camera);
               }),
           _SheetTile(
               icon: Icons.photo_library_rounded,
-              label: 'Gallery',
+              label: context.t('gallery'),
               onTap: () {
                 Navigator.pop(context);
                 _addStory(source: ImageSource.gallery);
               }),
           _SheetTile(
               icon: Icons.visibility_rounded,
-              label: 'View my stories',
+              label: context.t('viewMyStories'),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -931,7 +1131,7 @@ class _MyStoryBtn extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 5),
-          Text('You',
+          Text(context.t('me'),
               style: TextStyle(fontSize: 11, color: c.inkSoft),
               overflow: TextOverflow.ellipsis),
         ]),
@@ -1017,11 +1217,11 @@ class _StoryPickerSheet extends StatelessWidget {
         const SizedBox(height: 18),
         _SheetTile(
             icon: Icons.camera_alt_rounded,
-            label: 'Camera',
+            label: context.t('camera'),
             onTap: () => Navigator.pop(context, ImageSource.camera)),
         _SheetTile(
             icon: Icons.photo_library_rounded,
-            label: 'Gallery',
+            label: context.t('gallery'),
             onTap: () => Navigator.pop(context, ImageSource.gallery)),
       ]),
     );
@@ -1121,12 +1321,12 @@ class _StatsFooterState extends State<_StatsFooter> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Твой прогресс за год',
+              Text(context.t('yearProgress'),
                   style: TextStyle(
                       fontWeight: FontWeight.w800, fontSize: 15, color: c.ink)),
               const SizedBox(height: 10),
-              _statRow(c, 'Целей выполнено', '$done из $total'),
-              _statRow(c, 'Средний прогресс', '$avg%'),
+              _statRow(c, context.t('goalsDoneLbl'), '$done / $total'),
+              _statRow(c, context.t('avgProgress'), '$avg%'),
             ],
           ),
         ),

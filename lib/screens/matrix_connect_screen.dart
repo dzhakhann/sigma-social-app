@@ -4,6 +4,7 @@ import 'package:matrix/matrix.dart';
 import '../constants.dart';
 import '../services/matrix_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/brutal.dart';
 
 /// Shown when Matrix session is missing or login failed.
@@ -72,7 +73,7 @@ class _MatrixConnectScreenState extends State<MatrixConnectScreen> {
     return Scaffold(
       backgroundColor: c.bg,
       appBar: AppBar(
-        title: const Text('Matrix chat'),
+        title: Text(context.t('matrixChat')),
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded, color: c.ink),
           onPressed: () => Navigator.pop(context),
@@ -104,8 +105,8 @@ class _MatrixConnectScreenState extends State<MatrixConnectScreen> {
             controller: _userCtrl,
             enabled: !_loading,
             decoration: InputDecoration(
-              labelText: 'Matrix username',
-              hintText: 'without @',
+              labelText: context.t('matrixUsername'),
+              hintText: context.t('matrixNoAt'),
               filled: true,
               fillColor: c.surface2,
               border: OutlineInputBorder(
@@ -120,7 +121,7 @@ class _MatrixConnectScreenState extends State<MatrixConnectScreen> {
             enabled: !_loading,
             obscureText: true,
             decoration: InputDecoration(
-              labelText: 'Matrix password',
+              labelText: context.t('matrixPassword'),
               filled: true,
               fillColor: c.surface2,
               border: OutlineInputBorder(

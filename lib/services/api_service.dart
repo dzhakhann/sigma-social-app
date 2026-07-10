@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants.dart';
+import '../theme/brutal_theme.dart' show appConfig;
 
 class ApiService {
   // ─── SESSION ────────────────────────────────────────────────────────────────
@@ -293,13 +294,50 @@ class ApiService {
   // ─── AI (Gemini via backend) ───────────────────────────────────────────────
   // messages: [{'role':'user'|'model','text':'...'}]
   static Future<String> aiChat(List<Map<String, String>> messages) async {
-    final d = await _post('/ai/chat', {'messages': messages});
-    return (d['reply'] ?? 'ИИ недоступен.').toString();
+    final d = await _post('/ai/chat',
+        {'messages': messages, 'lang': appConfig.value.lang});
+    return (d['reply'] ??
+            (appConfig.value.lang == 'ru' ? 'ИИ недоступен.' : 'AI is unavailable.'))
+        .toString();
   }
 
   static Future<String> aiRecommend() async {
-    final d = await _get('/ai/recommend');
+    final d = await _get('/ai/recommend?lang=${appConfig.value.lang}');
     return (d['text'] ?? '').toString();
+  }
+
+  // Horoscope for the user's zodiac sign (computed from their birthday).
+  static Future<Map> horoscope() async {
+    final d = await _getSafe('/ai/horoscope?lang=${appConfig.value.lang}');
+    return d['success'] == true ? d : {};
+  }
+
+  // ─── PODCASTS (via our server proxy; nothing stored — pure pass-through) ────
+  // A short timeout so the UI never hangs if the server is cold/unreachable.
+  static Future<Map<String, dynamic>> _getSafe(String path,
+      {int timeoutSec = 25}) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$kApiUrl$path'), headers: _headers())
+          .timeout(Duration(seconds: timeoutSec));
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      return {'success': false};
+    }
+  }
+
+  static Future<List<Map>> searchPodcasts(String term) async {
+    final d =
+        await _getSafe('/podcast/search?term=${Uri.encodeQueryComponent(term)}');
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+  }
+
+  static Future<List<Map>> fetchEpisodes(String feedUrl) async {
+    final d = await _getSafe(
+        '/podcast/episodes?feed=${Uri.encodeQueryComponent(feedUrl)}');
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
   }
 
   // ─── GIFs (Tenor via backend) ──────────────────────────────────────────────

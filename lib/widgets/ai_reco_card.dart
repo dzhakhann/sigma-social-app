@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../screens/ai_chat_screen.dart';
 import '../screens/goals_screen.dart';
 
@@ -46,7 +47,7 @@ class _AiRecoCardState extends State<AiRecoCard> {
           Row(children: [
             Icon(Icons.auto_awesome_rounded, size: 18, color: c.accent),
             const SizedBox(width: 8),
-            Text('Рекомендации ИИ',
+            Text(context.t('aiRecoTitle'),
                 style: TextStyle(
                     fontWeight: FontWeight.w800, fontSize: 14, color: c.ink)),
             const Spacer(),
@@ -56,7 +57,7 @@ class _AiRecoCardState extends State<AiRecoCard> {
                 MaterialPageRoute(
                     builder: (_) => AiChatScreen(user: widget.user)),
               ),
-              child: Text('Спросить →',
+              child: Text(context.t('aiAsk'),
                   style: TextStyle(
                       color: c.accent,
                       fontWeight: FontWeight.w700,
@@ -71,7 +72,7 @@ class _AiRecoCardState extends State<AiRecoCard> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: c.accent)),
               const SizedBox(width: 10),
-              Text('Собираю советы по твоим целям…',
+              Text(context.t('aiRecoLoading'),
                   style: TextStyle(color: c.inkSoft, fontSize: 13)),
             ])
           else
@@ -86,7 +87,7 @@ class _AiRecoCardState extends State<AiRecoCard> {
             child: Row(children: [
               Icon(Icons.track_changes_rounded, size: 16, color: c.accent),
               const SizedBox(width: 6),
-              Text('Мои цели и годовой отчёт →',
+              Text(context.t('aiRecoGoals'),
                   style: TextStyle(
                       color: c.accent,
                       fontWeight: FontWeight.w700,

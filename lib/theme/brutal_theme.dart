@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  SIGMA SOCIAL — DESIGN SYSTEM  ·  "QUIET LUXURY"
@@ -128,7 +129,7 @@ class AppConfig {
   final String lang;
   final String navSide; // 'right' | 'left'
   const AppConfig(
-      {this.themeIndex = 0, this.lang = 'ru', this.navSide = 'right'});
+      {this.themeIndex = 0, this.lang = 'en', this.navSide = 'right'});
 
   AppConfig copyWith({int? themeIndex, String? lang, String? navSide}) =>
       AppConfig(
@@ -142,6 +143,32 @@ class AppConfig {
 
 final ValueNotifier<AppConfig> appConfig =
     ValueNotifier<AppConfig>(const AppConfig());
+
+bool _cfgListenerAttached = false;
+
+/// Load the saved language/theme on startup (default language = English), and
+/// persist any future change so the choice survives restarts.
+Future<void> loadAppConfig() async {
+  try {
+    final p = await SharedPreferences.getInstance();
+    appConfig.value = AppConfig(
+      themeIndex: p.getInt('cfg_theme') ?? 0,
+      lang: p.getString('cfg_lang') ?? 'en',
+      navSide: p.getString('cfg_nav') ?? 'right',
+    );
+  } catch (_) {}
+  if (!_cfgListenerAttached) {
+    _cfgListenerAttached = true;
+    appConfig.addListener(() async {
+      try {
+        final p = await SharedPreferences.getInstance();
+        await p.setInt('cfg_theme', appConfig.value.themeIndex);
+        await p.setString('cfg_lang', appConfig.value.lang);
+        await p.setString('cfg_nav', appConfig.value.navSide);
+      } catch (_) {}
+    });
+  }
+}
 
 // ─── INHERITED ACCESS ─────────────────────────────────────────────────────────
 class AppScope extends InheritedWidget {

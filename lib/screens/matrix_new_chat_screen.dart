@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/matrix_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'matrix_chat_room_screen.dart';
 
 /// Start a new encrypted DM — by Sigma user or raw Matrix ID.
@@ -58,7 +59,7 @@ class _MatrixNewChatScreenState extends State<MatrixNewChatScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open chat: $e')),
+          SnackBar(content: Text(context.t('couldNotOpen') + ': $e')),
         );
         setState(() => _busy = false);
       }
@@ -72,7 +73,7 @@ class _MatrixNewChatScreenState extends State<MatrixNewChatScreen> {
 
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: const Text('New chat')),
+      appBar: AppBar(title: Text(context.t('newChatTitle'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -125,7 +126,7 @@ class _MatrixNewChatScreenState extends State<MatrixNewChatScreen> {
                 ),
                 const SizedBox(height: 8),
                 if (_users.isEmpty)
-                  Text('No users found', style: TextStyle(color: c.inkSoft))
+                  Text(context.t('noUsersFound'), style: TextStyle(color: c.inkSoft))
                 else
                   ..._users.map((u) {
                     final name = (u['username'] ?? 'user').toString();

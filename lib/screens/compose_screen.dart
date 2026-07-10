@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../services/events.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
 import 'gif_picker_screen.dart';
 
@@ -102,7 +103,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
           icon: Icon(Icons.close, color: c.ink),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Новая ветка',
+        title: Text(context.t('newBranch'),
             style: TextStyle(
                 color: c.ink, fontSize: 17, fontWeight: FontWeight.w700)),
         centerTitle: false,
@@ -163,7 +164,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                           onChanged: (_) => setState(() {}),
                           style: TextStyle(color: c.ink, fontSize: 16),
                           decoration: InputDecoration(
-                            hintText: 'Что нового?',
+                            hintText: context.t('whatsNew'),
                             hintStyle:
                                 TextStyle(color: c.inkSoft, fontSize: 16),
                             border: InputBorder.none,
@@ -246,12 +247,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
                           children: [
                             _MediaBtn(
                                 icon: Icons.image_rounded,
-                                label: 'Фото',
+                                label: context.t('photoBtn'),
                                 onTap: _pickImage),
                             const SizedBox(width: 10),
                             _MediaBtn(
                                 icon: Icons.camera_alt_rounded,
-                                label: 'Камера',
+                                label: context.t('cameraBtn'),
                                 onTap: _takePhoto),
                             const SizedBox(width: 10),
                             _MediaBtn(
@@ -283,7 +284,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
               child: Row(
                 children: [
                   Text(
-                    'Публикация для всех',
+                    context.t('publicPost'),
                     style: TextStyle(color: c.inkSoft, fontSize: 13),
                   ),
                   const Spacer(),
@@ -306,7 +307,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                                   strokeWidth: 2, color: c.onAccent),
                             )
                           : Text(
-                              'Опубликовать',
+                              context.t('publishBtn'),
                               style: TextStyle(
                                 color: _canPost ? c.onAccent : c.inkSoft,
                                 fontWeight: FontWeight.w700,

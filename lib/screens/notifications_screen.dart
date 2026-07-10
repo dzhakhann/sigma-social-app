@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'comments_screen.dart';
 import 'profile_screen.dart';
 
@@ -58,6 +59,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
   }
 
+  // Localized notification text built from type + sender name, so the message
+  // always follows the app language (server stores it in one language only).
+  String _notifText(Map n) {
+    final u = (n['from_username'] ?? '').toString();
+    String key;
+    switch ((n['type'] ?? '').toString()) {
+      case 'like': key = 'nLike'; break;
+      case 'comment': key = 'nComment'; break;
+      case 'follow': key = 'nFollow'; break;
+      case 'repost': key = 'nRepost'; break;
+      case 'channel_post': key = 'nChannelPost'; break;
+      default: key = '';
+    }
+    if (key.isEmpty || u.isEmpty) return (n['message'] ?? '').toString();
+    return context.t(key).replaceAll('{u}', u);
+  }
+
   List _filtered(int tabIndex) {
     if (tabIndex == 0) return _notifs; // All
     if (tabIndex == 1) {
@@ -109,12 +127,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(unread > 0 ? 'Activity ($unread)' : 'Activity'),
+        title: Text(unread > 0 ? '${context.t('activityTitle')} ($unread)' : context.t('activityTitle')),
         actions: [
           if (unread > 0)
             TextButton(
               onPressed: _markAllRead,
-              child: Text('Read all',
+              child: Text(context.t('readAll'),
                   style: TextStyle(color: c.accent, fontSize: 12)),
             ),
         ],
@@ -126,10 +144,10 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           indicatorWeight: 2,
           labelStyle:
               const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-          tabs: const [
-            Tab(text: 'All'),
-            Tab(text: 'Subscriptions'),
-            Tab(text: 'Replies'),
+          tabs: [
+            Tab(text: context.t('tabAll')),
+            Tab(text: context.t('tabSubs')),
+            Tab(text: context.t('tabReplies')),
           ],
         ),
       ),
@@ -158,7 +176,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           children: [
             Icon(Icons.notifications_none, size: 52, color: c.inkSoft),
             const SizedBox(height: 14),
-            Text('No notifications',
+            Text(context.t('noNotifications'),
                 style: TextStyle(color: c.inkSoft, fontSize: 15)),
           ],
         ),
@@ -215,7 +233,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               ],
             ),
             title: Text(
-              n['message'] ?? '',
+              _notifText(n),
               style: TextStyle(
                 fontSize: 14,
                 color: c.ink,

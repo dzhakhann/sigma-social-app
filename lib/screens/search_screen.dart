@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
-import '../widgets/ai_reco_card.dart';
+import '../l10n/app_strings.dart';
 import 'profile_screen.dart';
 
 /// "Рекомендации" — find people, suggested connections (LinkedIn-style),
@@ -85,7 +85,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final hasQuery = _ctrl.text.trim().isNotEmpty;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: const Text('Рекомендации')),
+      appBar: AppBar(title: Text(context.t('discover'))),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
@@ -93,7 +93,7 @@ class _SearchScreenState extends State<SearchScreen> {
             controller: _ctrl,
             onChanged: _onSearch,
             decoration: InputDecoration(
-              hintText: 'Найти людей по имени или @нику…',
+              hintText: context.t('searchPeople'),
               prefixIcon: Icon(Icons.search, color: c.accent),
               suffixIcon: hasQuery
                   ? IconButton(
@@ -120,7 +120,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _resultsList(BrutalColors c) {
     if (_results.isEmpty) {
       return Center(
-          child: Text('Ничего не найдено',
+          child: Text(context.t('nothingFound'),
               style: TextStyle(color: c.inkSoft)));
     }
     return ListView.builder(
@@ -134,12 +134,10 @@ class _SearchScreenState extends State<SearchScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
       children: [
-        AiRecoCard(user: widget.user),
         // Profile exchange
         GestureDetector(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  'Скоро: обмен профилями рядом — поднеси телефоны друг к другу (Bluetooth).'))),
+          onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(context.t('exchangeSoon')))),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -155,12 +153,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Обмен профилями',
+                    Text(context.t('profileExchange'),
                         style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
                             color: c.ink)),
-                    Text('Поднеси телефоны — обменяйтесь аккаунтами',
+                    Text(context.t('profileExchangeHint'),
                         style: TextStyle(color: c.inkSoft, fontSize: 12)),
                   ],
                 ),
@@ -170,7 +168,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Text('Люди, которых стоит добавить',
+        Text(context.t('suggestedPeople'),
             style: TextStyle(
                 fontWeight: FontWeight.w800, fontSize: 15, color: c.ink)),
         const SizedBox(height: 6),
@@ -178,7 +176,7 @@ class _SearchScreenState extends State<SearchScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 40),
             child: Center(
-                child: Text('Пока некого предложить',
+                child: Text(context.t('noSuggestions'),
                     style: TextStyle(color: c.inkSoft))),
           )
         else

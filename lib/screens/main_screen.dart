@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'home_screen.dart';
-import 'search_screen.dart';
+import 'podcasts_screen.dart';
 import 'chats_screen.dart';
 import 'profile_screen.dart';
 import 'compose_screen.dart';
+import 'goals_screen.dart';
+import '../widgets/mini_player.dart';
 
 /// Threads-style bottom menu bar with 5 slots:
 /// Главная · Рекомендации · Публикация(+) · Чат · Профиль.
@@ -25,19 +28,69 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _screens = [
       HomeScreen(user: widget.user),
-      SearchScreen(user: widget.user),
+      PodcastsScreen(user: widget.user),
       ChatsScreen(user: widget.user),
       ProfileScreen(user: widget.user, isOwnProfile: true),
     ];
   }
 
-  Future<void> _openCompose() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ComposeScreen(user: widget.user)),
+  // Center "+" now asks what to create: a post (goes to your profile) or a goal.
+  void _openCompose() {
+    final c = context.k;
+    Widget tile(IconData icon, String title, String sub, VoidCallback onTap) {
+      return ListTile(
+        leading: Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+              color: c.accent.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12)),
+          child: Icon(icon, color: c.accent),
+        ),
+        title: Text(title,
+            style: TextStyle(color: c.ink, fontWeight: FontWeight.w700)),
+        subtitle: Text(sub, style: TextStyle(color: c.inkSoft, fontSize: 12)),
+        onTap: onTap,
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10),
+          Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                  color: c.ink.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 8),
+          tile(Icons.edit_outlined, context.t('newPost'),
+              context.t('newPostSub'), () async {
+            Navigator.pop(context);
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ComposeScreen(user: widget.user)),
+            );
+            if (mounted) setState(() => _tab = 3); // go to profile
+          }),
+          tile(Icons.flag_outlined, context.t('newGoal'),
+              context.t('newGoalSub'), () async {
+            Navigator.pop(context);
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => GoalsScreen(user: widget.user)),
+            );
+            if (mounted) setState(() => _tab = 0); // go to home dashboard
+          }),
+          const SizedBox(height: 12),
+        ]),
+      ),
     );
-    // Jump to Home so the new post is visible after composing.
-    if (mounted) setState(() => _tab = 0);
   }
 
   @override
@@ -46,10 +99,16 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       backgroundColor: c.bg,
       body: IndexedStack(index: _tab, children: _screens),
-      bottomNavigationBar: _BottomBar(
-        current: _tab,
-        onTab: (i) => setState(() => _tab = i),
-        onCompose: _openCompose,
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const MiniPlayer(),
+          _BottomBar(
+            current: _tab,
+            onTab: (i) => setState(() => _tab = i),
+            onCompose: _openCompose,
+          ),
+        ],
       ),
     );
   }
@@ -76,15 +135,15 @@ class _BottomBar extends StatelessWidget {
           height: 60,
           child: Row(
             children: [
-              _item(c, Icons.home_rounded, 'Главная', current == 0,
+              _item(c, Icons.home_rounded, context.t('navHome'), current == 0,
                   () => onTab(0)),
-              _item(c, Icons.explore_rounded, 'Рекоменд.', current == 1,
-                  () => onTab(1)),
+              _item(c, Icons.podcasts_rounded, context.t('navPodcasts'),
+                  current == 1, () => onTab(1)),
               _compose(c),
-              _item(c, Icons.chat_bubble_rounded, 'Чат', current == 2,
-                  () => onTab(2)),
-              _item(c, Icons.person_rounded, 'Профиль', current == 3,
-                  () => onTab(3)),
+              _item(c, Icons.chat_bubble_rounded, context.t('navChat'),
+                  current == 2, () => onTab(2)),
+              _item(c, Icons.person_rounded, context.t('navProfile'),
+                  current == 3, () => onTab(3)),
             ],
           ),
         ),

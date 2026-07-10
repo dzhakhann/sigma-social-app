@@ -1,12 +1,17 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/brutal.dart';
 import 'onboarding_screen.dart';
 import 'story_view_screen.dart';
 import 'chat_detail_screen.dart';
+import 'profile_share_screen.dart';
+import 'photo_view_screen.dart';
+import 'avatar_crop_screen.dart';
 import '../widgets/link_preview.dart';
 import '../services/session.dart';
 import '../services/events.dart';
@@ -122,7 +127,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         widget.user['id'].toString(), _targetId);
     if (r['success'] == true && r['data'] != null && mounted) {
       final chat = Map.from(r['data']);
-      chat['name'] = userProfile['username'] ?? 'Чат';
+      chat['name'] = userProfile['username'] ?? context.t('chatFallback');
       chat['avatar'] = userProfile['avatar_url'];
       Navigator.push(
         context,
@@ -134,16 +139,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _pickAvatar() async {
     final picker = ImagePicker();
+    // Pick at high resolution — the crop editor decides the visible square.
     final file = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 512, maxHeight: 512, imageQuality: 80);
+        source: ImageSource.gallery, maxWidth: 2000, imageQuality: 90);
     if (file == null) return;
+    final raw = await file.readAsBytes();
+    if (!mounted) return;
+    // Telegram-style crop: pan + pinch under a circular window → square crop.
+    final bytes = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => AvatarCropScreen(imageBytes: raw)),
+    );
+    if (bytes == null) return;
     setState(() => isUploadingAvatar = true);
     try {
-      final bytes = await file.readAsBytes();
       final uploaded = await ApiService.uploadMedia(bytes,
           folder: 'avatar',
-          ext: 'jpg',
-          contentType: 'image/jpeg',
+          ext: 'png',
+          contentType: 'image/png',
           userId: widget.user['id'].toString());
       if (uploaded != null) {
         final url = '$uploaded?t=${DateTime.now().millisecondsSinceEpoch}';
@@ -176,156 +191,367 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final c = context.k;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(
-        title: const Text('Профиль'),
-        actions: [
-          if (widget.isOwnProfile)
-            IconButton(
-              icon: Icon(Icons.edit_rounded, color: c.ink),
-              onPressed: _editProfile,
-            ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await _loadProfile();
           await _loadPosts();
           await _loadStories();
         },
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          children: [
-            _headerCard(c),
-            const SizedBox(height: 14),
-            if (_aboutVisible(c)) ...[_aboutCard(c), const SizedBox(height: 14)],
-            if (_detailsVisible()) ...[_detailsCard(c), const SizedBox(height: 14)],
-            _tabBar(c),
-            const SizedBox(height: 12),
-            if (_tab == 2) _storiesTab(c) else _postsTab(c, reposts: _tab == 1),
+        child: CustomScrollView(
+          slivers: [
+            _sliverHeader(c),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _statsAndActions(c),
+              ),
+            ),
+            if (_aboutVisible(c))
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: _aboutCard(c),
+                ),
+              ),
+            if (_detailsVisible())
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: _detailsCard(c),
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _tabBar(c),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+                child: _tab == 2
+                    ? _storiesTab(c)
+                    : _postsTab(c, reposts: _tab == 1),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ─── HEADER ─────────────────────────────────────────────────────────────────
-  Widget _headerCard(BrutalColors c) {
+  // ─── Collapsing header (Telegram-style: big avatar shrinks on scroll) ───────
+  Widget _sliverHeader(BrutalColors c) {
     final avatarUrl = userProfile['avatar_url'];
     final full = _fullName();
     final showName = full.isNotEmpty && _visible('name');
-    final title = showName ? full : (userProfile['username'] ?? 'User').toString();
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: cleanCard(c, radius: 18),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: widget.isOwnProfile ? _pickAvatar : null,
-            child: Stack(
-              children: [
-                Container(
-                  width: 96, height: 96,
-                  decoration: BoxDecoration(
-                    gradient: avatarUrl == null ? c.buttonGradient : null,
-                    shape: BoxShape.circle,
-                    image: avatarUrl != null
-                        ? DecorationImage(
-                            image: CachedNetworkImageProvider(avatarUrl),
-                            fit: BoxFit.cover)
-                        : null,
-                    border: Border.all(color: c.ink.withOpacity(0.08), width: 2),
-                  ),
-                  child: avatarUrl == null
-                      ? const Icon(Icons.person_rounded, size: 46, color: Colors.white)
-                      : null,
-                ),
-                if (widget.isOwnProfile)
-                  Positioned(
-                    bottom: 0, right: 0,
-                    child: Container(
-                      width: 30, height: 30,
-                      decoration: BoxDecoration(
-                        color: c.accent, shape: BoxShape.circle,
-                        border: Border.all(color: c.surface, width: 2),
-                      ),
-                      child: isUploadingAvatar
-                          ? const Padding(
-                              padding: EdgeInsets.all(7),
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.camera_alt_rounded,
-                              size: 15, color: Colors.white),
-                    ),
-                  ),
-              ],
+    final title =
+        showName ? full : (userProfile['username'] ?? 'User').toString();
+    final topPad = MediaQuery.of(context).padding.top;
+    const expanded = 290.0;
+
+    return SliverAppBar(
+      pinned: true,
+      expandedHeight: expanded,
+      backgroundColor: c.bg,
+      surfaceTintColor: Colors.transparent,
+      automaticallyImplyLeading: !widget.isOwnProfile,
+      iconTheme: IconThemeData(color: c.ink),
+      actions: [
+        if (widget.isOwnProfile) ...[
+          IconButton(
+            tooltip: context.t('profileShareTitle'),
+            icon: Icon(Icons.qr_code_scanner_rounded, color: c.ink),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => ProfileShareScreen(user: widget.user)),
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(title,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.w800, color: c.ink)),
-              ),
-              if (userProfile['is_verified'] == true) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.verified_rounded, size: 20, color: c.ink),
-              ],
-              if (userProfile['is_pro'] == true) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: c.accent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6)),
-                  child: Text('PRO',
-                      style: TextStyle(
-                          color: c.accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800)),
+          IconButton(
+            icon: Icon(Icons.edit_rounded, color: c.ink),
+            onPressed: _editProfile,
+          ),
+        ],
+      ],
+      flexibleSpace: LayoutBuilder(
+        builder: (ctx, cons) {
+          final maxH = expanded + topPad;
+          final minH = kToolbarHeight + topPad;
+          final t = ((cons.biggest.height - minH) / (maxH - minH))
+              .clamp(0.0, 1.0); // 1 = expanded, 0 = collapsed
+          final e = Curves.easeOut.transform(t);
+          final avatarSize = 44.0 + 62.0 * t;
+          return Stack(fit: StackFit.expand, children: [
+            // Expanded: big centered avatar + name
+            Positioned(
+              top: topPad + 34,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                ignoring: t < 0.35,
+                child: Opacity(
+                  opacity: e,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _bigAvatar(c, avatarUrl, avatarSize),
+                      const SizedBox(height: 12),
+                      _nameRow(c, title, center: true),
+                      if (showName)
+                        Text('@${userProfile['username'] ?? ''}',
+                            style:
+                                TextStyle(color: c.inkSoft, fontSize: 13)),
+                      if ((userProfile['headline'] ?? '')
+                          .toString()
+                          .trim()
+                          .isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(userProfile['headline'],
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 14,
+                                color: c.inkSoft,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ],
+                  ),
                 ),
-              ],
-            ],
+              ),
+            ),
+            // Collapsed: small avatar + name in the toolbar
+            Positioned(
+              top: topPad,
+              height: kToolbarHeight,
+              left: widget.isOwnProfile ? 16 : 52,
+              right: widget.isOwnProfile ? 100 : 16,
+              child: Opacity(
+                opacity: 1 - e,
+                child: Row(children: [
+                  _bigAvatar(c, avatarUrl, 34, tappable: false),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: c.ink,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ]),
+              ),
+            ),
+          ]);
+        },
+      ),
+    );
+  }
+
+  Widget _bigAvatar(BrutalColors c, dynamic avatarUrl, double size,
+      {bool tappable = true}) {
+    final circle = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: avatarUrl == null ? c.buttonGradient : null,
+        shape: BoxShape.circle,
+        image: avatarUrl != null
+            ? DecorationImage(
+                image: CachedNetworkImageProvider(avatarUrl.toString()),
+                fit: BoxFit.cover)
+            : null,
+        border: Border.all(color: c.ink.withOpacity(0.08), width: 2),
+      ),
+      child: avatarUrl == null
+          ? Icon(Icons.person_rounded, size: size * 0.5, color: Colors.white)
+          : null,
+    );
+    // Only the big (tappable) avatar is a Hero — avoids duplicate-tag errors.
+    if (!tappable) return circle;
+    final avatar =
+        Hero(tag: avatarUrl ?? 'avatar_$_targetId', child: circle);
+    return Stack(children: [
+      GestureDetector(
+        onTap: () {
+          if (avatarUrl != null) {
+            Navigator.push(context,
+                PhotoViewScreen.route(avatarUrl.toString(), heroTag: avatarUrl.toString()));
+          } else if (widget.isOwnProfile) {
+            _pickAvatar();
+          }
+        },
+        child: avatar,
+      ),
+      if (widget.isOwnProfile)
+        Positioned(
+          bottom: 0, right: 0,
+          child: GestureDetector(
+            onTap: _pickAvatar,
+            child: Container(
+              width: 30, height: 30,
+              decoration: BoxDecoration(
+                color: c.accent, shape: BoxShape.circle,
+                border: Border.all(color: c.bg, width: 2),
+              ),
+              child: isUploadingAvatar
+                  ? const Padding(
+                      padding: EdgeInsets.all(7),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.camera_alt_rounded,
+                      size: 15, color: Colors.white),
+            ),
           ),
-          if (showName)
-            Text('@${userProfile['username'] ?? ''}',
-                style: TextStyle(color: c.inkSoft, fontSize: 13)),
-          if ((userProfile['headline'] ?? '').toString().trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(userProfile['headline'],
-                textAlign: TextAlign.center,
+        ),
+    ]);
+  }
+
+  Widget _nameRow(BrutalColors c, String title, {bool center = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment:
+          center ? MainAxisAlignment.center : MainAxisAlignment.start,
+      children: [
+        Flexible(
+          child: Text(title,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.w800, color: c.ink)),
+        ),
+        if (userProfile['is_verified'] == true) ...[
+          const SizedBox(width: 6),
+          Icon(Icons.verified_rounded, size: 20, color: c.ink),
+        ],
+        if (userProfile['is_pro'] == true) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+                color: c.accent.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(6)),
+            child: Text('PRO',
                 style: TextStyle(
-                    fontSize: 14, color: c.inkSoft, fontWeight: FontWeight.w500)),
-          ],
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _stat(c, '${userProfile['goals_count'] ?? 0}', 'Цели'),
-              _stat(c, '${userProfile['followers_count'] ?? 0}', 'Подписчики'),
-              _stat(c,
-                  '${userProfile['posts_count'] ?? userPosts.length}', 'Посты'),
-              _stat(c, '${userProfile['following_count'] ?? 0}', 'Подписки'),
-            ],
+                    color: c.accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800)),
           ),
-          if (!widget.isOwnProfile) ...[
-            const SizedBox(height: 18),
-            Row(children: [
-              Expanded(
-                child: _actionBtn(c,
-                    label: isFollowing ? 'В друзьях' : 'Добавить',
-                    filled: !isFollowing, onTap: _toggleFollow),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _actionBtn(c,
-                    label: 'Написать', filled: false, onTap: _openChat),
-              ),
-            ]),
+        ],
+        const SizedBox(width: 6),
+        _auraBadge(c),
+      ],
+    );
+  }
+
+  Widget _auraBadge(BrutalColors c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+            colors: [c.accent3.withOpacity(0.9), c.accent.withOpacity(0.9)]),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Text('✦', style: TextStyle(color: Colors.white, fontSize: 11)),
+        const SizedBox(width: 3),
+        Text(_fmtAura(userProfile['aura']),
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800)),
+      ]),
+    );
+  }
+
+  Widget _statsAndActions(BrutalColors c) {
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: cleanCard(c, radius: 18),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _stat(c, _fmtAura(userProfile['aura']), context.t('aura')),
+            _stat(c, '${userProfile['followers_count'] ?? 0}',
+                context.t('followers')),
+            _stat(c, '${userProfile['posts_count'] ?? userPosts.length}',
+                context.t('postsLbl')),
+            _stat(c, '${userProfile['following_count'] ?? 0}',
+                context.t('following')),
           ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      _goalsProgressCard(c),
+      if (!widget.isOwnProfile) ...[
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: _actionBtn(c,
+                label:
+                    isFollowing ? context.t('friends') : context.t('addFriend'),
+                filled: !isFollowing, onTap: _toggleFollow),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _actionBtn(c,
+                label: context.t('messageBtn'), filled: false, onTap: _openChat),
+          ),
+        ]),
+      ],
+    ]);
+  }
+
+  String _fmtAura(dynamic v) {
+    final n = (v is num) ? v.toInt() : int.tryParse('${v ?? 0}') ?? 0;
+    if (n > 99999) return '99 999+';
+    final s = n.toString();
+    final b = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(' ');
+      b.write(s[i]);
+    }
+    return b.toString();
+  }
+
+  // Goals progress card: others see how many goals & % done, but NOT the titles.
+  Widget _goalsProgressCard(BrutalColors c) {
+    final total = (userProfile['goals_count'] ?? 0) as int;
+    final done = (userProfile['goals_done_count'] ?? 0) as int;
+    if (total == 0) return const SizedBox.shrink();
+    final pct = ((done / total) * 100).round();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: cleanCard(c, radius: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.flag_rounded, size: 18, color: c.accent),
+            const SizedBox(width: 8),
+            Text(context.t('goalsYear'),
+                style: TextStyle(
+                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
+            const Spacer(),
+            Text('$done ${context.t('ofWord')} $total',
+                style: TextStyle(
+                    color: c.inkSoft,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ]),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: (done / total).clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: c.ink.withOpacity(0.08),
+              valueColor: AlwaysStoppedAnimation(c.accent),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('$pct% ${context.t('completed')} · ${context.t('goalsHidden')}',
+              style: TextStyle(color: c.inkSoft, fontSize: 12)),
         ],
       ),
     );
@@ -340,7 +566,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle(c, 'О себе'),
+            _sectionTitle(c, context.t('aboutMe')),
             const SizedBox(height: 10),
             Text(userProfile['about'].toString(),
                 style: TextStyle(color: c.ink, fontSize: 14, height: 1.5)),
@@ -375,7 +601,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(c, 'Информация'),
+          _sectionTitle(c, context.t('info')),
           const SizedBox(height: 12),
           ..._detailDefs.map((d) {
             final key = d[0] as String;
@@ -440,9 +666,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
           color: c.surface, borderRadius: BorderRadius.circular(14)),
       child: Row(children: [
-        btn(0, 'Посты', Icons.grid_view_rounded),
-        btn(1, 'Репосты', Icons.repeat_rounded),
-        btn(2, 'История', Icons.auto_stories_rounded),
+        btn(0, context.t('tabPosts'), Icons.grid_view_rounded),
+        btn(1, context.t('tabReposts'), Icons.repeat_rounded),
+        btn(2, context.t('tabStories'), Icons.auto_stories_rounded),
       ]),
     );
   }
@@ -462,7 +688,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return _emptyBox(
           c,
           reposts ? Icons.repeat_rounded : Icons.article_outlined,
-          reposts ? 'Пока нет репостов' : 'Пока нет публикаций');
+          reposts ? context.t('noReposts') : context.t('noPostsYet'));
     }
     return Column(
       children: list.map((post) => Container(
@@ -478,7 +704,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Icon(Icons.repeat_rounded, size: 14, color: c.accent),
                     const SizedBox(width: 6),
                     Text(
-                        'Репост${post['repost_username'] != null ? ' из @${post['repost_username']}' : ''}',
+                        '${context.t('repostFrom')}${post['repost_username'] != null ? ' · @${post['repost_username']}' : ''}',
                         style: TextStyle(
                             color: c.accent,
                             fontSize: 12,
@@ -518,8 +744,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (userStories.isEmpty) {
       return _emptyBox(c, Icons.auto_stories_outlined,
           widget.isOwnProfile
-              ? 'Твои прошлые истории будут храниться здесь'
-              : 'Нет историй');
+              ? context.t('storiesArchiveHint')
+              : context.t('noStories'));
     }
     return Wrap(
       spacing: 8, runSpacing: 8,

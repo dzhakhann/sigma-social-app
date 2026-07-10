@@ -11,8 +11,10 @@ import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
 import 'video_circle_recorder_screen.dart';
+import 'profile_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final Map chat;
@@ -29,6 +31,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   final _msgCtrl = TextEditingController();
   final _editCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _msgFocus = FocusNode();
+  bool _showEmoji = false;
+  Map? _targetInfo; // for online/last-seen status
   List messages = [];
   bool isLoading = false;
   String? _chatId;
@@ -76,15 +81,91 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       setState(() => isLoading = false);
       return;
     }
+    _refreshStatus(user2Id.toString());
     final data = await ApiService.getOrCreateChat(widget.user['id'], user2Id);
     if (data['success'] == true) {
       _chatId = data['data']['id'];
       await _loadMessages();
       _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-        if (mounted) _loadMessages();
+        if (mounted) {
+          _loadMessages();
+          _refreshStatus(user2Id.toString());
+        }
       });
     }
     if (mounted) setState(() => isLoading = false);
+  }
+
+  Future<void> _refreshStatus(String targetId) async {
+    final d = await ApiService.getUser(targetId);
+    if (d['success'] == true && mounted) {
+      setState(() => _targetInfo = d['data']);
+    }
+  }
+
+  String _statusLabel() {
+    final ls = _targetInfo?['last_seen'];
+    if (ls == null) return '';
+    try {
+      final t = DateTime.parse(ls.toString()).toLocal();
+      final diff = DateTime.now().difference(t);
+      String two(int n) => n.toString().padLeft(2, '0');
+      if (diff.inSeconds < 70) return context.t('online');
+      if (diff.inMinutes < 60) {
+        return context.t('lastSeenMin').replaceAll('{n}', '${diff.inMinutes}');
+      }
+      if (diff.inHours < 24) {
+        return context.t('lastSeenAt').replaceAll('{t}', '${two(t.hour)}:${two(t.minute)}');
+      }
+      return context.t('lastSeenDate').replaceAll('{d}', '${two(t.day)}.${two(t.month)}');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  bool get _isOnline {
+    final ls = _targetInfo?['last_seen'];
+    if (ls == null) return false;
+    try {
+      return DateTime.now()
+              .difference(DateTime.parse(ls.toString()).toLocal())
+              .inSeconds <
+          70;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Tapping the chat header opens the person's profile (Telegram-style),
+  // with a smooth fade + scale ("expand from header") transition.
+  void _openTargetProfile() {
+    final id = _targetInfo?['id'] ??
+        widget.targetUser?['id'] ??
+        widget.chat['user2_id'] ??
+        widget.chat['other_user_id'];
+    if (id == null) return;
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 340),
+        pageBuilder: (_, __, ___) => ProfileScreen(
+          user: widget.user,
+          targetUserId: id,
+          isOwnProfile: id.toString() == widget.user['id'].toString(),
+        ),
+        transitionsBuilder: (_, a, __, child) {
+          final curved =
+              CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _loadMessages() async {
@@ -138,12 +219,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           const SizedBox(height: 20),
           ListTile(
             leading: _iconBox(Icons.camera_alt_rounded, c),
-            title: Text('Camera', style: TextStyle(color: c.ink)),
+            title: Text(context.t('camera'), style: TextStyle(color: c.ink)),
             onTap: () => Navigator.pop(context, ImageSource.camera),
           ),
           ListTile(
             leading: _iconBox(Icons.photo_library_rounded, c),
-            title: Text('Gallery', style: TextStyle(color: c.ink)),
+            title: Text(context.t('gallery'), style: TextStyle(color: c.ink)),
             onTap: () => Navigator.pop(context, ImageSource.gallery),
           ),
         ]),
@@ -156,7 +237,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-        const SnackBar(content: Text('Sending photo...')));
+        SnackBar(content: Text(context.t('sendingPhoto'))));
     final bytes = await File(file.path).readAsBytes();
     final url = await ApiService.uploadMedia(
       bytes,
@@ -190,7 +271,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-        const SnackBar(content: Text('Отправляем видеокружок...')));
+        SnackBar(content: Text(context.t('sendingVideo'))));
     final bytes = await file.readAsBytes();
     final url = await ApiService.uploadMedia(
       bytes,
@@ -253,7 +334,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-        const SnackBar(content: Text('Sending voice...')));
+        SnackBar(content: Text(context.t('sendingVoice'))));
     final bytes = await File(path).readAsBytes();
     final url = await ApiService.uploadMedia(
       bytes,
@@ -317,7 +398,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           if (msg['message_type'] == 'text' || msg['message_type'] == null)
             ListTile(
               leading: _iconBox(Icons.edit_rounded, c),
-              title: Text('Edit', style: TextStyle(color: c.ink)),
+              title: Text(context.t('editMsgLabel'), style: TextStyle(color: c.ink)),
               onTap: () {
                 Navigator.pop(context);
                 _editCtrl.text = msg['content'];
@@ -326,7 +407,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             ),
           ListTile(
             leading: _iconBox(Icons.delete_rounded, c, color: c.danger),
-            title: Text('Delete', style: TextStyle(color: c.danger)),
+            title: Text(context.t('deleteMsg'), style: TextStyle(color: c.danger)),
             onTap: () {
               Navigator.pop(context);
               ApiService.deleteMessage(msg['id'])
@@ -367,27 +448,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               size: 18, color: c.ink),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Row(children: [
+        title: GestureDetector(
+          onTap: _openTargetProfile,
+          behavior: HitTestBehavior.opaque,
+          child: Row(children: [
           _CircleAvatar(url: chatAvatar, size: 34),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(chatName,
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: c.ink)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(chatName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: c.ink)),
+                if (_statusLabel().isNotEmpty)
+                  Text(_statusLabel(),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: _isOnline ? c.accent : c.inkSoft)),
+              ],
+            ),
           ),
         ]),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.videocam_rounded, color: c.inkSoft),
-              onPressed: () {}),
-          IconButton(
-              icon: Icon(Icons.call_rounded, color: c.inkSoft),
-              onPressed: () {}),
-        ],
+        ),
       ),
-      body: Column(children: [
+      body: Container(
+        color: c.bg,
+        child: Column(children: [
         Expanded(
           child: isLoading
               ? Center(
@@ -395,7 +487,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       color: c.accent, strokeWidth: 2))
               : messages.isEmpty
                   ? Center(
-                      child: Text('No messages yet',
+                      child: Text(context.t('noMessages'),
                           style: TextStyle(color: c.inkSoft)))
                   : ListView.builder(
                       controller: _scrollCtrl,
@@ -426,7 +518,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       borderRadius: BorderRadius.circular(2))),
               const SizedBox(width: 10),
               Expanded(
-                  child: Text('Edit message',
+                  child: Text(context.t('editMsg'),
                       style:
                           TextStyle(color: c.accent, fontSize: 13))),
               GestureDetector(
@@ -440,8 +532,44 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
         // Input area
         _buildInput(c),
+        if (_showEmoji)
+          EmojiPanel(onEmoji: _insertEmoji, onBackspace: _backspaceEmoji),
       ]),
+      ),
     );
+  }
+
+  TextEditingController get _activeCtrl =>
+      _editingId != null ? _editCtrl : _msgCtrl;
+
+  void _toggleEmoji() {
+    if (_showEmoji) {
+      setState(() => _showEmoji = false);
+      _msgFocus.requestFocus();
+    } else {
+      FocusScope.of(context).unfocus(); // hide keyboard first
+      setState(() => _showEmoji = true);
+    }
+  }
+
+  void _insertEmoji(String e) {
+    final ctrl = _activeCtrl;
+    final sel = ctrl.selection;
+    final text = ctrl.text;
+    final start =
+        (sel.start < 0 ? text.length : sel.start).clamp(0, text.length);
+    final end = (sel.end < 0 ? text.length : sel.end).clamp(0, text.length);
+    ctrl.text = text.replaceRange(start, end, e);
+    ctrl.selection = TextSelection.collapsed(offset: start + e.length);
+  }
+
+  void _backspaceEmoji() {
+    final ctrl = _activeCtrl;
+    if (ctrl.text.isEmpty) return;
+    // Remove the last grapheme (correctly deletes a whole emoji).
+    final newText = ctrl.text.characters.skipLast(1).toString();
+    ctrl.text = newText;
+    ctrl.selection = TextSelection.collapsed(offset: newText.length);
   }
 
   Widget _buildMessageBubble(Map msg, bool isOwn, BrutalColors c) {
@@ -595,12 +723,40 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             Text(msg['content'] ?? '',
                 style: TextStyle(
                     color: textColor, fontSize: 15, height: 1.3)),
-            if (msg['is_edited'] == true)
-              Text('edited',
-                  style: TextStyle(color: dimColor, fontSize: 10)),
+            const SizedBox(height: 3),
+            _metaRow(msg, isOwn, c),
           ]),
         );
     }
+  }
+
+  String _fmtTime(dynamic raw) {
+    if (raw == null) return '';
+    try {
+      final d = DateTime.parse(raw.toString()).toLocal();
+      final h = d.hour.toString().padLeft(2, '0');
+      final m = d.minute.toString().padLeft(2, '0');
+      return '$h:$m';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // Telegram-style meta: time + (for own messages) ✓ sent / ✓✓ read.
+  Widget _metaRow(Map msg, bool isOwn, BrutalColors c) {
+    final read = msg['is_read'] == true;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      if (msg['is_edited'] == true)
+        Text('${context.t('editedMark')} · ',
+            style: TextStyle(color: c.inkSoft, fontSize: 10)),
+      Text(_fmtTime(msg['created_at']),
+          style: TextStyle(color: c.inkSoft, fontSize: 10)),
+      if (isOwn) ...[
+        const SizedBox(width: 4),
+        Icon(read ? Icons.done_all_rounded : Icons.done_rounded,
+            size: 14, color: read ? c.accent : c.inkSoft),
+      ],
+    ]);
   }
 
   Widget _buildInput(BrutalColors c) {
@@ -659,7 +815,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.chevron_left_rounded,
                         color: c.inkSoft, size: 18),
-                    Text('Slide to cancel',
+                    Text(context.t('slideCancel'),
                         style:
                             TextStyle(color: c.inkSoft, fontSize: 13)),
                   ]),
@@ -695,7 +851,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         top: false,
         child: Row(children: [
           // Chat is text + emoji only (no media files).
-          EmojiPickerButton(controller: _msgCtrl),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+                _showEmoji
+                    ? Icons.keyboard_rounded
+                    : Icons.emoji_emotions_outlined,
+                color: c.inkSoft),
+            onPressed: _toggleEmoji,
+          ),
 
           // Text field
           Expanded(
@@ -707,12 +871,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               child: TextField(
                 controller:
                     _editingId != null ? _editCtrl : _msgCtrl,
+                focusNode: _msgFocus,
+                onTap: () {
+                  if (_showEmoji) setState(() => _showEmoji = false);
+                },
                 maxLines: null,
                 style: TextStyle(color: c.ink, fontSize: 15),
                 decoration: InputDecoration(
-                  hintText: _editingId != null
-                      ? 'Edit message...'
-                      : 'Message...',
+                  hintText: context.t('messageHint'),
                   hintStyle: TextStyle(color: c.inkSoft),
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
@@ -802,6 +968,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     SocketService().onMessageReceived = null;
     _msgCtrl.dispose();
     _editCtrl.dispose();
+    _msgFocus.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }

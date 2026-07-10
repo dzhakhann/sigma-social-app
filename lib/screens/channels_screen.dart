@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'profile_screen.dart';
 
 /// Threads-style channel directory. Each "channel" is a content bot that
@@ -53,7 +54,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
   Widget build(BuildContext context) {
     final c = context.k;
     return Scaffold(
-      appBar: AppBar(title: const Text('Channels')),
+      appBar: AppBar(title: Text(context.t('channelsTitle'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -66,8 +67,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(6, 6, 6, 14),
                       child: Text(
-                        'Subscribe to channels for a feed full of news, '
-                        'sport, movies, science and more — updated daily.',
+                        context.t('channelsDesc'),
                         style: TextStyle(color: c.inkSoft, height: 1.35),
                       ),
                     );
@@ -127,7 +127,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                         ],
                       ),
                       subtitle: Text(
-                        '@$handle · ${ch['followers_count'] ?? 0} subscribers',
+                        '@$handle · ${ch['followers_count'] ?? 0} ${context.t('subscribersWord')}',
                         style: TextStyle(color: c.inkSoft, fontSize: 12),
                       ),
                       trailing: SizedBox(
@@ -143,7 +143,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                                   padding:
                                       const EdgeInsets.symmetric(horizontal: 14),
                                 ),
-                                child: const Text('Subscribed'),
+                                child: Text(context.t('subscribed')),
                               )
                             : FilledButton(
                                 onPressed: () => _toggle(ch),
@@ -154,7 +154,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                                   padding:
                                       const EdgeInsets.symmetric(horizontal: 18),
                                 ),
-                                child: const Text('Subscribe'),
+                                child: Text(context.t('subscribe')),
                               ),
                       ),
                     ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'goals_screen.dart' show catOf;
 
 /// Spotify-Wrapped–style year report, built from the user's goals.
@@ -48,12 +49,12 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(r['success'] == true
-              ? 'Опубликовано в твою сторис ✓'
-              : 'Не удалось опубликовать')));
+              ? context.t('publishedToStory')
+              : context.t('publishFailed'))));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Не удалось собрать картинку')));
+            SnackBar(content: Text(context.t('couldNotRender'))));
       }
     }
     if (mounted) setState(() => _sharing = false);
@@ -63,7 +64,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
   Widget build(BuildContext context) {
     final c = context.k;
     return Scaffold(
-      appBar: AppBar(title: Text('Мой ${widget.year}')),
+      appBar: AppBar(title: Text(context.t('myYearOf').replaceAll('{year}', '${widget.year}'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -86,14 +87,13 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.ios_share_rounded),
-                    label: Text(_sharing ? 'Публикуем…' : 'Опубликовать в сторис',
+                    label: Text(_sharing ? context.t('publishing') : context.t('publishToStory'),
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Совет: сохрани картинку и выложи в сторис Instagram — '
-                  'финальный отчёт за весь год соберётся в декабре.',
+                  context.t('yearTip'),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: c.inkSoft, fontSize: 12, height: 1.4),
                 ),
@@ -125,7 +125,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Поставь цели на ${widget.year} —\nи здесь появится твой\nкрасивый годовой отчёт ✨',
+                context.t('yearEmpty').replaceAll('{year}', '${widget.year}'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     color: Colors.white,
@@ -187,22 +187,22 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
                     height: 1,
                     fontWeight: FontWeight.w900)),
             Text(
-                completed == 1 ? 'цель достигнута' : 'целей достигнуто',
+                completed == 1 ? context.t('goalReached') : context.t('goalsReached'),
                 style: TextStyle(
                     color: Colors.white.withOpacity(0.95),
                     fontSize: 22,
                     fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            Text('из $total поставленных · $rate% выполнено',
+            Text(context.t('goalsSet').replaceAll('{total}', '$total').replaceAll('{rate}', '$rate'),
                 style: TextStyle(
                     color: Colors.white.withOpacity(0.85), fontSize: 14)),
             const SizedBox(height: 22),
-            _stat('Средний прогресс', '$avg%'),
+            _stat(context.t('avgProgress'), '$avg%'),
             if (topCat != null)
-              _stat('Главное направление', catOf(topCat).label),
+              _stat(context.t('mainDirection'), context.t('cat_$topCat')),
             const Spacer(),
             if (highlights.isNotEmpty) ...[
-              Text('ЧЕГО ТЫ ДОБИЛСЯ',
+              Text(context.t('whatYouAchieved'),
                   style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
                       fontWeight: FontWeight.w800,

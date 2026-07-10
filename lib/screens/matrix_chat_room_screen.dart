@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:matrix/matrix.dart';
 
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/brutal.dart';
 
 class MatrixChatRoomScreen extends StatefulWidget {
@@ -133,7 +134,7 @@ class _MatrixChatRoomScreenState extends State<MatrixChatRoomScreen> {
                       textCapitalization: TextCapitalization.sentences,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
-                        hintText: 'Message',
+                        hintText: context.t('messageHint'),
                         filled: true,
                         fillColor: c.surface2,
                         contentPadding: const EdgeInsets.symmetric(
@@ -218,7 +219,7 @@ class _Bubble extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              pending ? 'Sending…' : time,
+              pending ? context.t('sendingMsg') : time,
               style: TextStyle(
                 fontSize: 10,
                 color: (mine ? c.onAccent : c.inkSoft).withOpacity(0.75),

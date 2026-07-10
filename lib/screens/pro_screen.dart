@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 
 /// Sigmacta Pro — subscription upsell. Real payment is wired via Google Play
 /// Billing at publish time; for now the button explains it's coming.
@@ -8,11 +9,11 @@ class ProScreen extends StatelessWidget {
   const ProScreen({Key? key, required this.user}) : super(key: key);
 
   static const _benefits = [
-    ['verified_rounded', 'Галочка верификации', 'Синяя галочка рядом с именем — доверие и статус.'],
-    ['block_rounded', 'Без рекламы', 'Чистая лента и профиль без промо-блоков.'],
-    ['auto_awesome_rounded', 'Больше ИИ', 'Расширенные лимиты ИИ-коуча и рекомендаций.'],
-    ['insights_rounded', 'Продвинутая аналитика целей', 'Глубокая статистика прогресса и графики.'],
-    ['palette_rounded', 'Эксклюзивные темы и рамки', 'Оформление профиля, доступное только Pro.'],
+    ['verified_rounded', 'proB1t', 'proB1d'],
+    ['block_rounded', 'proB2t', 'proB2d'],
+    ['auto_awesome_rounded', 'proB3t', 'proB3d'],
+    ['insights_rounded', 'proB4t', 'proB4d'],
+    ['palette_rounded', 'proB5t', 'proB5d'],
   ];
 
   IconData _icon(String k) {
@@ -31,7 +32,7 @@ class ProScreen extends StatelessWidget {
     final c = context.k;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: const Text('Sigmacta Pro')),
+      appBar: AppBar(title: Text(context.t('proTitle'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -52,14 +53,14 @@ class ProScreen extends StatelessWidget {
                   const Icon(Icons.workspace_premium_rounded,
                       color: Colors.white, size: 28),
                   const SizedBox(width: 10),
-                  const Text('Sigmacta Pro',
+                  Text(context.t('proTitle'),
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: 22,
                           fontWeight: FontWeight.w900)),
                 ]),
                 const SizedBox(height: 8),
-                Text('Раскрой максимум: статус, чистый интерфейс и больше ИИ.',
+                Text(context.t('proSubtitle'),
                     style: TextStyle(
                         color: Colors.white.withOpacity(0.95),
                         fontSize: 14,
@@ -89,13 +90,13 @@ class ProScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(b[1],
+                        Text(context.t(b[1]),
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
                                 color: c.ink)),
                         const SizedBox(height: 2),
-                        Text(b[2],
+                        Text(context.t(b[2]),
                             style: TextStyle(color: c.inkSoft, fontSize: 12.5)),
                       ],
                     ),
@@ -114,18 +115,16 @@ class ProScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14)),
               ),
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text(
-                        'Оплата подключится при публикации в Google Play. Скоро!')));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(context.t('proComingSoon'))));
               },
-              child: const Text('Оформить Pro',
+              child: Text(context.t('proBuyBtn'),
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             ),
           ),
           const SizedBox(height: 10),
           Text(
-            'Подписка активируется через Google Play после публикации приложения. '
-            'Оплата и управление — в аккаунте Google Play.',
+            context.t('proFootnote'),
             textAlign: TextAlign.center,
             style: TextStyle(color: c.inkSoft, fontSize: 12, height: 1.4),
           ),

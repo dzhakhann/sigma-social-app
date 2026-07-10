@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
 
 /// Threads-style thread view: the post at the top, replies below as a thread.
@@ -85,7 +86,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
           const SizedBox(height: 8),
           ListTile(
             leading: Icon(Icons.edit_outlined, color: c.accent),
-            title: const Text('Редактировать'),
+            title: Text(context.t('editComment')),
             onTap: () {
               Navigator.pop(context);
               _startEdit(cm);
@@ -93,7 +94,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
           ),
           ListTile(
             leading: Icon(Icons.delete_outline, color: c.danger),
-            title: Text('Удалить', style: TextStyle(color: c.danger)),
+            title: Text(context.t('deleteComment'), style: TextStyle(color: c.danger)),
             onTap: () {
               Navigator.pop(context);
               _delete(cm['id'].toString());
@@ -201,7 +202,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                   // 2) the "Ответы" label under the publication
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Text('Ответы',
+                    child: Text(context.t('repliesLabel'),
                         style: TextStyle(
                             color: c.ink,
                             fontSize: 15,
@@ -216,7 +217,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                     Padding(
                       padding: const EdgeInsets.only(top: 30, bottom: 40),
                       child: Center(
-                          child: Text('Пока нет ответов. Будь первым!',
+                          child: Text(context.t('noReplies'),
                               style: TextStyle(color: c.inkSoft))),
                     )
                   else
@@ -313,7 +314,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                     const Spacer(),
                     Text(
                         _time(cm['created_at']) +
-                            (cm['is_edited'] == true ? ' · изменено' : ''),
+                            (cm['is_edited'] == true ? ' · ${context.t('editedMark')}' : ''),
                         style: TextStyle(color: c.inkSoft, fontSize: 12)),
                   ]),
                   const SizedBox(height: 2),
@@ -348,7 +349,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                       Icon(Icons.edit_rounded, size: 16, color: c.accent),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text('Редактирование комментария',
+                        child: Text(context.t('editingComment'),
                             style: TextStyle(
                                 color: c.accent,
                                 fontWeight: FontWeight.w600,
@@ -376,7 +377,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
               textCapitalization: TextCapitalization.sentences,
               onSubmitted: (_) => editing ? _saveEdit() : _add(),
               decoration: InputDecoration(
-                  hintText: editing ? 'Изменить комментарий…' : 'Написать ответ…',
+                  hintText: editing ? context.t('editCommentHint') : context.t('writeReplyHint'),
                   isDense: true),
             ),
           ),

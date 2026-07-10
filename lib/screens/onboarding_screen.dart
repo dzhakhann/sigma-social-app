@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'main_screen.dart';
 
 /// Shown once right after registration. Collects the full profile (everything
@@ -58,13 +59,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (hf is List) _hidden.addAll(hf.map((e) => e.toString()));
   }
 
-  static const _genders = ['Мужской', 'Женский', 'Другое'];
-  static const _relationships = [
-    'Холост/Не замужем',
-    'В отношениях',
-    'Женат/Замужем',
-    'Всё сложно',
-  ];
+  List<String> get _genders =>
+      [context.t('gMale'), context.t('gFemale'), context.t('gOther')];
+  List<String> get _relationships => [
+        context.t('rSingle'),
+        context.t('rRelationship'),
+        context.t('rMarried'),
+        context.t('rComplicated'),
+      ];
 
   Future<void> _finish({bool skip = false}) async {
     if (skip) {
@@ -116,12 +118,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       backgroundColor: c.bg,
       appBar: AppBar(
-        title: Text(widget.editMode ? 'Редактировать профиль' : 'Расскажи о себе'),
+        title: Text(widget.editMode
+            ? context.t('obTitleEdit')
+            : context.t('obTitleNew')),
         actions: [
           if (!widget.editMode)
             TextButton(
               onPressed: _saving ? null : () => _finish(skip: true),
-              child: Text('Позже', style: TextStyle(color: c.inkSoft)),
+              child: Text(context.t('later'), style: TextStyle(color: c.inkSoft)),
             ),
         ],
       ),
@@ -151,8 +155,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Заполни профиль, чтобы тебя было интереснее узнать. '
-                  'Значок 👁 у поля — показать в профиле или скрыть.',
+                  context.t('obIntro'),
                   style: TextStyle(color: c.ink, height: 1.4, fontSize: 13),
                 ),
               ),
@@ -160,28 +163,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 6),
 
-          _section(c, Icons.badge_outlined, 'Имя'),
-          _field(c, 'name', 'Имя', _first),
-          _field(c, 'name', 'Фамилия', _last, showEye: false),
-          _field(c, 'name', 'Отчество', _middle, showEye: false),
+          _section(c, Icons.badge_outlined, context.t('secName')),
+          _field(c, 'name', context.t('fFirst'), _first),
+          _field(c, 'name', context.t('fLast'), _last, showEye: false),
+          _field(c, 'name', context.t('fMiddle'), _middle, showEye: false),
 
-          _section(c, Icons.info_outline_rounded, 'Основное'),
-          _field(c, 'birthday', 'Дата рождения (напр. 05.07.2000)', _birthday),
-          _chips(c, 'gender', 'Пол', _genders, _gender,
+          _section(c, Icons.info_outline_rounded, context.t('secBasic')),
+          _field(c, 'birthday', context.t('fBirthday'), _birthday),
+          _chips(c, 'gender', context.t('fGender'), _genders, _gender,
               (v) => setState(() => _gender = v)),
-          _field(c, 'birthplace', 'Место рождения', _birthplace),
+          _field(c, 'birthplace', context.t('fBirthplace'), _birthplace),
 
-          _section(c, Icons.school_outlined, 'Образование и работа'),
-          _field(c, 'education', 'Учёба (школа, университет)', _education),
-          _field(c, 'work', 'Место работы', _work),
+          _section(c, Icons.school_outlined, context.t('secEdu')),
+          _field(c, 'education', context.t('fEducation'), _education),
+          _field(c, 'work', context.t('fWork'), _work),
 
-          _section(c, Icons.auto_awesome_outlined, 'Дополнительно'),
-          _field(c, 'website', 'Ссылки (сайт, соцсети)', _website),
-          _chips(c, 'relationship', 'Семейное положение', _relationships,
+          _section(c, Icons.auto_awesome_outlined, context.t('secMore')),
+          _field(c, 'website', context.t('fWebsite'), _website),
+          _chips(c, 'relationship', context.t('fRelationship'), _relationships,
               _relationship, (v) => setState(() => _relationship = v)),
-          _field(c, 'skills', 'Способности и хобби: языки, предметы, спорт…',
-              _skills, maxLines: 3),
-          _field(c, 'about', 'О себе', _about, maxLines: 3),
+          _field(c, 'skills', context.t('fSkills'), _skills, maxLines: 3),
+          _field(c, 'about', context.t('fAbout'), _about, maxLines: 3),
 
           const SizedBox(height: 22),
           SizedBox(
@@ -199,8 +201,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       width: 20, height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Text('Сохранить и продолжить',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  : Text(context.t('saveContinue'),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -232,7 +234,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _eye(BrutalColors c, String key) {
     final hidden = _hidden.contains(key);
     return IconButton(
-      tooltip: hidden ? 'Скрыто — нажми чтобы показать' : 'Видно всем',
+      tooltip: hidden ? context.t('hiddenTip') : context.t('visibleTip'),
       visualDensity: VisualDensity.compact,
       icon: Icon(hidden ? Icons.visibility_off_rounded : Icons.visibility_rounded,
           size: 20, color: hidden ? c.inkSoft : c.accent),

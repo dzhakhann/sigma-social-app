@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 
 class ReelsScreen extends StatefulWidget {
   final Map user;
@@ -45,17 +46,17 @@ class _ReelsScreenState extends State<ReelsScreen> {
         final dc = ctx.k;
         return AlertDialog(
           backgroundColor: dc.surface,
-          title: const Text('Add caption'),
+          title: Text(context.t('addCaption')),
           content: TextField(
               controller: captionCtrl,
-              decoration: const InputDecoration(hintText: 'Caption...')),
+              decoration: InputDecoration(hintText: context.t('addCaption') + '...')),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Cancel', style: TextStyle(color: dc.inkSoft))),
+                child: Text(context.t('cancelBtn'), style: TextStyle(color: dc.inkSoft))),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Upload', style: TextStyle(color: dc.accent))),
+                child: Text(context.t('upload'), style: TextStyle(color: dc.accent))),
           ],
         );
       },
@@ -64,7 +65,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
 
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('Uploading reel...')));
+    messenger.showSnackBar(SnackBar(content: Text(context.t('uploadingReel'))));
 
     try {
       final bytes = await file.readAsBytes();
@@ -76,7 +77,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
             widget.user['id'], uploadResult['url'], captionCtrl.text);
         if (mounted) _load();
         messenger.showSnackBar(
-            const SnackBar(content: Text('Reel uploaded!')));
+            SnackBar(content: Text(context.t('reelUploaded'))));
       } else {
         messenger.showSnackBar(
             SnackBar(content: Text('Error: ${uploadResult['error']}')));
@@ -102,14 +103,14 @@ class _ReelsScreenState extends State<ReelsScreen> {
                         const Icon(Icons.videocam_off,
                             size: 60, color: Colors.grey),
                         const SizedBox(height: 16),
-                        const Text('No reels yet',
-                            style: TextStyle(color: Colors.grey)),
+                        Text(context.t('noReels'),
+                            style: const TextStyle(color: Colors.grey)),
                         const SizedBox(height: 20),
                         ElevatedButton.icon(
                             onPressed: _upload,
                             icon: const Icon(Icons.add, color: Colors.black),
-                            label: const Text('Upload first reel',
-                                style: TextStyle(color: Colors.black))),
+                            label: Text(context.t('uploadFirstReel'),
+                                style: const TextStyle(color: Colors.black))),
                       ]))
                 : PageView.builder(
                     controller: _pageCtrl,
@@ -137,8 +138,8 @@ class _ReelsScreenState extends State<ReelsScreen> {
               child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                const Text('Reels',
-                    style: TextStyle(
+                Text(context.t('reelsTitle'),
+                    style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.bold)),

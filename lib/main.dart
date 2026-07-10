@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'theme/brutal_theme.dart';
 import 'screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Load saved language (default = English) before the first frame.
+  await loadAppConfig();
+  // Enables background audio + lock-screen / notification controls for podcasts.
+  try {
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'com.sigmacta.audio',
+      androidNotificationChannelName: 'Sigmacta',
+      androidNotificationOngoing: true,
+    );
+  } catch (_) {}
   runApp(const PulseApp());
 }
 

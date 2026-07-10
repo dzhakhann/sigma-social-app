@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 
 /// GIF search (Tenor via backend). Returns the selected GIF's full URL via
 /// Navigator.pop. No video — GIFs only.
@@ -41,7 +42,7 @@ class _GifPickerScreenState extends State<GifPickerScreen> {
     return Scaffold(
       backgroundColor: c.bg,
       appBar: AppBar(
-        title: const Text('Выбрать GIF'),
+        title: Text(context.t('gifPickerTitle')),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60),
           child: Padding(
@@ -51,7 +52,7 @@ class _GifPickerScreenState extends State<GifPickerScreen> {
               autofocus: true,
               onChanged: _onChanged,
               decoration: InputDecoration(
-                hintText: 'Поиск GIF…',
+                hintText: context.t('gifSearch'),
                 prefixIcon: Icon(Icons.search, color: c.accent),
               ),
             ),
@@ -65,8 +66,7 @@ class _GifPickerScreenState extends State<GifPickerScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(28),
                     child: Text(
-                      'GIF пока недоступны.\nДобавьте ключ Giphy на сервере '
-                      '(переменная GIPHY_API_KEY).',
+                      context.t('gifUnavailable'),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: c.inkSoft, height: 1.4),
                     ),

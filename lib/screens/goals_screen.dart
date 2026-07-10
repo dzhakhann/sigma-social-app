@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'year_review_screen.dart';
 
 // Goal categories: id → (label, icon, color-picker)
@@ -95,14 +96,14 @@ class _GoalsScreenState extends State<GoalsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Новая цель на $year',
+              Text(context.t('newGoalYear').replaceAll('{year}', '$year'),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 14),
               TextField(
                 controller: ctrl,
                 autofocus: true,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(hintText: 'Например: выучить английский'),
+                decoration: InputDecoration(hintText: context.t('goalHint')),
               ),
               const SizedBox(height: 14),
               Wrap(
@@ -123,7 +124,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(k.icon, size: 16, color: sel ? col : c.inkSoft),
                         const SizedBox(width: 6),
-                        Text(k.label,
+                        Text(ctx.t('cat_${k.id}'),
                             style: TextStyle(
                                 color: sel ? c.ink : c.inkSoft,
                                 fontWeight: FontWeight.w600, fontSize: 13)),
@@ -147,8 +148,8 @@ class _GoalsScreenState extends State<GoalsScreen> {
                     await ApiService.createGoal(ctrl.text.trim(), cat, year);
                     _load();
                   },
-                  child: const Text('Добавить цель',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: Text(context.t('addGoalBtn'),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],
@@ -174,7 +175,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
               Text(g['title'] ?? '',
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
-              Text('Прогресс: ${prog.round()}%',
+              Text(context.t('progressLbl').replaceAll('{n}', '${prog.round()}'),
                   style: TextStyle(color: c.inkSoft)),
               Slider(
                 value: prog, min: 0, max: 100, divisions: 20,
@@ -197,7 +198,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           g['id'].toString(), {'progress': prog.round()});
                       _load();
                     },
-                    child: const Text('Сохранить'),
+                    child: Text(context.t('saveBtn')),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -216,7 +217,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       await _load();
                       _celebrate();
                     },
-                    child: const Text('Выполнено ✓'),
+                    child: Text(context.t('goalDoneBtn')),
                   ),
                 ),
               ]),
@@ -232,7 +233,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                     },
                     icon: Icon(Icons.pause_circle_outline,
                         color: c.inkSoft, size: 20),
-                    label: Text('Отложить', style: TextStyle(color: c.inkSoft)),
+                    label: Text(context.t('postponeBtn'), style: TextStyle(color: c.inkSoft)),
                   ),
                 ),
                 Expanded(
@@ -243,7 +244,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                       _load();
                     },
                     icon: Icon(Icons.delete_outline, color: c.danger, size: 20),
-                    label: Text('Удалить', style: TextStyle(color: c.danger)),
+                    label: Text(context.t('deleteBtn'), style: TextStyle(color: c.danger)),
                   ),
                 ),
               ]),
@@ -278,7 +279,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.check_circle_rounded, color: c.accent2, size: 64),
                   const SizedBox(height: 12),
-                  Text('Цель выполнена! 🎉',
+                  Text(context.t('goalCompletedMsg'),
                       style: TextStyle(
                           color: c.ink,
                           fontWeight: FontWeight.w800,
@@ -297,10 +298,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
     final c = context.k;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Мои цели · $year'),
+        title: Text(context.t('myGoalsTitle').replaceAll('{year}', '$year')),
         actions: [
           IconButton(
-            tooltip: 'Мой год',
+            tooltip: context.t('myYearTooltip'),
             icon: Icon(Icons.auto_awesome_rounded, color: c.accent),
             onPressed: () => Navigator.push(
               context,
@@ -314,7 +315,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
         backgroundColor: c.accent,
         onPressed: _addGoal,
         icon: const Icon(Icons.add),
-        label: const Text('Цель'),
+        label: Text(context.t('goalFabBtn')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -372,10 +373,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Твой $year',
+              Text(context.t('myYearHeader').replaceAll('{year}', '$year'),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              Text('$_done из ${_goals.length} целей выполнено',
+              Text(context.t('doneOfGoals').replaceAll('{done}', '$_done').replaceAll('{total}', '${_goals.length}'),
                   style: TextStyle(color: c.inkSoft, fontSize: 13)),
               const SizedBox(height: 4),
               Text(_motivation(),
@@ -391,11 +392,11 @@ class _GoalsScreenState extends State<GoalsScreen> {
   }
 
   String _motivation() {
-    if (_goals.isEmpty) return 'Начни с одной цели ✨';
-    if (_avg >= 80) return 'Ты почти у цели — держись! 🔥';
-    if (_avg >= 50) return 'Отличный темп, продолжай! 💪';
-    if (_avg >= 20) return 'Хорошее начало, не сбавляй 🚀';
-    return 'Сделай сегодня один шаг 👟';
+    if (_goals.isEmpty) return context.t('motivStart');
+    if (_avg >= 80) return context.t('motivHigh');
+    if (_avg >= 50) return context.t('motivMid');
+    if (_avg >= 20) return context.t('motivLow');
+    return context.t('motivStep');
   }
 
   Widget _empty(BrutalColors c) => Padding(
@@ -403,10 +404,10 @@ class _GoalsScreenState extends State<GoalsScreen> {
         child: Column(children: [
           Icon(Icons.flag_outlined, size: 54, color: c.inkSoft),
           const SizedBox(height: 12),
-          Text('Пока нет целей на $year',
+          Text(context.t('noGoalsYear').replaceAll('{year}', '$year'),
               style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          Text('Поставь первую цель — в конце года\nсоберём красивый отчёт',
+          Text(context.t('noGoalsYearHint'),
               textAlign: TextAlign.center,
               style: TextStyle(color: c.inkSoft, fontSize: 13, height: 1.4)),
         ]),
@@ -454,7 +455,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.pause_circle_outline, color: c.inkSoft, size: 18),
                   const SizedBox(width: 4),
-                  Text('отложена',
+                  Text(context.t('postponedLabel'),
                       style: TextStyle(color: c.inkSoft, fontSize: 12)),
                 ])
               else

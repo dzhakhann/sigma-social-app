@@ -38,7 +38,7 @@ class SettingsScreen extends StatelessWidget {
                 const Icon(Icons.workspace_premium_rounded,
                     color: Colors.white, size: 26),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -47,7 +47,7 @@ class SettingsScreen extends StatelessWidget {
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
                               fontSize: 16)),
-                      Text('Галочка · без рекламы · больше ИИ',
+                      Text(context.t('proSettingsSub'),
                           style:
                               TextStyle(color: Colors.white70, fontSize: 12)),
                     ],

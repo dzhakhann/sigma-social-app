@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/session.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'main_screen.dart';
 import 'recovery_phrase_screen.dart';
 import 'recover_screen.dart';
@@ -61,17 +62,17 @@ class _LoginScreenState extends State<LoginScreen>
     final password = _passCtrl.text;
 
     if (username.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Fill in all fields');
+      setState(() => _error = context.t('fillAll'));
       return;
     }
 
     if (_registerMode) {
       if (_passCtrl.text != _pass2Ctrl.text) {
-        setState(() => _error = 'Passwords do not match');
+        setState(() => _error = context.t('passMismatch'));
         return;
       }
       if (password.length < 6) {
-        setState(() => _error = 'Password must be at least 6 characters');
+        setState(() => _error = context.t('passTooShort'));
         return;
       }
     }
@@ -87,7 +88,7 @@ class _LoginScreenState extends State<LoginScreen>
         final reg = await ApiService.register(username, password);
         if (reg['success'] != true) {
           setState(() {
-            _error = reg['error'] ?? 'Registration failed';
+            _error = reg['error'] ?? context.t('registrationFailed');
             _isLoading = false;
           });
           return;
@@ -126,10 +127,10 @@ class _LoginScreenState extends State<LoginScreen>
           }
         }
       } else {
-        setState(() => _error = data['error'] ?? 'Login failed');
+        setState(() => _error = data['error'] ?? context.t('loginFailed'));
       }
     } catch (e) {
-      setState(() => _error = 'Connection error');
+      if (mounted) setState(() => _error = context.t('connError'));
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -144,7 +145,9 @@ class _LoginScreenState extends State<LoginScreen>
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnim,
-          child: SingleChildScrollView(
+          child: Stack(
+            children: [
+              SingleChildScrollView(
             padding: EdgeInsets.symmetric(
               horizontal: 28,
               vertical: size.height * 0.06,
@@ -160,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                   // ── Heading ───────────────────────────────────────────
                   Text(
-                    _registerMode ? 'Create account' : 'Welcome back',
+                    _registerMode ? context.t('createAccount') : context.t('welcome'),
                     style: TextStyle(
                       color: c.ink,
                       fontSize: 26,
@@ -171,8 +174,8 @@ class _LoginScreenState extends State<LoginScreen>
                   const SizedBox(height: 4),
                   Text(
                     _registerMode
-                        ? 'No email. No phone. Just a username.'
-                        : 'Sign in with your username',
+                        ? context.t('registerSubtitle')
+                        : context.t('signInSubtitle'),
                     style:
                         TextStyle(color: c.inkSoft, fontSize: 14, height: 1.4),
                   ),
@@ -181,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen>
                   // ── Username field ─────────────────────────────────────
                   _Field(
                     controller: _userCtrl,
-                    hint: 'Username',
+                    hint: context.t('username'),
                     icon: Icons.alternate_email_rounded,
                     c: c,
                     inputFormatters: [
@@ -198,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen>
                   // ── Password field ─────────────────────────────────────
                   _Field(
                     controller: _passCtrl,
-                    hint: 'Password',
+                    hint: context.t('password'),
                     icon: Icons.lock_outline_rounded,
                     c: c,
                     obscure: _obscurePass,
@@ -221,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen>
                     const SizedBox(height: 14),
                     _Field(
                       controller: _pass2Ctrl,
-                      hint: 'Confirm password',
+                      hint: context.t('confirmPassword'),
                       icon: Icons.lock_outline_rounded,
                       c: c,
                       obscure: true,
@@ -246,7 +249,7 @@ class _LoginScreenState extends State<LoginScreen>
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'We don\'t collect your personal data. No email, no phone — your identity is just your username.',
+                            context.t('privacyNote'),
                             style: TextStyle(
                                 color: c.inkSoft, fontSize: 12, height: 1.5),
                           ),
@@ -312,7 +315,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       color: c.onAccent),
                                 )
                               : Text(
-                                  _registerMode ? 'Create account' : 'Sign in',
+                                  _registerMode ? context.t('createAccount') : context.t('signIn'),
                                   style: TextStyle(
                                     color: c.onAccent,
                                     fontWeight: FontWeight.w700,
@@ -341,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen>
                         child: Padding(
                           padding: const EdgeInsets.all(8),
                           child: Text(
-                            'Forgot password?',
+                            context.t('recoverLink'),
                             style: TextStyle(
                                 color: c.inkSoft,
                                 fontSize: 13,
@@ -361,13 +364,13 @@ class _LoginScreenState extends State<LoginScreen>
                           TextSpan(children: [
                             TextSpan(
                               text: _registerMode
-                                  ? 'Already have an account? '
-                                  : 'New here? ',
+                                  ? context.t('alreadyHave')
+                                  : context.t('newHere') + ' ',
                               style: TextStyle(
                                   color: c.inkSoft, fontSize: 14),
                             ),
                             TextSpan(
-                              text: _registerMode ? 'Sign in' : 'Create account',
+                              text: _registerMode ? context.t('signIn') : context.t('createAccount'),
                               style: TextStyle(
                                 color: c.accent,
                                 fontSize: 14,
@@ -383,7 +386,59 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ),
           ),
+              // ── Language toggle (top-right corner) ──────────────────
+              Positioned(
+                top: 12,
+                right: 16,
+                child: _LangToggle(c: c),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Language toggle button ────────────────────────────────────────────────────
+class _LangToggle extends StatelessWidget {
+  final BrutalColors c;
+  const _LangToggle({required this.c});
+  @override
+  Widget build(BuildContext context) {
+    final lang = AppScope.of(context).lang;
+    return GestureDetector(
+      onTap: () {
+        final next = lang == 'en' ? 'ru' : 'en';
+        appConfig.value = appConfig.value.copyWith(lang: next);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: c.ink.withOpacity(0.12), width: 1),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('EN',
+              style: TextStyle(
+                color: lang == 'en' ? c.accent : c.inkSoft,
+                fontWeight: lang == 'en' ? FontWeight.w700 : FontWeight.w400,
+                fontSize: 13,
+              )),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 6),
+            width: 1,
+            height: 12,
+            color: c.ink.withOpacity(0.2),
+          ),
+          Text('RU',
+              style: TextStyle(
+                color: lang == 'ru' ? c.accent : c.inkSoft,
+                fontWeight: lang == 'ru' ? FontWeight.w700 : FontWeight.w400,
+                fontSize: 13,
+              )),
+        ]),
       ),
     );
   }

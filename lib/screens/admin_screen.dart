@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 
 class AdminScreen extends StatefulWidget {
   final Map user;
@@ -43,15 +44,15 @@ class _AdminScreenState extends State<AdminScreen> {
           context: context,
           builder: (_) => AlertDialog(
             backgroundColor: c.surface,
-            title: Text('Are you sure?', style: TextStyle(color: c.ink)),
+            title: Text(context.t('areYouSure'), style: TextStyle(color: c.ink)),
             content: Text(text, style: TextStyle(color: c.inkSoft)),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: Text('Cancel', style: TextStyle(color: c.inkSoft))),
+                  child: Text(context.t('cancelBtn'), style: TextStyle(color: c.inkSoft))),
               TextButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: Text('Yes', style: TextStyle(color: c.danger))),
+                  child: Text(context.t('yesBtn'), style: TextStyle(color: c.danger))),
             ],
           ),
         ) ??
@@ -98,7 +99,7 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Scaffold(
         backgroundColor: c.bg,
         appBar: AppBar(
-          title: const Text('Admin panel'),
+          title: Text(context.t('adminTitle')),
           actions: [
             IconButton(
                 onPressed: _loadAll,
@@ -169,7 +170,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget _usersTab(BrutalColors c) {
     if (_users.isEmpty) {
       return Center(
-          child: Text('No users', style: TextStyle(color: c.inkSoft)));
+          child: Text(context.t('noUsers'), style: TextStyle(color: c.inkSoft)));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),
@@ -241,7 +242,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget _postsTab(BrutalColors c) {
     if (_posts.isEmpty) {
       return Center(
-          child: Text('No posts', style: TextStyle(color: c.inkSoft)));
+          child: Text(context.t('noPosts'), style: TextStyle(color: c.inkSoft)));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),

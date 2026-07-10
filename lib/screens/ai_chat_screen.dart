@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
 
 /// Chat with the Sigmacta AI assistant (goal coach). Talks to /api/ai/chat.
@@ -17,13 +18,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
   // Each: {'role': 'user'|'model', 'text': '...'}
+  // '__greeting__' is rendered as the localized aiGreeting string.
   List<Map<String, String>> _messages = [
-    {
-      'role': 'model',
-      'text':
-          'Привет! Я твой ИИ-коуч Sigmacta. Расскажи о своей цели — помогу '
-              'разбить её на шаги и подскажу, с чего начать.',
-    },
+    {'role': 'model', 'text': '__greeting__'},
   ];
   bool _sending = false;
 
@@ -100,7 +97,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             child: const Icon(Icons.auto_awesome, size: 16, color: Colors.white),
           ),
           const SizedBox(width: 10),
-          const Text('ИИ-ассистент'),
+          Text(context.t('aiAssistant')),
         ]),
       ),
       body: Column(
@@ -115,7 +112,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   return _bubble(c, 'model', '…', typing: true);
                 }
                 final m = _messages[i];
-                return _bubble(c, m['role']!, m['text']!);
+                final txt = m['text'] == '__greeting__'
+                    ? context.t('aiGreeting')
+                    : m['text']!;
+                return _bubble(c, m['role']!, txt);
               },
             ),
           ),
@@ -144,7 +144,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
         ),
         child: Text(
-          typing ? 'печатает…' : text,
+          typing ? context.t('typing') : text,
           style: TextStyle(
               color: isUser ? Colors.white : c.ink, fontSize: 15, height: 1.35),
         ),
@@ -170,8 +170,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
               maxLines: 4,
               textCapitalization: TextCapitalization.sentences,
               onSubmitted: (_) => _send(),
-              decoration: const InputDecoration(
-                  hintText: 'Спроси о своей цели…', isDense: true),
+              decoration: InputDecoration(
+                  hintText: context.t('aiAskHint'), isDense: true),
             ),
           ),
           const SizedBox(width: 8),

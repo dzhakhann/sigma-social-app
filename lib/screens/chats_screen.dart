@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'chat_detail_screen.dart';
-import 'ai_chat_screen.dart';
 
 /// Built-in chat list (our own server). Pinned AI assistant on top.
 class ChatsScreen extends StatefulWidget {
@@ -41,14 +41,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
     final c = context.k;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: const Text('Чат')),
+      appBar: AppBar(title: Text(context.t('chatTitle'))),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.only(bottom: 24),
           children: [
-            _aiTile(c),
-            Divider(height: 1, color: c.ink.withOpacity(0.06)),
             if (_loading)
               const Padding(
                   padding: EdgeInsets.only(top: 60),
@@ -58,7 +56,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 padding: const EdgeInsets.only(top: 60),
                 child: Center(
                   child: Text(
-                    'Пока нет чатов.\nОткрой профиль человека и нажми «Написать».',
+                    context.t('noChats'),
                     textAlign: TextAlign.center,
                     style: TextStyle(color: c.inkSoft, height: 1.4),
                   ),
@@ -69,33 +67,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _aiTile(BrutalColors c) {
-    return ListTile(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AiChatScreen(user: widget.user)),
-      ),
-      leading: Container(
-        width: 46, height: 46,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-            gradient: c.buttonGradient, borderRadius: BorderRadius.circular(12)),
-        child: const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
-      ),
-      title: Row(children: [
-        const Text('ИИ-ассистент',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(width: 6),
-        Icon(Icons.push_pin, size: 13, color: c.inkSoft),
-      ]),
-      subtitle: Text('Твой коуч по целям · всегда на связи',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: c.inkSoft)),
-      trailing: Icon(Icons.chevron_right, color: c.inkSoft),
     );
   }
 
@@ -113,7 +84,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         child: avatar == null ? Icon(Icons.person, color: c.inkSoft) : null,
       ),
       title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(last.isEmpty ? 'Нет сообщений' : last,
+      subtitle: Text(last.isEmpty ? context.t('noMsgsShort') : last,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: c.inkSoft)),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../l10n/app_strings.dart';
 import 'chat_detail_screen.dart';
 
 class SelectUserScreen extends StatefulWidget {
@@ -36,11 +37,11 @@ class _SelectUserScreenState extends State<SelectUserScreen> {
   Widget build(BuildContext context) {
     final c = context.k;
     return Scaffold(
-      appBar: AppBar(title: const Text('Select User')),
+      appBar: AppBar(title: Text(context.t('selectUser'))),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : users.isEmpty
-              ? const Center(child: Text('No users found'))
+              ? Center(child: Text(context.t('noUsersFound')))
               : ListView.builder(
                   itemCount: users.length,
                   itemBuilder: (_, i) {

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import '../l10n/app_strings.dart';
 
 /// Telegram-style round video recorder.
 /// Push this screen, it returns a [File] with the recorded .mp4 or null.
@@ -249,8 +250,8 @@ class _VideoCircleRecorderScreenState
                 padding: const EdgeInsets.only(bottom: 24),
                 child: Text(
                   _recording
-                      ? 'Отпустите, чтобы отправить'
-                      : 'Зажмите кнопку для записи',
+                      ? context.t('releaseToSend')
+                      : context.t('holdToRecord'),
                   style: const TextStyle(color: Colors.white54, fontSize: 14),
                 ),
               ),
