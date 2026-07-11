@@ -373,6 +373,36 @@ class S {
       'streakTitle': 'Day streak', 'streakDays': '{n} days in a row',
       'streakHint': 'Open the app daily to keep the streak',
       'auraToday': 'today',
+      // aura card
+      'auraCard': 'Aura', 'auraLevel': 'Level {n}',
+      'auraToNext': '{n} to the next level',
+      'dailyReward': 'Claim daily reward', 'rewardClaimed': '+5 Aura! See you tomorrow 🎁',
+      'rewardAlready': 'Already claimed today',
+      // friends activity
+      'friendsActivity': 'Friends activity',
+      'fPosted': 'published a post', 'fStory': 'added a story',
+      'noFriendActivity': 'Follow people to see their activity here',
+      // achievements
+      'achievementsTitle': 'Achievements',
+      'achGoal1': 'First goal completed', 'achGoal5': '5 goals completed',
+      'achStreak7': '7-day streak', 'achStreak30': '30-day streak',
+      'toAchievement': 'to the achievement',
+      // week for you
+      'weekForYou': 'Week for you',
+      // weekly stats
+      'weekStats': 'Weekly summary',
+      'wGoalsDone': 'Goals done', 'wAura': 'Aura', 'wStoryViews': 'Story views',
+      // challenge
+      'challengeTitle': 'Challenge of the week',
+      'challengeReward': 'Reward: +20 Aura',
+      'ch1': 'Move any goal forward by 10%',
+      'ch2': 'Listen to 60 minutes in Rhythm',
+      'ch3': 'Publish 2 posts',
+      'ch4': 'Keep a 5-day streak',
+      'ch5': 'Add a story 3 days in a row',
+      'ch6': 'Complete 1 goal',
+      // emoji
+      'recentEmoji': 'Recent', 'emojiSearch': 'Search emoji…',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -740,6 +770,36 @@ class S {
       'streakTitle': 'Серия дней', 'streakDays': '{n} дней подряд',
       'streakHint': 'Заходи каждый день, чтобы сохранить серию',
       'auraToday': 'сегодня',
+      // aura card
+      'auraCard': 'Aura', 'auraLevel': 'Уровень {n}',
+      'auraToNext': '{n} до следующего уровня',
+      'dailyReward': 'Забрать награду дня', 'rewardClaimed': '+5 Aura! До завтра 🎁',
+      'rewardAlready': 'Сегодня уже получено',
+      // friends activity
+      'friendsActivity': 'Активность друзей',
+      'fPosted': 'опубликовал(а) пост', 'fStory': 'добавил(а) историю',
+      'noFriendActivity': 'Подпишись на людей — их активность появится здесь',
+      // achievements
+      'achievementsTitle': 'Достижения',
+      'achGoal1': 'Первая выполненная цель', 'achGoal5': '5 выполненных целей',
+      'achStreak7': 'Серия 7 дней', 'achStreak30': 'Серия 30 дней',
+      'toAchievement': 'до достижения',
+      // week for you
+      'weekForYou': 'Неделя для тебя',
+      // weekly stats
+      'weekStats': 'Итоги недели',
+      'wGoalsDone': 'Целей выполнено', 'wAura': 'Aura', 'wStoryViews': 'Просмотры историй',
+      // challenge
+      'challengeTitle': 'Челлендж недели',
+      'challengeReward': 'Награда: +20 Aura',
+      'ch1': 'Продвинь любую цель на 10%',
+      'ch2': 'Послушай 60 минут в «Ритме»',
+      'ch3': 'Опубликуй 2 поста',
+      'ch4': 'Удержи серию 5 дней',
+      'ch5': 'Добавь историю 3 дня подряд',
+      'ch6': 'Выполни 1 цель',
+      // emoji
+      'recentEmoji': 'Недавние', 'emojiSearch': 'Поиск эмодзи…',
     },
   };
 

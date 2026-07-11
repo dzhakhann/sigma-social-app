@@ -75,6 +75,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadHoro();
     _updateStreak();
     _loadLastListened();
+    _loadAura();
+    _loadFriendActivity();
+    _loadWeekPlan();
+    _loadHomeAnalytics();
   }
 
   // Horoscope is cached per week (updates only on Monday) so it's instant and
@@ -495,14 +499,403 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               SliverToBoxAdapter(child: _horoCard(c)),
+              SliverToBoxAdapter(child: _auraCard(c)),
               SliverToBoxAdapter(child: _streakCard(c)),
+              SliverToBoxAdapter(child: _friendsActivityCard(c)),
               SliverToBoxAdapter(child: _continueListeningCard(c)),
+              SliverToBoxAdapter(child: _weekForYouCard(c)),
+              SliverToBoxAdapter(child: _achievementCard(c)),
+              SliverToBoxAdapter(child: _challengeCard(c)),
+              SliverToBoxAdapter(child: _weekStatsCard(c)),
               SliverToBoxAdapter(child: _quoteCard(c)),
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ─── ⚡ Aura card + daily reward ───────────────────────────────────────────
+  int _aura = 0;
+  bool _rewardClaimed = false;
+
+  Future<void> _loadAura() async {
+    final d = await ApiService.getUser(widget.user['id'].toString());
+    if (d['success'] == true && mounted) {
+      setState(() => _aura = (d['data']?['aura'] ?? 0) as int);
+    }
+  }
+
+  Future<void> _claimReward() async {
+    HapticFeedback.mediumImpact();
+    final r = await ApiService.dailyReward();
+    if (!mounted) return;
+    if (r['success'] == true) {
+      setState(() {
+        _rewardClaimed = true;
+        _aura = (r['aura'] ?? _aura) as int;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(r['claimed'] == true
+              ? context.t('rewardClaimed')
+              : context.t('rewardAlready'))));
+    }
+  }
+
+  Widget _auraCard(BrutalColors c) {
+    final level = _aura ~/ 100 + 1;
+    final inLevel = _aura % 100;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [
+          c.accent.withOpacity(0.18),
+          c.accent3.withOpacity(0.10),
+        ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent.withOpacity(0.22)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('⚡', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 8),
+          Text(context.t('auraCard'),
+              style: TextStyle(
+                  color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
+          const Spacer(),
+          Text('$_aura',
+              style: TextStyle(
+                  color: c.accent, fontWeight: FontWeight.w900, fontSize: 20)),
+        ]),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(5),
+          child: LinearProgressIndicator(
+            value: inLevel / 100,
+            minHeight: 7,
+            backgroundColor: c.surface2,
+            valueColor: AlwaysStoppedAnimation(c.accent),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          Text(context.t('auraLevel').replaceAll('{n}', '$level'),
+              style: TextStyle(color: c.inkSoft, fontSize: 12)),
+          const Spacer(),
+          Text(context.t('auraToNext').replaceAll('{n}', '${100 - inLevel}'),
+              style: TextStyle(color: c.inkSoft, fontSize: 12)),
+        ]),
+        if (!_rewardClaimed) ...[
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: _claimReward,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: c.accent.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: c.accent.withOpacity(0.4)),
+              ),
+              child: Text('🎁 ${context.t('dailyReward')}',
+                  style: TextStyle(
+                      color: c.accent,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  // ─── 👥 Friends activity (last events of people you follow) ───────────────
+  List _friendEvents = [];
+
+  Future<void> _loadFriendActivity() async {
+    final data = await ApiService.feedActivity();
+    if (mounted) setState(() => _friendEvents = data);
+  }
+
+  Widget _friendsActivityCard(BrutalColors c) {
+    if (_friendEvents.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.ink.withOpacity(0.06)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('👥', style: TextStyle(fontSize: 15)),
+          const SizedBox(width: 8),
+          Text(context.t('friendsActivity'),
+              style: TextStyle(
+                  color: c.inkSoft,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 8),
+        ..._friendEvents.take(5).map((e) {
+          final label = e['type'] == 'story'
+              ? context.t('fStory')
+              : context.t('fPosted');
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              CircleAvatar(
+                radius: 13,
+                backgroundColor: c.surface2,
+                backgroundImage: e['avatar_url'] != null
+                    ? CachedNetworkImageProvider(e['avatar_url'].toString())
+                    : null,
+                child: e['avatar_url'] == null
+                    ? Icon(Icons.person, size: 14, color: c.inkSoft)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                        text: '@${e['username'] ?? ''} ',
+                        style: TextStyle(
+                            color: c.ink,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13)),
+                    TextSpan(
+                        text: label,
+                        style:
+                            TextStyle(color: c.inkSoft, fontSize: 13)),
+                  ]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+          );
+        }),
+      ]),
+    );
+  }
+
+  // ─── ✨ Week for you (AI plan, cached per ISO week + language) ─────────────
+  String _weekPlan = '';
+
+  String _isoWeekKey() {
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    return '${monday.year}-${monday.month}-${monday.day}';
+  }
+
+  Future<void> _loadWeekPlan() async {
+    final p = await SharedPreferences.getInstance();
+    final key = _isoWeekKey();
+    final cached = p.getString('week_plan');
+    if (cached != null) {
+      try {
+        final m = jsonDecode(cached) as Map;
+        if (m['week'] == key && m['lang'] == _lang) {
+          if (mounted) setState(() => _weekPlan = (m['text'] ?? '').toString());
+          return;
+        }
+      } catch (_) {}
+    }
+    final text = _cleanMarkdown(await ApiService.aiWeek());
+    if (text.isNotEmpty) {
+      await p.setString('week_plan',
+          jsonEncode({'week': key, 'lang': _lang, 'text': text}));
+      if (mounted) setState(() => _weekPlan = text);
+    }
+  }
+
+  Widget _weekForYouCard(BrutalColors c) {
+    if (_weekPlan.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [
+          c.accent3.withOpacity(0.16),
+          c.accent.withOpacity(0.08),
+        ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent3.withOpacity(0.25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('✨', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Text(context.t('weekForYou'),
+              style: TextStyle(
+                  color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
+        ]),
+        const SizedBox(height: 8),
+        Text(_weekPlan,
+            style: TextStyle(color: c.ink, fontSize: 13.5, height: 1.5)),
+      ]),
+    );
+  }
+
+  // ─── 🏆 Nearest achievement (computed locally — zero server cost) ─────────
+  Widget _achievementCard(BrutalColors c) {
+    final done = _goals.where((g) => g['status'] == 'done').length;
+    // Ladder: first incomplete achievement is shown with its progress.
+    final ladder = [
+      [done, 1, context.t('achGoal1'), '🥇'],
+      [_streak, 7, context.t('achStreak7'), '🔥'],
+      [done, 5, context.t('achGoal5'), '🏆'],
+      [_streak, 30, context.t('achStreak30'), '💎'],
+    ];
+    List? next;
+    for (final a in ladder) {
+      if ((a[0] as int) < (a[1] as int)) {
+        next = a;
+        break;
+      }
+    }
+    if (next == null) return const SizedBox.shrink();
+    final cur = next[0] as int;
+    final target = next[1] as int;
+    final pct = (cur / target).clamp(0.0, 1.0);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.ink.withOpacity(0.06)),
+      ),
+      child: Row(children: [
+        Text(next[3] as String, style: const TextStyle(fontSize: 28)),
+        const SizedBox(width: 14),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(next[2] as String,
+                    style: TextStyle(
+                        color: c.ink,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14)),
+              ),
+              Text('${(pct * 100).round()}%',
+                  style: TextStyle(
+                      color: c.accent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13)),
+            ]),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 6,
+                backgroundColor: c.surface2,
+                valueColor: AlwaysStoppedAnimation(c.accent),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text('$cur / $target · ${context.t('toAchievement')}',
+                style: TextStyle(color: c.inkSoft, fontSize: 11.5)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // ─── 🎯 Challenge of the week (local rotation, localized) ─────────────────
+  Widget _challengeCard(BrutalColors c) {
+    final keys = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5', 'ch6'];
+    final week =
+        DateTime.now().difference(DateTime(2026)).inDays ~/ 7;
+    final challenge = context.t(keys[week % keys.length]);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.ink.withOpacity(0.06)),
+      ),
+      child: Row(children: [
+        const Text('🎯', style: TextStyle(fontSize: 26)),
+        const SizedBox(width: 14),
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(context.t('challengeTitle'),
+                style: TextStyle(
+                    color: c.inkSoft,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 3),
+            Text(challenge,
+                style: TextStyle(
+                    color: c.ink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14)),
+            const SizedBox(height: 2),
+            Text(context.t('challengeReward'),
+                style: TextStyle(color: c.accent, fontSize: 12)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // ─── 📊 Weekly summary ─────────────────────────────────────────────────────
+  Map _homeAnalytics = {};
+
+  Future<void> _loadHomeAnalytics() async {
+    final a = await ApiService.myAnalytics();
+    if (mounted) setState(() => _homeAnalytics = a);
+  }
+
+  Widget _weekStatsCard(BrutalColors c) {
+    final done = _goals.where((g) => g['status'] == 'done').length;
+    Widget cell(String n, String label) => Expanded(
+          child: Column(children: [
+            Text(n,
+                style: TextStyle(
+                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 17)),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.inkSoft, fontSize: 11)),
+          ]),
+        );
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.ink.withOpacity(0.06)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('📊', style: TextStyle(fontSize: 15)),
+          const SizedBox(width: 8),
+          Text(context.t('weekStats'),
+              style: TextStyle(
+                  color: c.inkSoft,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          cell('$done', context.t('wGoalsDone')),
+          cell('$_aura', context.t('wAura')),
+          cell('${_homeAnalytics['story_views'] ?? 0}',
+              context.t('wStoryViews')),
+        ]),
+      ]),
     );
   }
 

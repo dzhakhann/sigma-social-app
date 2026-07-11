@@ -306,6 +306,20 @@ class ApiService {
     return d['success'] == true ? d : {};
   }
 
+  // ─── HOME CARDS ────────────────────────────────────────────────────────────
+  static Future<List<Map>> feedActivity() async {
+    final d = await _getSafe('/feed/activity');
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+  }
+
+  static Future<String> aiWeek() async {
+    final d = await _getSafe('/ai/week?lang=${appConfig.value.lang}');
+    return (d['text'] ?? '').toString();
+  }
+
+  static Future<Map> dailyReward() => _post('/daily-reward', {});
+
   static Future<Map> visitProfile(String userId) =>
       _post('/users/$userId/visit', {});
   static Future<Map> myAnalytics() async {
