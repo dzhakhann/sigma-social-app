@@ -48,9 +48,22 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     _startTimer();
   }
 
+  final Set<String> _viewRecorded = {};
+
+  void _recordView() {
+    if (_currentStories.isEmpty) return;
+    final story = _currentStories[_currentIndex];
+    final id = story['id'].toString();
+    if (story['user_id'] == widget.user['id']) return; // own — don't count
+    if (_viewRecorded.contains(id)) return;
+    _viewRecorded.add(id);
+    ApiService.viewStoryStat(id); // fire-and-forget
+  }
+
   void _startTimer() {
     _timer?.cancel();
     if (!mounted) return;
+    _recordView();
     setState(() => _progress = 0);
     _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (!mounted || _isPaused) return;
@@ -110,21 +123,31 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     } catch (_) {}
   }
 
-  Future<void> _dmAuthor(Map story, String text) async {
+  Future<void> _dmAuthor(Map story, String text,
+      {bool withPreview = false}) async {
     if (text.trim().isEmpty) return;
     final authorId = story['user_id'].toString();
     final r = await ApiService.getOrCreateChat(
         widget.user['id'].toString(), authorId);
     if (r['success'] == true && r['data'] != null) {
-      await ApiService.sendMessage(r['data']['id'].toString(),
-          widget.user['id'].toString(), text);
+      // Instagram-style: the DM carries a mini preview of the exact story,
+      // so the author instantly sees WHICH story was liked / replied to.
+      await ApiService.sendMessage(
+        r['data']['id'].toString(),
+        widget.user['id'].toString(),
+        text,
+        messageType: withPreview ? 'image' : 'text',
+        mediaUrl: withPreview ? (story['image_url'] ?? '').toString() : null,
+      );
     }
   }
 
   void _sendReply(Map story, String text) {
     if (text.trim().isEmpty) return;
     // Instant UI: clear + toast right away, deliver the DM in the background.
-    _dmAuthor(story, '${context.t('storyReplyPrefix')}${text.trim()}');
+    _dmAuthor(story, '${context.t('storyReplyPrefix')}${text.trim()}',
+        withPreview: true);
+    ApiService.replyStoryStat(story['id'].toString());
     _replyCtrl.clear();
     FocusScope.of(context).unfocus();
     setState(() => _isPaused = false);
@@ -142,7 +165,9 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     HapticFeedback.mediumImpact();
     setState(() => _liked.add(id)); // heart fills instantly
     // Fire-and-forget: don't block the UI on the network.
-    _dmAuthor(story, context.t('storyLiked'));
+    _dmAuthor(story, context.t('storyLiked'), withPreview: true);
+    // Count the like in the story stats too.
+    ApiService.likeStoryStat(story['id'].toString());
   }
 
   void _shareStory(Map story) {
@@ -156,6 +181,117 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
       }
     });
   }
+
+  // Instagram-style stats sheet for the story author: views, likes, replies
+  // and the full viewer list with ❤ / 💬 marks.
+  Future<void> _showStats(Map story) async {
+    final c = context.k;
+    _timer?.cancel();
+    setState(() => _isPaused = true);
+    final stats = await ApiService.storyStats(story['id'].toString());
+    if (!mounted) return;
+    final viewers = (stats['viewers'] as List?) ?? [];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 10),
+            Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                    color: c.ink.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(2))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _statCol(c, Icons.visibility_rounded,
+                      '${stats['views'] ?? 0}', context.t('viewsLbl')),
+                  _statCol(c, Icons.favorite_rounded,
+                      '${stats['likes'] ?? 0}', context.t('likesLbl')),
+                  _statCol(c, Icons.chat_bubble_rounded,
+                      '${stats['replies'] ?? 0}', context.t('repliesStat')),
+                ],
+              ),
+            ),
+            Divider(height: 20, color: c.ink.withOpacity(0.07)),
+            if (viewers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(28),
+                child: Text(context.t('noViewersYet'),
+                    style: TextStyle(color: c.inkSoft)),
+              )
+            else
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: viewers.length,
+                  itemBuilder: (_, i) {
+                    final v = viewers[i] as Map;
+                    return ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: c.surface2,
+                        backgroundImage: v['avatar_url'] != null
+                            ? CachedNetworkImageProvider(
+                                v['avatar_url'].toString())
+                            : null,
+                        child: v['avatar_url'] == null
+                            ? Icon(Icons.person,
+                                size: 18, color: c.inkSoft)
+                            : null,
+                      ),
+                      title: Text('@${v['username'] ?? ''}',
+                          style: TextStyle(
+                              color: c.ink, fontWeight: FontWeight.w600)),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (v['liked'] == true)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 6),
+                            child: Icon(Icons.favorite,
+                                color: Colors.redAccent, size: 18),
+                          ),
+                        if (v['replied'] == true)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 6),
+                            child: Icon(Icons.chat_bubble,
+                                color: c.accent, size: 16),
+                          ),
+                      ]),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 8),
+          ]),
+        ),
+      ),
+    ).whenComplete(() {
+      if (mounted && !_isClosing) {
+        setState(() => _isPaused = false);
+        _startTimer();
+      }
+    });
+  }
+
+  Widget _statCol(BrutalColors c, IconData icon, String n, String label) =>
+      Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: c.accent, size: 22),
+        const SizedBox(height: 4),
+        Text(n,
+            style: TextStyle(
+                color: c.ink, fontWeight: FontWeight.w800, fontSize: 17)),
+        Text(label, style: TextStyle(color: c.inkSoft, fontSize: 12)),
+      ]);
 
   // Instagram-style "⋯" menu: share / copy link / report / delete (own).
   void _showOptions(Map story, bool isOwn) {
@@ -361,6 +497,39 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
               ]),
             ),
           ),
+          // Own story: Instagram-style viewers chip (bottom-left).
+          if (isOwn)
+            Positioned(
+              left: 12, bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: GestureDetector(
+                    onTap: () => _showStats(story),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.visibility_rounded,
+                            color: Colors.white, size: 18),
+                        const SizedBox(width: 6),
+                        Text(context.t('viewersTitle'),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (!isOwn)
             Positioned(
               left: 0, right: 0, bottom: 0,

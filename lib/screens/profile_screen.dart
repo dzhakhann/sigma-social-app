@@ -57,10 +57,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!widget.isOwnProfile) _checkFollow();
   }
 
+  Map _analytics = {};
+
   Future<void> _loadProfile() async {
     final data = await ApiService.getUser(_targetId);
     if (data['success'] == true && mounted) {
       setState(() => userProfile = data['data']);
+    }
+    if (widget.isOwnProfile) {
+      // Own profile → load the mini-analytics card.
+      final a = await ApiService.myAnalytics();
+      if (mounted) setState(() => _analytics = a);
+    } else {
+      // Someone else's profile → count the visit (unique per visitor).
+      ApiService.visitProfile(_targetId.toString());
     }
   }
 
@@ -137,11 +147,103 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // Telegram-style avatar sheet: our own styled bottom sheet instead of the
+  // bare system picker. Photo → camera, gallery → picker, remove → clears.
   Future<void> _pickAvatar() async {
+    final c = context.k;
+    final hasPhoto = (userProfile['avatar_url'] ?? '').toString().isNotEmpty;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10),
+          Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                  color: c.ink.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                  color: c.accent.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.camera_alt_rounded, color: c.accent),
+            ),
+            title: Text(ctx.t('takePhoto'),
+                style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
+            onTap: () => Navigator.pop(ctx, 'camera'),
+          ),
+          ListTile(
+            leading: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                  color: c.accent.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.photo_library_rounded, color: c.accent),
+            ),
+            title: Text(ctx.t('chooseFromGallery'),
+                style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
+            onTap: () => Navigator.pop(ctx, 'gallery'),
+          ),
+          if (hasPhoto)
+            ListTile(
+              leading: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                    color: c.danger.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Icon(Icons.delete_outline_rounded, color: c.danger),
+              ),
+              title: Text(ctx.t('removePhoto'),
+                  style:
+                      TextStyle(color: c.danger, fontWeight: FontWeight.w600)),
+              onTap: () => Navigator.pop(ctx, 'remove'),
+            ),
+          ListTile(
+            leading: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                  color: c.surface2,
+                  borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.close_rounded, color: c.inkSoft),
+            ),
+            title: Text(ctx.t('cancelBtn'),
+                style: TextStyle(color: c.inkSoft)),
+            onTap: () => Navigator.pop(ctx),
+          ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+    if (choice == null) return;
+
+    if (choice == 'remove') {
+      setState(() => isUploadingAvatar = true);
+      await ApiService.updateUser(
+          widget.user['id'].toString(), {'avatar_url': null});
+      widget.user['avatar_url'] = null;
+      await Session.patch({'avatar_url': null});
+      feedRefresh.value++;
+      if (mounted) {
+        setState(() {
+          userProfile['avatar_url'] = null;
+          isUploadingAvatar = false;
+        });
+      }
+      return;
+    }
+
     final picker = ImagePicker();
     // Pick at high resolution — the crop editor decides the visible square.
     final file = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 2000, imageQuality: 90);
+        source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        maxWidth: 2000,
+        imageQuality: 90);
     if (file == null) return;
     final raw = await file.readAsBytes();
     if (!mounted) return;
@@ -207,7 +309,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _statsAndActions(c),
+                child: Column(children: [
+                  _statsAndActions(c),
+                  _analyticsCard(c),
+                ]),
               ),
             ),
             if (_aboutVisible(c))
@@ -600,6 +705,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.white,
                 fontSize: 11,
                 fontWeight: FontWeight.w800)),
+      ]),
+    );
+  }
+
+  // Mini-analytics for the owner: visits, likes, story views, reach.
+  Widget _analyticsCard(BrutalColors c) {
+    if (!widget.isOwnProfile || _analytics.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    Widget cell(IconData icon, String n, String label) => Expanded(
+          child: Column(children: [
+            Icon(icon, size: 18, color: c.accent),
+            const SizedBox(height: 4),
+            Text(n,
+                style: TextStyle(
+                    color: c.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16)),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.inkSoft, fontSize: 10.5)),
+          ]),
+        );
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: cleanCard(c, radius: 18),
+      child: Column(children: [
+        Row(children: [
+          const SizedBox(width: 8),
+          Icon(Icons.insights_rounded, size: 16, color: c.inkSoft),
+          const SizedBox(width: 6),
+          Text(context.t('analyticsTitle'),
+              style: TextStyle(
+                  color: c.inkSoft,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          cell(Icons.person_search_rounded,
+              '${_analytics['profile_visits'] ?? 0}', context.t('aVisits')),
+          cell(Icons.favorite_rounded, '${_analytics['post_likes'] ?? 0}',
+              context.t('aPostLikes')),
+          cell(Icons.chat_bubble_outline_rounded,
+              '${_analytics['comments'] ?? 0}', context.t('aComments')),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          cell(Icons.visibility_rounded,
+              '${_analytics['story_views'] ?? 0}', context.t('aStoryViews')),
+          cell(Icons.favorite_border_rounded,
+              '${_analytics['story_likes'] ?? 0}', context.t('aStoryLikes')),
+          cell(Icons.trending_up_rounded, '${_analytics['reach'] ?? 0}',
+              context.t('aReach')),
+        ]),
       ]),
     );
   }

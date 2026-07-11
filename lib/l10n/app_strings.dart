@@ -351,6 +351,17 @@ class S {
       'errUserShort': 'Username must be at least 3 characters',
       'errUserChars': 'Username can only contain letters, numbers, _ and .',
       'errTooMany': 'Too many attempts. Try again later.',
+      // story stats
+      'viewsLbl': 'Views', 'likesLbl': 'Likes', 'repliesStat': 'Replies',
+      'viewersTitle': 'Viewers', 'noViewersYet': 'No views yet',
+      // profile analytics
+      'analyticsTitle': 'Activity stats',
+      'aVisits': 'Profile visits', 'aPostLikes': 'Post likes',
+      'aComments': 'Comments', 'aStoryViews': 'Story views',
+      'aStoryLikes': 'Story likes', 'aReach': 'Total reach',
+      // avatar sheet
+      'takePhoto': 'Take photo', 'chooseFromGallery': 'Choose from gallery',
+      'removePhoto': 'Remove photo',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -696,6 +707,17 @@ class S {
       'errUserShort': 'Никнейм минимум 3 символа',
       'errUserChars': 'Никнейм: только буквы, цифры, _ и .',
       'errTooMany': 'Слишком много попыток. Попробуйте позже.',
+      // story stats
+      'viewsLbl': 'Просмотры', 'likesLbl': 'Лайки', 'repliesStat': 'Ответы',
+      'viewersTitle': 'Смотрели', 'noViewersYet': 'Пока нет просмотров',
+      // profile analytics
+      'analyticsTitle': 'Статистика активности',
+      'aVisits': 'Посещения профиля', 'aPostLikes': 'Лайки постов',
+      'aComments': 'Комментарии', 'aStoryViews': 'Просмотры историй',
+      'aStoryLikes': 'Лайки историй', 'aReach': 'Общий охват',
+      // avatar sheet
+      'takePhoto': 'Сделать фото', 'chooseFromGallery': 'Выбрать из галереи',
+      'removePhoto': 'Удалить фото',
     },
   };
 

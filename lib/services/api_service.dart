@@ -294,6 +294,25 @@ class ApiService {
   // Self-service account deletion (Google Play requirement).
   static Future<Map> deleteAccount() => _delete('/account');
 
+  // ─── STORY STATS + PROFILE ANALYTICS ─────────────────────────────────────
+  static Future<Map> viewStoryStat(String storyId) =>
+      _post('/stories/$storyId/view', {});
+  static Future<Map> likeStoryStat(String storyId) =>
+      _post('/stories/$storyId/like-stat', {});
+  static Future<Map> replyStoryStat(String storyId) =>
+      _post('/stories/$storyId/reply-stat', {});
+  static Future<Map> storyStats(String storyId) async {
+    final d = await _getSafe('/stories/$storyId/stats');
+    return d['success'] == true ? d : {};
+  }
+
+  static Future<Map> visitProfile(String userId) =>
+      _post('/users/$userId/visit', {});
+  static Future<Map> myAnalytics() async {
+    final d = await _getSafe('/me/analytics');
+    return d['success'] == true ? (d['data'] ?? {}) : {};
+  }
+
   // ─── AI (Gemini via backend) ───────────────────────────────────────────────
   // messages: [{'role':'user'|'model','text':'...'}]
   static Future<String> aiChat(List<Map<String, String>> messages) async {

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +15,7 @@ import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'story_view_screen.dart';
 import 'story_editor_screen.dart';
+import 'story_camera_screen.dart';
 import 'notifications_screen.dart';
 import 'login_screen.dart';
 import 'search_screen.dart';
@@ -226,27 +228,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addStory({ImageSource? source}) async {
-    final c = context.k;
-    final src = source ?? await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: c.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _StoryPickerSheet(c: c),
-    );
-    if (src == null) return;
-    final picker = ImagePicker();
-    final img =
-        await picker.pickImage(source: src, maxWidth: 1080, imageQuality: 85);
-    if (img == null) return;
-    final bytes = await img.readAsBytes();
+    Uint8List? bytes;
+    if (kIsWeb || source == ImageSource.gallery) {
+      // Web (no in-app camera) or explicit gallery request.
+      final picker = ImagePicker();
+      final img = await picker.pickImage(
+          source: ImageSource.gallery, maxWidth: 1080, imageQuality: 85);
+      if (img == null) return;
+      bytes = await img.readAsBytes();
+    } else {
+      // Telegram-style: tap "Me" → straight into the in-app camera
+      // (shutter, flash, flip, gallery shortcut inside).
+      bytes = await Navigator.push<Uint8List>(
+        context,
+        PageRouteBuilder(
+          fullscreenDialog: true,
+          transitionDuration: const Duration(milliseconds: 260),
+          pageBuilder: (_, __, ___) => const StoryCameraScreen(),
+          transitionsBuilder: (_, a, __, child) =>
+              FadeTransition(opacity: a, child: child),
+        ),
+      );
+      if (bytes == null) return;
+    }
     if (!mounted) return;
     // Instagram-style editor: preview + text overlay before publishing.
     final edited = await Navigator.push<Uint8List>(
       context,
       MaterialPageRoute(
           fullscreenDialog: true,
-          builder: (_) => StoryEditorScreen(imageBytes: bytes)),
+          builder: (_) => StoryEditorScreen(imageBytes: bytes!)),
     );
     if (edited == null) return;
     final data =
@@ -1196,33 +1207,6 @@ class _StoryRing extends StatelessWidget {
                   child: Icon(Icons.person_rounded, color: c.inkSoft)),
         ),
       ),
-    );
-  }
-}
-
-class _StoryPickerSheet extends StatelessWidget {
-  final BrutalColors c;
-  const _StoryPickerSheet({required this.c});
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-            width: 36, height: 4,
-            decoration: BoxDecoration(
-                color: c.ink.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 18),
-        _SheetTile(
-            icon: Icons.camera_alt_rounded,
-            label: context.t('camera'),
-            onTap: () => Navigator.pop(context, ImageSource.camera)),
-        _SheetTile(
-            icon: Icons.photo_library_rounded,
-            label: context.t('gallery'),
-            onTap: () => Navigator.pop(context, ImageSource.gallery)),
-      ]),
     );
   }
 }
