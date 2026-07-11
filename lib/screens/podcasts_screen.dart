@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../services/podcast_store.dart';
 import '../services/podcast_audio.dart';
@@ -778,6 +781,8 @@ class _PodcastEpisodesScreenState extends State<PodcastEpisodesScreen> {
 }
 
 // ─── МУЗЫКА (Audius — legal free streaming, commercial use allowed) ──────────
+// Structure: Главная (track of week, genres, trending) · История · Избранное ·
+// Плейлисты. Likes/history/playlists are local-only (zero backend load).
 class MusicTab extends StatefulWidget {
   final void Function(List<Map>, int) openEpisode;
   const MusicTab({Key? key, required this.openEpisode}) : super(key: key);
@@ -789,32 +794,263 @@ class _MusicTabState extends State<MusicTab> {
   final _search = TextEditingController();
   List<Map> _tracks = [];
   bool _loading = true;
+  int _sub = 0; // 0 home · 1 history · 2 liked · 3 playlists
+  String _genre = '';
+  List<String> _recentQueries = [];
+  Set<String> _favIds = {};
+  List<Map> _hist = [];
+  List<Map> _favs = [];
+  List<Map> _playlists = [];
+
+  static const _genres = [
+    ['', 'gAll'], ['Pop', 'gPop'], ['Hip-Hop/Rap', 'gHipHop'],
+    ['Electronic', 'gElectronic'], ['Rock', 'gRock'], ['Jazz', 'gJazz'],
+    ['Classical', 'gClassical'], ['R&B/Soul', 'gRnb'], ['Latin', 'gLatin'],
+    ['Ambient', 'gAmbient'], ['Folk', 'gFolk'],
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadTrending();
+    _loadLocal();
+    _loadQueries();
+  }
+
+  Future<void> _loadQueries() async {
+    final p = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() =>
+          _recentQueries = p.getStringList('music_queries') ?? []);
+    }
+  }
+
+  Future<void> _saveQuery(String q) async {
+    if (q.trim().isEmpty) return;
+    final p = await SharedPreferences.getInstance();
+    _recentQueries.remove(q);
+    _recentQueries.insert(0, q);
+    if (_recentQueries.length > 8) {
+      _recentQueries = _recentQueries.take(8).toList();
+    }
+    await p.setStringList('music_queries', _recentQueries);
+  }
+
+  Future<void> _loadLocal() async {
+    final f = await PodcastStore.favorites();
+    final h = await PodcastStore.history();
+    final pl = await PodcastStore.playlists();
+    if (mounted) {
+      setState(() {
+        _favs = f.where((e) => e['kind'] == 'music').toList();
+        _hist = h.where((e) => e['kind'] == 'music').toList();
+        _playlists = pl;
+        _favIds = f.map((e) => e['audio'].toString()).toSet();
+      });
+    }
   }
 
   Future<void> _loadTrending() async {
     setState(() => _loading = true);
-    final data = await ApiService.musicTrending();
+    final data = await ApiService.musicTrending(genre: _genre);
     if (mounted) setState(() { _tracks = data; _loading = false; });
   }
 
   Future<void> _run(String q) async {
     if (q.trim().isEmpty) return _loadTrending();
+    _saveQuery(q.trim());
     setState(() => _loading = true);
     final data = await ApiService.musicSearch(q.trim());
     if (mounted) setState(() { _tracks = data; _loading = false; });
+  }
+
+  Future<void> _toggleFav(Map t) async {
+    HapticFeedback.selectionClick();
+    await PodcastStore.toggleFavorite(t);
+    _loadLocal();
+  }
+
+  // ⋮ track actions: like · add to playlist · share
+  void _trackMenu(Map t) {
+    final c = context.k;
+    final fav = _favIds.contains(t['audio'].toString());
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10),
+          Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                  color: c.ink.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2))),
+          ListTile(
+            leading: Icon(
+                fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: c.danger),
+            title: Text(fav ? ctx.t('removeFromFav') : ctx.t('addToFav')),
+            onTap: () {
+              Navigator.pop(ctx);
+              _toggleFav(t);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.playlist_add_rounded, color: c.ink),
+            title: Text(ctx.t('addToPlaylist')),
+            onTap: () async {
+              Navigator.pop(ctx);
+              await _addToPlaylistSheet(t);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.share_rounded, color: c.ink),
+            title: Text(ctx.t('shareBtn')),
+            onTap: () {
+              Navigator.pop(ctx);
+              Share.share('${t['title']} — ${t['showTitle']}\n${t['audio']}');
+            },
+          ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _addToPlaylistSheet(Map t) async {
+    final c = context.k;
+    final pls = await PodcastStore.playlists();
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 12),
+          ListTile(
+            leading: Icon(Icons.add_rounded, color: c.accent),
+            title: Text(ctx.t('createNewPlaylist'),
+                style: TextStyle(color: c.accent)),
+            onTap: () async {
+              Navigator.pop(ctx);
+              final name = await _newPlaylistDialog();
+              if (name != null && name.isNotEmpty) {
+                await PodcastStore.createPlaylist(name);
+                await PodcastStore.addToPlaylist(name, t);
+                _loadLocal();
+              }
+            },
+          ),
+          ...pls.map((p) => ListTile(
+                leading: Icon(Icons.queue_music_rounded, color: c.ink),
+                title: Text((p['name'] ?? '').toString()),
+                onTap: () async {
+                  await PodcastStore.addToPlaylist(
+                      (p['name'] ?? '').toString(), t);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  _loadLocal();
+                },
+              )),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  Future<String?> _newPlaylistDialog() {
+    final c = context.k;
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text(ctx.t('newPlaylistTitle')),
+        content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration:
+                InputDecoration(hintText: ctx.t('playlistNameHint'))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(ctx.t('cancelBtn'))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: Text(ctx.t('ok'))),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.k;
     return Column(children: [
+      _subTabs(c),
+      Expanded(child: _body(c)),
+    ]);
+  }
+
+  Widget _subTabs(BrutalColors c) {
+    final labels = [
+      context.t('mHome'), context.t('mHistory'),
+      context.t('mFav'), context.t('mPlaylists'),
+    ];
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        children: List.generate(labels.length, (i) {
+          final sel = _sub == i;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _sub = i);
+                if (i != 0) _loadLocal();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 7),
+                decoration: BoxDecoration(
+                  color: sel ? c.accent : c.surface,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Text(labels[i],
+                    style: TextStyle(
+                        color: sel ? c.onAccent : c.inkSoft,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _body(BrutalColors c) {
+    switch (_sub) {
+      case 1:
+        return _trackList(c, _hist, context.t('emptyHistory'));
+      case 2:
+        return _trackList(c, _favs, context.t('emptyFav'));
+      case 3:
+        return _playlistsList(c);
+      default:
+        return _home(c);
+    }
+  }
+
+  Widget _home(BrutalColors c) {
+    return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
         child: TextField(
           controller: _search,
           textInputAction: TextInputAction.search,
@@ -831,15 +1067,63 @@ class _MusicTabState extends State<MusicTab> {
           ),
         ),
       ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            _search.text.trim().isEmpty ? context.t('trendingNow') : '',
-            style: TextStyle(
-                color: c.inkSoft, fontSize: 12, fontWeight: FontWeight.w700),
+      // Recent searches
+      if (_recentQueries.isNotEmpty && _search.text.trim().isEmpty)
+        SizedBox(
+          height: 32,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            children: _recentQueries
+                .map((q) => Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(q,
+                            style: TextStyle(
+                                fontSize: 12, color: c.inkSoft)),
+                        backgroundColor: c.surface,
+                        onPressed: () {
+                          _search.text = q;
+                          _run(q);
+                        },
+                      ),
+                    ))
+                .toList(),
           ),
+        ),
+      // Genre chips
+      SizedBox(
+        height: 38,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          children: _genres.map((g) {
+            final sel = _genre == g[0];
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _genre = g[0]);
+                  _search.clear();
+                  _loadTrending();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 13, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: sel ? c.accent : c.surface,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Text(context.t(g[1]),
+                      style: TextStyle(
+                          color: sel ? c.onAccent : c.inkSoft,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5)),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ),
       Expanded(
@@ -849,48 +1133,208 @@ class _MusicTabState extends State<MusicTab> {
                 ? Center(
                     child: Text(context.t('pNothing'),
                         style: TextStyle(color: c.inkSoft)))
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _tracks.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(height: 1, color: c.ink.withOpacity(0.05)),
-                    itemBuilder: (_, i) {
-                      final t = _tracks[i];
-                      final art = (t['artwork'] ?? '').toString();
-                      return ListTile(
-                        onTap: () => widget.openEpisode(_tracks, i),
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: art.isEmpty
-                              ? Container(
-                                  width: 52, height: 52,
-                                  color: c.surface2,
-                                  child: Icon(Icons.music_note_rounded,
-                                      color: c.inkSoft))
-                              : CachedNetworkImage(
-                                  imageUrl: art,
-                                  width: 52, height: 52,
-                                  fit: BoxFit.cover),
-                        ),
-                        title: Text((t['title'] ?? '').toString(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: c.ink,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14.5)),
-                        subtitle: Text((t['showTitle'] ?? '').toString(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style:
-                                TextStyle(color: c.inkSoft, fontSize: 12)),
-                        trailing: Icon(Icons.play_circle_fill_rounded,
-                            color: c.accent, size: 30),
-                      );
-                    },
+                : ListView(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    children: [
+                      if (_search.text.trim().isEmpty &&
+                          _genre.isEmpty &&
+                          _tracks.isNotEmpty)
+                        _weekPick(c),
+                      ..._tracks.asMap().entries.map(
+                          (e) => _trackRow(c, _tracks, e.key)),
+                    ],
                   ),
       ),
     ]);
+  }
+
+  // "Track of the week" — deterministic weekly pick from trending.
+  Widget _weekPick(BrutalColors c) {
+    final week = DateTime.now().difference(DateTime(2026)).inDays ~/ 7;
+    final t = _tracks[week % _tracks.length];
+    final art = (t['artwork'] ?? '').toString();
+    return GestureDetector(
+      onTap: () => widget.openEpisode(_tracks, _tracks.indexOf(t)),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [
+            c.accent.withOpacity(0.25),
+            c.accent3.withOpacity(0.15),
+          ]),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: c.accent.withOpacity(0.3)),
+        ),
+        child: Row(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: art.isEmpty
+                ? Container(
+                    width: 64, height: 64,
+                    color: c.surface2,
+                    child: Icon(Icons.music_note_rounded, color: c.inkSoft))
+                : CachedNetworkImage(
+                    imageUrl: art, width: 64, height: 64, fit: BoxFit.cover),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('⭐ ${context.t('trackOfWeek')}',
+                      style: TextStyle(
+                          color: c.accent,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 3),
+                  Text((t['title'] ?? '').toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: c.ink,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15)),
+                  Text((t['showTitle'] ?? '').toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.inkSoft, fontSize: 12)),
+                ]),
+          ),
+          Icon(Icons.play_circle_fill_rounded, color: c.accent, size: 38),
+        ]),
+      ),
+    );
+  }
+
+  Widget _trackList(BrutalColors c, List<Map> list, String emptyText) {
+    if (list.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(emptyText,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.inkSoft, height: 1.4)),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children:
+          list.asMap().entries.map((e) => _trackRow(c, list, e.key)).toList(),
+    );
+  }
+
+  Widget _trackRow(BrutalColors c, List<Map> list, int i) {
+    final t = list[i];
+    final art = (t['artwork'] ?? '').toString();
+    final fav = _favIds.contains(t['audio'].toString());
+    return ListTile(
+      onTap: () => widget.openEpisode(list, i),
+      onLongPress: () => _trackMenu(t),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: art.isEmpty
+            ? Container(
+                width: 52, height: 52,
+                color: c.surface2,
+                child: Icon(Icons.music_note_rounded, color: c.inkSoft))
+            : CachedNetworkImage(
+                imageUrl: art, width: 52, height: 52, fit: BoxFit.cover),
+      ),
+      title: Text((t['title'] ?? '').toString(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+              color: c.ink, fontWeight: FontWeight.w600, fontSize: 14.5)),
+      subtitle: Text((t['showTitle'] ?? '').toString(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: c.inkSoft, fontSize: 12)),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        GestureDetector(
+          onTap: () => _toggleFav(t),
+          child: Icon(
+              fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: fav ? c.danger : c.inkSoft,
+              size: 22),
+        ),
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: () => _trackMenu(t),
+          child: Icon(Icons.more_vert_rounded, color: c.inkSoft, size: 20),
+        ),
+      ]),
+    );
+  }
+
+  Widget _playlistsList(BrutalColors c) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        ListTile(
+          leading: Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(
+                color: c.accent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10)),
+            child: Icon(Icons.add_rounded, color: c.accent),
+          ),
+          title: Text(context.t('pCreatePlaylist'),
+              style:
+                  TextStyle(color: c.accent, fontWeight: FontWeight.w700)),
+          onTap: () async {
+            final name = await _newPlaylistDialog();
+            if (name != null && name.isNotEmpty) {
+              await PodcastStore.createPlaylist(name);
+              _loadLocal();
+            }
+          },
+        ),
+        ..._playlists.map((p) {
+          final eps =
+              (p['episodes'] as List).map((e) => Map.from(e)).toList();
+          return ListTile(
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                      colors:
+                          _coverGradient((p['name'] ?? '').toString())),
+                ),
+                child: const Icon(Icons.queue_music_rounded,
+                    color: Colors.white),
+              ),
+            ),
+            title: Text((p['name'] ?? '').toString(),
+                style:
+                    TextStyle(color: c.ink, fontWeight: FontWeight.w700)),
+            subtitle: Text(
+                context
+                    .t('episodesCount')
+                    .replaceAll('{n}', '${eps.length}'),
+                style: TextStyle(color: c.inkSoft, fontSize: 12)),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => _PlaylistDetailScreen(
+                  title: (p['name'] ?? '').toString(),
+                  episodes: eps.cast<Map>(),
+                  onPlay: widget.openEpisode,
+                ),
+              ),
+            ).then((_) => _loadLocal()),
+            onLongPress: () async {
+              await PodcastStore.deletePlaylist(
+                  (p['name'] ?? '').toString());
+              _loadLocal();
+            },
+          );
+        }),
+      ],
+    );
   }
 
   @override
@@ -900,7 +1344,7 @@ class _MusicTabState extends State<MusicTab> {
   }
 }
 
-// ─── АУДИОКНИГИ (LibriVox — public domain) ───────────────────────────────────
+// ─── АУДИОКНИГИ (LibriVox — public domain, EN + RU catalogs) ─────────────────
 class BooksTab extends StatefulWidget {
   const BooksTab({Key? key}) : super(key: key);
   @override
@@ -911,16 +1355,34 @@ class _BooksTabState extends State<BooksTab> {
   final _search = TextEditingController();
   List<Map> _books = [];
   bool _loading = true;
+  String _genre = '';
+  String _language = 'English';
+
+  static const _genresList = [
+    ['', 'bAll'], ['General Fiction', 'bFiction'], ['Classics', 'bClassics'],
+    ['Detective Fiction', 'bMystery'], ['Fantastic Fiction', 'bFantasy'],
+    ['Biography & Autobiography', 'bBio'], ['Science', 'bScience'],
+    ['Philosophy', 'bPhilosophy'], ['Poetry', 'bPoetry'],
+    ['History', 'bHistory'], ["Children's Fiction", 'bChildren'],
+  ];
 
   @override
   void initState() {
     super.initState();
-    _run('');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // Default catalog language follows the app language.
+        _language =
+            AppScope.of(context).lang == 'ru' ? 'Russian' : 'English';
+        _run('');
+      }
+    });
   }
 
   Future<void> _run(String q) async {
     setState(() => _loading = true);
-    final data = await ApiService.searchAudiobooks(q.trim());
+    final data = await ApiService.searchAudiobooks(q.trim(),
+        genre: _genre, language: _language);
     if (mounted) setState(() { _books = data; _loading = false; });
   }
 
@@ -929,21 +1391,80 @@ class _BooksTabState extends State<BooksTab> {
     final c = context.k;
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        child: TextField(
-          controller: _search,
-          textInputAction: TextInputAction.search,
-          onSubmitted: _run,
-          decoration: InputDecoration(
-            hintText: context.t('booksSearch'),
-            prefixIcon: Icon(Icons.search_rounded, color: c.inkSoft),
-            filled: true,
-            fillColor: c.surface,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none),
-            isDense: true,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+        child: Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _search,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _run,
+              decoration: InputDecoration(
+                hintText: context.t('booksSearch'),
+                prefixIcon: Icon(Icons.search_rounded, color: c.inkSoft),
+                filled: true,
+                fillColor: c.surface,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none),
+                isDense: true,
+              ),
+            ),
           ),
+          const SizedBox(width: 8),
+          // Catalog language toggle (architecture allows adding more later).
+          GestureDetector(
+            onTap: () {
+              setState(() => _language =
+                  _language == 'English' ? 'Russian' : 'English');
+              _run(_search.text);
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: c.accent.withOpacity(0.4)),
+              ),
+              child: Text(_language == 'English' ? '🇺🇸 EN' : '🇷🇺 RU',
+                  style: TextStyle(
+                      color: c.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5)),
+            ),
+          ),
+        ]),
+      ),
+      SizedBox(
+        height: 38,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          children: _genresList.map((g) {
+            final sel = _genre == g[0];
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _genre = g[0]);
+                  _run(_search.text);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 13, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: sel ? c.accent : c.surface,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Text(context.t(g[1]),
+                      style: TextStyle(
+                          color: sel ? c.onAccent : c.inkSoft,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5)),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ),
       Expanded(
@@ -963,67 +1484,79 @@ class _BooksTabState extends State<BooksTab> {
                       mainAxisSpacing: 12,
                     ),
                     itemCount: _books.length,
-                    itemBuilder: (_, i) {
-                      final b = _books[i];
-                      final art = (b['artwork'] ?? '').toString();
-                      return GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  PodcastEpisodesScreen(show: b)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: art.isEmpty
-                                    ? Container(
-                                        width: double.infinity,
-                                        color: c.surface2,
-                                        child: Icon(
-                                            Icons.menu_book_rounded,
-                                            size: 44,
-                                            color: c.inkSoft))
-                                    : CachedNetworkImage(
-                                        imageUrl: art,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                        placeholder: (_, __) =>
-                                            Container(color: c.surface2),
-                                        errorWidget: (_, __, ___) =>
-                                            Container(
-                                                color: c.surface2,
-                                                child: Icon(
-                                                    Icons
-                                                        .menu_book_rounded,
-                                                    size: 44,
-                                                    color: c.inkSoft)),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(height: 7),
-                            Text((b['title'] ?? '').toString(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: c.ink,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700)),
-                            Text((b['artist'] ?? '').toString(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: c.inkSoft, fontSize: 11)),
-                          ],
-                        ),
-                      );
-                    },
+                    itemBuilder: (_, i) => _bookCard(c, _books[i]),
                   ),
       ),
     ]);
+  }
+
+  Widget _bookCard(BrutalColors c, Map b) {
+    final art = (b['artwork'] ?? '').toString();
+    final title = (b['title'] ?? '').toString();
+    // Pretty gradient cover with the book title when LibriVox has no artwork.
+    Widget fallbackCover() => Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: _coverGradient(title),
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.menu_book_rounded,
+                  size: 34, color: Colors.white70),
+              const SizedBox(height: 8),
+              Text(title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      height: 1.25)),
+            ],
+          ),
+        );
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PodcastEpisodesScreen(show: b)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: art.isEmpty
+                  ? fallbackCover()
+                  : CachedNetworkImage(
+                      imageUrl: art,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: c.surface2),
+                      errorWidget: (_, __, ___) => fallbackCover(),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: c.ink, fontSize: 13, fontWeight: FontWeight.w700)),
+          Text((b['artist'] ?? '').toString(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: c.inkSoft, fontSize: 11)),
+        ],
+      ),
+    );
   }
 
   @override

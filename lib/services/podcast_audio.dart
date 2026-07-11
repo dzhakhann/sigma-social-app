@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
@@ -96,6 +97,40 @@ class PodcastAudio {
   }
 
   void toggle() => player.playing ? player.pause() : player.play();
+
+  // ─── Playback speed (0.5–3x, persists for the session) ────────────────────
+  final ValueNotifier<double> speed = ValueNotifier(1.0);
+  Future<void> setSpeed(double s) async {
+    speed.value = s;
+    await player.setSpeed(s);
+  }
+
+  // ─── Sleep timer ───────────────────────────────────────────────────────────
+  final ValueNotifier<int> sleepMinutes = ValueNotifier(0); // 0 = off
+  Timer? _sleepTimer;
+  void setSleepTimer(int minutes) {
+    _sleepTimer?.cancel();
+    sleepMinutes.value = minutes;
+    if (minutes > 0) {
+      _sleepTimer = Timer(Duration(minutes: minutes), () {
+        player.pause();
+        sleepMinutes.value = 0;
+      });
+    }
+  }
+
+  // ─── Shuffle / repeat ──────────────────────────────────────────────────────
+  final ValueNotifier<bool> shuffleOn = ValueNotifier(false);
+  final ValueNotifier<bool> repeatOn = ValueNotifier(false);
+  Future<void> toggleShuffle() async {
+    shuffleOn.value = !shuffleOn.value;
+    await player.setShuffleModeEnabled(shuffleOn.value);
+  }
+
+  Future<void> toggleRepeat() async {
+    repeatOn.value = !repeatOn.value;
+    await player.setLoopMode(repeatOn.value ? LoopMode.one : LoopMode.off);
+  }
 
   Future<void> stop() async {
     await player.stop();

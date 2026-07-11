@@ -403,6 +403,24 @@ class S {
       'ch6': 'Complete 1 goal',
       // emoji
       'recentEmoji': 'Recent', 'emojiSearch': 'Search emoji…',
+      // rhythm 2.0
+      'mHome': 'Home', 'mHistory': 'History', 'mFav': 'Liked', 'mPlaylists': 'Playlists',
+      'trackOfWeek': 'Track of the week',
+      'byGenre': 'By genre',
+      'gAll': 'All', 'gPop': 'Pop', 'gHipHop': 'Hip-Hop', 'gElectronic': 'Electronic',
+      'gRock': 'Rock', 'gJazz': 'Jazz', 'gClassical': 'Classical',
+      'gRnb': 'R&B', 'gLatin': 'Latin', 'gAmbient': 'Ambient', 'gFolk': 'Folk',
+      'speedTitle': 'Playback speed', 'sleepTimer': 'Sleep timer',
+      'timerOff': 'Off', 'inMinutes': 'In {n} minutes',
+      'addToFav': 'Like', 'removeFromFav': 'Remove from liked',
+      'playBtn': 'Play', 'recentSearches': 'Recent searches',
+      'emptyHistory': 'Your listening history will appear here',
+      'emptyFav': 'Tap ❤ on any track — it will appear here',
+      // audiobook genres
+      'bAll': 'All', 'bFiction': 'Fiction', 'bClassics': 'Classics',
+      'bMystery': 'Mystery', 'bFantasy': 'Fantasy', 'bBio': 'Biography',
+      'bScience': 'Science', 'bPhilosophy': 'Philosophy', 'bPoetry': 'Poetry',
+      'bHistory': 'History', 'bChildren': 'Children',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -800,6 +818,24 @@ class S {
       'ch6': 'Выполни 1 цель',
       // emoji
       'recentEmoji': 'Недавние', 'emojiSearch': 'Поиск эмодзи…',
+      // rhythm 2.0
+      'mHome': 'Главная', 'mHistory': 'История', 'mFav': 'Избранное', 'mPlaylists': 'Плейлисты',
+      'trackOfWeek': 'Трек недели',
+      'byGenre': 'По жанрам',
+      'gAll': 'Все', 'gPop': 'Поп', 'gHipHop': 'Хип-хоп', 'gElectronic': 'Электроника',
+      'gRock': 'Рок', 'gJazz': 'Джаз', 'gClassical': 'Классика',
+      'gRnb': 'R&B', 'gLatin': 'Латино', 'gAmbient': 'Эмбиент', 'gFolk': 'Фолк',
+      'speedTitle': 'Скорость воспроизведения', 'sleepTimer': 'Таймер сна',
+      'timerOff': 'Выключить', 'inMinutes': 'Через {n} минут',
+      'addToFav': 'Нравится', 'removeFromFav': 'Убрать из избранного',
+      'playBtn': 'Слушать', 'recentSearches': 'Недавние запросы',
+      'emptyHistory': 'История прослушивания появится здесь',
+      'emptyFav': 'Нажми ❤ на любом треке — он появится здесь',
+      // audiobook genres
+      'bAll': 'Все', 'bFiction': 'Художественная', 'bClassics': 'Классика',
+      'bMystery': 'Детективы', 'bFantasy': 'Фэнтези', 'bBio': 'Биографии',
+      'bScience': 'Наука', 'bPhilosophy': 'Философия', 'bPoetry': 'Поэзия',
+      'bHistory': 'История', 'bChildren': 'Детям',
     },
   };
 

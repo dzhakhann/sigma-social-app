@@ -377,9 +377,14 @@ class ApiService {
   }
 
   // ─── AUDIOBOOKS (LibriVox — public domain, via backend proxy) ─────────────
-  static Future<List<Map>> searchAudiobooks(String term) async {
-    final d = await _getSafe(
-        '/audiobooks/search?term=${Uri.encodeQueryComponent(term)}');
+  static Future<List<Map>> searchAudiobooks(String term,
+      {String genre = '', String language = ''}) async {
+    var q = '/audiobooks/search?term=${Uri.encodeQueryComponent(term)}';
+    if (genre.isNotEmpty) q += '&genre=${Uri.encodeQueryComponent(genre)}';
+    if (language.isNotEmpty) {
+      q += '&language=${Uri.encodeQueryComponent(language)}';
+    }
+    final d = await _getSafe(q);
     if (d['success'] != true) return [];
     return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
   }
@@ -397,12 +402,16 @@ class ApiService {
             .toString(),
         'audio': '$_audius/tracks/${t['id']}/stream?$_audiusApp',
         'duration': t['duration']?.toString() ?? '',
+        'kind': 'music', // distinguishes music from podcasts/books locally
       };
 
-  static Future<List<Map>> musicTrending() async {
+  static Future<List<Map>> musicTrending({String genre = ''}) async {
     try {
+      final g = genre.isNotEmpty
+          ? '&genre=${Uri.encodeQueryComponent(genre)}'
+          : '';
       final r = await http
-          .get(Uri.parse('$_audius/tracks/trending?$_audiusApp'))
+          .get(Uri.parse('$_audius/tracks/trending?$_audiusApp$g'))
           .timeout(const Duration(seconds: 12));
       final j = jsonDecode(r.body);
       return ((j['data'] ?? []) as List)

@@ -194,6 +194,8 @@ class _PodcastPlayerScreenState extends State<PodcastPlayerScreen> {
             ),
             const SizedBox(height: 12),
             _controls(c, player),
+            const SizedBox(height: 6),
+            _extraControls(c),
             const Spacer(),
           ]),
         ),
@@ -256,6 +258,145 @@ class _PodcastPlayerScreenState extends State<PodcastPlayerScreen> {
           onPressed: _audio.hasNext ? _audio.next : null,
         ),
       ],
+    );
+  }
+
+  // Second row: shuffle · speed · sleep timer · repeat (Spotify-style).
+  Widget _extraControls(BrutalColors c) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        ValueListenableBuilder<bool>(
+          valueListenable: _audio.shuffleOn,
+          builder: (_, on, __) => IconButton(
+            icon: Icon(Icons.shuffle_rounded,
+                color: on ? c.accent : c.inkSoft, size: 22),
+            onPressed: _audio.toggleShuffle,
+          ),
+        ),
+        ValueListenableBuilder<double>(
+          valueListenable: _audio.speed,
+          builder: (_, s, __) => GestureDetector(
+            onTap: _pickSpeed,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: s != 1.0 ? c.accent.withOpacity(0.15) : c.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: s != 1.0
+                        ? c.accent
+                        : c.ink.withOpacity(0.1)),
+              ),
+              child: Text('${s}x',
+                  style: TextStyle(
+                      color: s != 1.0 ? c.accent : c.inkSoft,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+            ),
+          ),
+        ),
+        ValueListenableBuilder<int>(
+          valueListenable: _audio.sleepMinutes,
+          builder: (_, m, __) => IconButton(
+            icon: Icon(
+                m > 0
+                    ? Icons.bedtime_rounded
+                    : Icons.bedtime_outlined,
+                color: m > 0 ? c.accent : c.inkSoft,
+                size: 22),
+            onPressed: _pickSleepTimer,
+          ),
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: _audio.repeatOn,
+          builder: (_, on, __) => IconButton(
+            icon: Icon(Icons.repeat_rounded,
+                color: on ? c.accent : c.inkSoft, size: 22),
+            onPressed: _audio.toggleRepeat,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _pickSpeed() {
+    final c = context.k;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 12),
+          Text(ctx.t('speedTitle'),
+              style: TextStyle(
+                  color: c.ink, fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0].map((s) {
+              final sel = _audio.speed.value == s;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: ChoiceChip(
+                  label: Text('${s}x'),
+                  selected: sel,
+                  selectedColor: c.accent.withOpacity(0.2),
+                  onSelected: (_) {
+                    _audio.setSpeed(s);
+                    Navigator.pop(ctx);
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+        ]),
+      ),
+    );
+  }
+
+  void _pickSleepTimer() {
+    final c = context.k;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 12),
+          Text(ctx.t('sleepTimer'),
+              style: TextStyle(
+                  color: c.ink, fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 4),
+          ...[0, 15, 30, 60].map((m) => ListTile(
+                dense: true,
+                leading: Icon(
+                    m == 0
+                        ? Icons.close_rounded
+                        : Icons.bedtime_outlined,
+                    color: c.inkSoft,
+                    size: 20),
+                title: Text(
+                    m == 0
+                        ? ctx.t('timerOff')
+                        : ctx.t('inMinutes').replaceAll('{n}', '$m'),
+                    style: TextStyle(color: c.ink)),
+                trailing: _audio.sleepMinutes.value == m && m > 0
+                    ? Icon(Icons.check_rounded, color: c.accent, size: 20)
+                    : null,
+                onTap: () {
+                  _audio.setSleepTimer(m);
+                  Navigator.pop(ctx);
+                },
+              )),
+          const SizedBox(height: 8),
+        ]),
+      ),
     );
   }
 
