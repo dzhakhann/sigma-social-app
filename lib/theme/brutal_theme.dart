@@ -121,6 +121,27 @@ const List<BrutalTheme> kThemes = [
     ),
   ),
 
+  // LIGHT — clean warm paper background with the same blue accent.
+  BrutalTheme(
+    id: 'light',
+    nameEn: 'Light',
+    nameRu: 'Светлая',
+    c: BrutalColors(
+      bg:       Color(0xFFF5F5F2),
+      surface:  Color(0xFFFFFFFF),
+      surface2: Color(0xFFEDEDEA),
+      ink:      Color(0xFF17181C),
+      inkSoft:  Color(0xFF6E7280),
+      accent:   Color(0xFF3563E9),
+      accent2:  Color(0xFF5A82F0),
+      accent3:  Color(0xFF8A6FF0),
+      danger:   Color(0xFFD64560),
+      shadow:   Color(0x22000000),
+      onAccent: Color(0xFFFFFFFF),
+      isDark:   false,
+    ),
+  ),
+
 ];
 
 // ─── APP CONFIG ───────────────────────────────────────────────────────────────

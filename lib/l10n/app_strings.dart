@@ -329,6 +329,22 @@ class S {
       'nChannelPost': 'New post in {u}',
       'viewMyStories': 'View my stories',
       'cropHint': 'Drag and pinch to choose the visible area',
+      // story extras
+      'reportBtn': 'Report', 'reportSent': 'Report sent. We\'ll review this story.',
+      'shareBtn': 'Share', 'copyLink': 'Copy link',
+      'shareStoryText': 'Check out this story on Sigmacta',
+      // settings extras
+      'secAppearance': 'Appearance', 'secAccount': 'Account', 'secAbout': 'About',
+      'editProfileBtn': 'Edit profile',
+      'privacyPolicy': 'Privacy Policy', 'termsOfUse': 'Terms of Use',
+      'appVersion': 'Version',
+      'deleteAccount': 'Delete account',
+      'deleteAccountWarn': 'This will permanently delete your account, posts, messages and goals. This cannot be undone.',
+      'deleteAccountConfirm': 'Delete forever',
+      'accountDeleted': 'Account deleted',
+      // goals extras
+      'fAll': 'All', 'fActive': 'Active', 'fDone': 'Done', 'fPaused': 'Postponed',
+      'plus10': '+10%',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -652,6 +668,22 @@ class S {
       'nChannelPost': 'Новый пост в {u}',
       'viewMyStories': 'Мои истории',
       'cropHint': 'Перемещайте и масштабируйте, чтобы выбрать видимую область',
+      // story extras
+      'reportBtn': 'Пожаловаться', 'reportSent': 'Жалоба отправлена. Мы проверим эту историю.',
+      'shareBtn': 'Поделиться', 'copyLink': 'Скопировать ссылку',
+      'shareStoryText': 'Посмотри эту историю в Sigmacta',
+      // settings extras
+      'secAppearance': 'Оформление', 'secAccount': 'Аккаунт', 'secAbout': 'О приложении',
+      'editProfileBtn': 'Редактировать профиль',
+      'privacyPolicy': 'Политика конфиденциальности', 'termsOfUse': 'Условия использования',
+      'appVersion': 'Версия',
+      'deleteAccount': 'Удалить аккаунт',
+      'deleteAccountWarn': 'Аккаунт, посты, сообщения и цели будут удалены навсегда. Это действие нельзя отменить.',
+      'deleteAccountConfirm': 'Удалить навсегда',
+      'accountDeleted': 'Аккаунт удалён',
+      // goals extras
+      'fAll': 'Все', 'fActive': 'Активные', 'fDone': 'Выполненные', 'fPaused': 'Отложенные',
+      'plus10': '+10%',
     },
   };
 

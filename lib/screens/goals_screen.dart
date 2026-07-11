@@ -57,6 +57,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
   final int year = DateTime.now().year;
   List _goals = [];
   bool _loading = true;
+  String _filter = 'all'; // all | active | done | paused
 
   String get _uid => widget.user['id'].toString();
 
@@ -69,6 +70,36 @@ class _GoalsScreenState extends State<GoalsScreen> {
   Future<void> _load() async {
     final data = await ApiService.getGoals(_uid, year: year);
     if (mounted) setState(() { _goals = data; _loading = false; });
+  }
+
+  List get _visibleGoals {
+    switch (_filter) {
+      case 'active':
+        return _goals
+            .where((g) => g['status'] != 'done' && g['status'] != 'paused')
+            .toList();
+      case 'done':
+        return _goals.where((g) => g['status'] == 'done').toList();
+      case 'paused':
+        return _goals.where((g) => g['status'] == 'paused').toList();
+      default:
+        return _goals;
+    }
+  }
+
+  // One-tap +10% straight from the card (no need to open the sheet).
+  Future<void> _bumpProgress(Map g) async {
+    HapticFeedback.selectionClick();
+    final next = (((g['progress'] ?? 0) as int) + 10).clamp(0, 100);
+    setState(() => g['progress'] = next); // optimistic
+    if (next >= 100) {
+      await ApiService.updateGoal(
+          g['id'].toString(), {'progress': 100, 'status': 'done'});
+      await _load();
+      _celebrate();
+    } else {
+      await ApiService.updateGoal(g['id'].toString(), {'progress': next});
+    }
   }
 
   int get _done => _goals.where((g) => g['status'] == 'done').length;
@@ -325,14 +356,57 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 padding: const EdgeInsets.fromLTRB(14, 8, 14, 96),
                 children: [
                   _header(c),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+                  if (_goals.isNotEmpty) ...[
+                    _filterChips(c),
+                    const SizedBox(height: 12),
+                  ],
                   if (_goals.isEmpty)
                     _empty(c)
                   else
-                    ..._goals.map((g) => _goalCard(c, g)),
+                    ..._visibleGoals.map((g) => _goalCard(c, g)),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _filterChips(BrutalColors c) {
+    final filters = [
+      ['all', context.t('fAll')],
+      ['active', context.t('fActive')],
+      ['done', context.t('fDone')],
+      ['paused', context.t('fPaused')],
+    ];
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: filters.map((f) {
+          final sel = _filter == f[0];
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => setState(() => _filter = f[0]),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: sel ? c.accent : c.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                      color: sel ? c.accent : c.ink.withOpacity(0.08)),
+                ),
+                child: Text(f[1],
+                    style: TextStyle(
+                        color: sel ? c.onAccent : c.inkSoft,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13)),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -458,10 +532,28 @@ class _GoalsScreenState extends State<GoalsScreen> {
                   Text(context.t('postponedLabel'),
                       style: TextStyle(color: c.inkSoft, fontSize: 12)),
                 ])
-              else
+              else ...[
                 Text('$prog%',
                     style: TextStyle(
                         color: c.inkSoft, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _bumpProgress(g),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: c.accent.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(context.t('plus10'),
+                        style: TextStyle(
+                            color: c.accent,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12)),
+                  ),
+                ),
+              ],
             ]),
             const SizedBox(height: 12),
             ClipRRect(

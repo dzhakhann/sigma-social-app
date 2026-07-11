@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -120,10 +122,10 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     }
   }
 
-  Future<void> _sendReply(Map story, String text) async {
+  void _sendReply(Map story, String text) {
     if (text.trim().isEmpty) return;
-    await _dmAuthor(story, '${context.t('storyReplyPrefix')}${text.trim()}');
-    if (!mounted) return;
+    // Instant UI: clear + toast right away, deliver the DM in the background.
+    _dmAuthor(story, '${context.t('storyReplyPrefix')}${text.trim()}');
     _replyCtrl.clear();
     FocusScope.of(context).unfocus();
     setState(() => _isPaused = false);
@@ -132,12 +134,103 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
         SnackBar(content: Text(context.t('replySent'))));
   }
 
-  Future<void> _likeStory(Map story) async {
-    await _dmAuthor(story, context.t('storyLiked'));
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(context.t('sentMark'))));
-    }
+  // Liked story ids — instant UI feedback, the DM is sent in the background.
+  final Set<String> _liked = {};
+
+  void _likeStory(Map story) {
+    final id = story['id'].toString();
+    if (_liked.contains(id)) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _liked.add(id)); // heart fills instantly
+    // Fire-and-forget: don't block the UI on the network.
+    _dmAuthor(story, context.t('storyLiked'));
+  }
+
+  void _shareStory(Map story) {
+    _timer?.cancel();
+    setState(() => _isPaused = true);
+    final url = (story['image_url'] ?? '').toString();
+    Share.share('${context.t('shareStoryText')}\n$url').whenComplete(() {
+      if (mounted) {
+        setState(() => _isPaused = false);
+        _startTimer();
+      }
+    });
+  }
+
+  // Instagram-style "⋯" menu: share / copy link / report / delete (own).
+  void _showOptions(Map story, bool isOwn) {
+    final c = context.k;
+    _timer?.cancel();
+    setState(() => _isPaused = true);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10),
+          Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                  color: c.ink.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: Icon(Icons.share_rounded, color: c.ink),
+            title: Text(context.t('shareBtn')),
+            onTap: () {
+              Navigator.pop(context);
+              _shareStory(story);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.link_rounded, color: c.ink),
+            title: Text(context.t('copyLink')),
+            onTap: () {
+              Clipboard.setData(
+                  ClipboardData(text: (story['image_url'] ?? '').toString()));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(context.t('linkCopied'))));
+            },
+          ),
+          if (!isOwn)
+            ListTile(
+              leading: Icon(Icons.flag_outlined, color: c.danger),
+              title: Text(context.t('reportBtn'),
+                  style: TextStyle(color: c.danger)),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(context.t('reportSent'))));
+              },
+            ),
+          if (isOwn)
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: c.danger),
+              title: Text(context.t('deleteBtn'),
+                  style: TextStyle(color: c.danger)),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteStory(story['id']);
+              },
+            ),
+          ListTile(
+            leading: Icon(Icons.close_rounded, color: c.inkSoft),
+            title: Text(context.t('cancelBtn')),
+            onTap: () => Navigator.pop(context),
+          ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    ).whenComplete(() {
+      if (mounted && !_isClosing) {
+        setState(() => _isPaused = false);
+        _startTimer();
+      }
+    });
   }
 
   @override
@@ -250,39 +343,13 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                             fontWeight: FontWeight.bold,
                             fontSize: 14)),
                     const Spacer(),
-                    if (isOwn)
-                      GestureDetector(
-                        onTap: () {
-                          _timer?.cancel();
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              backgroundColor: c.surface,
-                              title: Text(context.t('deleteStoryQ')),
-                              actions: [
-                                TextButton(
-                                    onPressed: () {
-                                      Navigator.pop(ctx);
-                                      _startTimer();
-                                    },
-                                    child: Text(context.t('cancelBtn'),
-                                        style: TextStyle(color: c.inkSoft))),
-                                TextButton(
-                                    onPressed: () {
-                                      Navigator.pop(ctx);
-                                      _deleteStory(story['id']);
-                                    },
-                                    child: Text(context.t('deleteBtn'),
-                                        style: TextStyle(color: c.danger))),
-                              ],
-                            ),
-                          );
-                        },
-                        child: const Padding(
-                            padding: EdgeInsets.all(8),
-                            child: Icon(Icons.delete_outline,
-                                color: Colors.white, size: 22)),
-                      ),
+                    GestureDetector(
+                      onTap: () => _showOptions(story, isOwn),
+                      child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.more_vert_rounded,
+                              color: Colors.white, size: 24)),
+                    ),
                     GestureDetector(
                       onTap: _closeScreen,
                       child: const Padding(
@@ -331,11 +398,26 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                     ),
                     IconButton(
                       onPressed: () => _likeStory(story),
-                      icon: const Icon(Icons.favorite_border,
-                          color: Colors.white, size: 28),
+                      icon: AnimatedScale(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.elasticOut,
+                        scale: _liked.contains(story['id'].toString()) ? 1.2 : 1,
+                        child: Icon(
+                          _liked.contains(story['id'].toString())
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          color: _liked.contains(story['id'].toString())
+                              ? Colors.redAccent
+                              : Colors.white,
+                          size: 28,
+                        ),
+                      ),
                     ),
                     IconButton(
-                      onPressed: () => _sendReply(story, _replyCtrl.text),
+                      // With text → send a reply; empty → open the share menu.
+                      onPressed: () => _replyCtrl.text.trim().isEmpty
+                          ? _shareStory(story)
+                          : _sendReply(story, _replyCtrl.text),
                       icon: const Icon(Icons.send, color: Colors.white, size: 24),
                     ),
                   ]),

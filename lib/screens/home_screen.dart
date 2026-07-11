@@ -690,7 +690,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         user: widget.user, year: DateTime.now().year)),
               );
             }),
-            item(Icons.bookmark_border_rounded, context.t('mSaved'), soon),
             Divider(height: 12, color: c.ink.withOpacity(0.07)),
             item(Icons.settings_outlined, context.t('settings'), () {
               Navigator.pop(context);

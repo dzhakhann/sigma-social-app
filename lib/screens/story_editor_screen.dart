@@ -21,6 +21,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   final _boundaryKey = GlobalKey();
   final _textCtrl = TextEditingController();
 
+  double? _imgAspect; // width / height of the picked photo
   String _text = '';
   Offset _textPos = const Offset(0.5, 0.5); // relative (0..1)
   double _textScale = 1.0;
@@ -33,6 +34,15 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     Colors.white, Colors.black, Color(0xFFFF5252), Color(0xFFFFD740),
     Color(0xFF69F0AE), Color(0xFF40C4FF), Color(0xFFE040FB),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    decodeImageFromList(widget.imageBytes).then((img) {
+      if (mounted) setState(() => _imgAspect = img.width / img.height);
+      img.dispose();
+    });
+  }
 
   Future<void> _publish() async {
     if (_publishing) return;
@@ -67,6 +77,35 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     });
   }
 
+  // The photo starts in "cover" framing and the user can pinch-zoom (up to 5x)
+  // and pan to choose the visible area, exactly like Instagram stories.
+  Widget _zoomablePhoto(Size size) {
+    final aspect = _imgAspect;
+    if (aspect == null) {
+      return Image.memory(widget.imageBytes, fit: BoxFit.cover);
+    }
+    final screenAspect = size.width / size.height;
+    double childW, childH;
+    if (aspect >= screenAspect) {
+      childH = size.height;
+      childW = size.height * aspect;
+    } else {
+      childW = size.width;
+      childH = size.width / aspect;
+    }
+    return InteractiveViewer(
+      constrained: false,
+      minScale: 1,
+      maxScale: 5,
+      boundaryMargin: EdgeInsets.zero,
+      child: SizedBox(
+        width: childW,
+        height: childH,
+        child: Image.memory(widget.imageBytes, fit: BoxFit.fill),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -79,7 +118,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
             key: _boundaryKey,
             child: Stack(fit: StackFit.expand, children: [
               Container(color: Colors.black),
-              Image.memory(widget.imageBytes, fit: BoxFit.cover),
+              // Instagram-style: pinch to zoom / drag to reframe the photo.
+              _zoomablePhoto(size),
               if (_text.isNotEmpty && !_editingText)
                 Positioned(
                   left: _textPos.dx * size.width - 150,

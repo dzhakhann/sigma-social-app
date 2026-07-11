@@ -291,6 +291,9 @@ class ApiService {
     return d['success'] == true ? (d['data'] ?? {}) : {};
   }
 
+  // Self-service account deletion (Google Play requirement).
+  static Future<Map> deleteAccount() => _delete('/account');
+
   // ─── AI (Gemini via backend) ───────────────────────────────────────────────
   // messages: [{'role':'user'|'model','text':'...'}]
   static Future<String> aiChat(List<Map<String, String>> messages) async {
