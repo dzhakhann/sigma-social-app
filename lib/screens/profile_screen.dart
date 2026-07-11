@@ -240,7 +240,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ─── Collapsing header (Telegram-style: big avatar shrinks on scroll) ───────
+  // ─── Collapsing header (Telegram-style: full-width square photo, the name
+  // sits over the photo bottom-left, and everything shrinks into the toolbar
+  // with a small round avatar on scroll) ───────────────────────────────────────
   Widget _sliverHeader(BrutalColors c) {
     final avatarUrl = userProfile['avatar_url'];
     final full = _fullName();
@@ -248,7 +250,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final title =
         showName ? full : (userProfile['username'] ?? 'User').toString();
     final topPad = MediaQuery.of(context).padding.top;
-    const expanded = 290.0;
+    final screenW = MediaQuery.of(context).size.width;
+    final expanded = screenW.clamp(280.0, 460.0); // square photo header
+
+    final hasPhoto = avatarUrl != null;
+    // Over the photo the toolbar icons are white; without a photo — theme ink.
+    final iconColor = hasPhoto ? Colors.white : c.ink;
 
     return SliverAppBar(
       pinned: true,
@@ -256,12 +263,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: c.bg,
       surfaceTintColor: Colors.transparent,
       automaticallyImplyLeading: !widget.isOwnProfile,
-      iconTheme: IconThemeData(color: c.ink),
+      iconTheme: IconThemeData(color: iconColor, shadows: const [
+        Shadow(blurRadius: 8, color: Colors.black45),
+      ]),
       actions: [
         if (widget.isOwnProfile) ...[
           IconButton(
             tooltip: context.t('profileShareTitle'),
-            icon: Icon(Icons.qr_code_scanner_rounded, color: c.ink),
+            icon: Icon(Icons.qr_code_scanner_rounded,
+                color: iconColor,
+                shadows: const [Shadow(blurRadius: 8, color: Colors.black45)]),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -269,7 +280,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.edit_rounded, color: c.ink),
+            icon: Icon(Icons.edit_rounded,
+                color: iconColor,
+                shadows: const [Shadow(blurRadius: 8, color: Colors.black45)]),
             onPressed: _editProfile,
           ),
         ],
@@ -281,65 +294,156 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final t = ((cons.biggest.height - minH) / (maxH - minH))
               .clamp(0.0, 1.0); // 1 = expanded, 0 = collapsed
           final e = Curves.easeOut.transform(t);
-          final avatarSize = 44.0 + 62.0 * t;
           return Stack(fit: StackFit.expand, children: [
-            // Expanded: big centered avatar + name
+            // ── Full-bleed square photo (Telegram-style) ────────────────
+            Positioned.fill(
+              child: Opacity(
+                opacity: (e * 1.4).clamp(0.0, 1.0),
+                child: GestureDetector(
+                  onTap: () {
+                    if (hasPhoto) {
+                      Navigator.push(
+                          context,
+                          PhotoViewScreen.route(avatarUrl.toString(),
+                              heroTag: avatarUrl.toString()));
+                    } else if (widget.isOwnProfile) {
+                      _pickAvatar();
+                    }
+                  },
+                  child: hasPhoto
+                      ? Hero(
+                          tag: avatarUrl.toString(),
+                          child: CachedNetworkImage(
+                            imageUrl: avatarUrl.toString(),
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : Container(
+                          decoration:
+                              BoxDecoration(gradient: c.buttonGradient),
+                          child: Icon(Icons.person_rounded,
+                              size: 96,
+                              color: Colors.white.withOpacity(0.9)),
+                        ),
+                ),
+              ),
+            ),
+            // Bottom gradient so the name is always readable on any photo.
             Positioned(
-              top: topPad + 34,
-              left: 0,
-              right: 0,
+              left: 0, right: 0, bottom: 0, height: 140,
               child: IgnorePointer(
-                ignoring: t < 0.35,
+                child: Opacity(
+                  opacity: e,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.black87],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // ── Name + @username over the photo, bottom-left ────────────
+            Positioned(
+              left: 16,
+              right: 72,
+              bottom: 14,
+              child: IgnorePointer(
                 child: Opacity(
                   opacity: e,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _bigAvatar(c, avatarUrl, avatarSize),
-                      const SizedBox(height: 12),
-                      _nameRow(c, title, center: true),
+                      _nameRow(c, title,
+                          center: false, onPhoto: hasPhoto),
                       if (showName)
                         Text('@${userProfile['username'] ?? ''}',
-                            style:
-                                TextStyle(color: c.inkSoft, fontSize: 13)),
+                            style: TextStyle(
+                                color: hasPhoto
+                                    ? Colors.white70
+                                    : c.inkSoft,
+                                fontSize: 13)),
                       if ((userProfile['headline'] ?? '')
                           .toString()
                           .trim()
-                          .isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                          .isNotEmpty)
                         Text(userProfile['headline'],
-                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 14,
-                                color: c.inkSoft,
+                                fontSize: 13,
+                                color: hasPhoto
+                                    ? Colors.white70
+                                    : c.inkSoft,
                                 fontWeight: FontWeight.w500)),
-                      ],
                     ],
                   ),
                 ),
               ),
             ),
-            // Collapsed: small avatar + name in the toolbar
+            // ── Change-photo button (own profile) bottom-right ──────────
+            if (widget.isOwnProfile)
+              Positioned(
+                right: 14,
+                bottom: 14,
+                child: Opacity(
+                  opacity: e,
+                  child: IgnorePointer(
+                    ignoring: t < 0.35,
+                    child: GestureDetector(
+                      onTap: _pickAvatar,
+                      child: Container(
+                        width: 42, height: 42,
+                        decoration: BoxDecoration(
+                          color: c.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white24, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                                blurRadius: 10, color: Colors.black38),
+                          ],
+                        ),
+                        child: isUploadingAvatar
+                            ? const Padding(
+                                padding: EdgeInsets.all(11),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.camera_alt_rounded,
+                                size: 19, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // ── Collapsed: small round avatar + name in the toolbar ─────
             Positioned(
               top: topPad,
               height: kToolbarHeight,
               left: widget.isOwnProfile ? 16 : 52,
               right: widget.isOwnProfile ? 100 : 16,
-              child: Opacity(
-                opacity: 1 - e,
-                child: Row(children: [
-                  _bigAvatar(c, avatarUrl, 34, tappable: false),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: c.ink,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700)),
-                  ),
-                ]),
+              child: IgnorePointer(
+                ignoring: e > 0.5,
+                child: Opacity(
+                  opacity: 1 - e,
+                  child: Row(children: [
+                    _bigAvatar(c, avatarUrl, 34, tappable: false),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: c.ink,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                ),
               ),
             ),
           ]);
@@ -407,7 +511,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ]);
   }
 
-  Widget _nameRow(BrutalColors c, String title, {bool center = false}) {
+  Widget _nameRow(BrutalColors c, String title,
+      {bool center = false, bool onPhoto = false}) {
+    final nameColor = onPhoto ? Colors.white : c.ink;
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment:
@@ -417,11 +523,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Text(title,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800, color: c.ink)),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: nameColor,
+                  shadows: onPhoto
+                      ? const [Shadow(blurRadius: 8, color: Colors.black54)]
+                      : null)),
         ),
         if (userProfile['is_verified'] == true) ...[
           const SizedBox(width: 6),
-          Icon(Icons.verified_rounded, size: 20, color: c.ink),
+          Icon(Icons.verified_rounded, size: 20, color: nameColor),
         ],
         if (userProfile['is_pro'] == true) ...[
           const SizedBox(width: 6),
