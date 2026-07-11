@@ -6,7 +6,6 @@ import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
-import '../widgets/emoji_picker.dart';
 
 class StoryViewScreen extends StatefulWidget {
   final List stories;
@@ -370,8 +369,6 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                   child: Row(children: [
-                    EmojiPickerButton(
-                        controller: _replyCtrl, color: Colors.white70),
                     Expanded(
                       child: TextField(
                         controller: _replyCtrl,

@@ -93,11 +93,14 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       childW = size.width;
       childH = size.width / aspect;
     }
+    // minScale < 1 lets the user zoom OUT too (photo smaller than the screen,
+    // black around it); boundaryMargin keeps it draggable in that state.
     return InteractiveViewer(
       constrained: false,
-      minScale: 1,
+      minScale: 0.4,
       maxScale: 5,
-      boundaryMargin: EdgeInsets.zero,
+      boundaryMargin: EdgeInsets.symmetric(
+          horizontal: size.width, vertical: size.height),
       child: SizedBox(
         width: childW,
         height: childH,

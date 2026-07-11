@@ -345,6 +345,12 @@ class S {
       // goals extras
       'fAll': 'All', 'fActive': 'Active', 'fDone': 'Done', 'fPaused': 'Postponed',
       'plus10': '+10%',
+      // server errors
+      'errWrongCreds': 'Wrong username or password',
+      'errUserTaken': 'Username already taken',
+      'errUserShort': 'Username must be at least 3 characters',
+      'errUserChars': 'Username can only contain letters, numbers, _ and .',
+      'errTooMany': 'Too many attempts. Try again later.',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -684,6 +690,12 @@ class S {
       // goals extras
       'fAll': 'Все', 'fActive': 'Активные', 'fDone': 'Выполненные', 'fPaused': 'Отложенные',
       'plus10': '+10%',
+      // server errors
+      'errWrongCreds': 'Неверный никнейм или пароль',
+      'errUserTaken': 'Никнейм уже занят',
+      'errUserShort': 'Никнейм минимум 3 символа',
+      'errUserChars': 'Никнейм: только буквы, цифры, _ и .',
+      'errTooMany': 'Слишком много попыток. Попробуйте позже.',
     },
   };
 
@@ -720,6 +732,23 @@ String canonicalProfileValue(String v) {
     default:
       return v.trim();
   }
+}
+
+// Translate known English error strings coming from the backend, so login /
+// registration errors follow the app language.
+String localizedServerError(BuildContext context, String raw) {
+  const map = {
+    'Wrong username or password': 'errWrongCreds',
+    'Username already taken': 'errUserTaken',
+    'Username and password are required': 'fillAll',
+    'Username must be at least 3 characters': 'errUserShort',
+    'Password must be at least 6 characters': 'passTooShort',
+    'Username can only contain letters, numbers, _ and .': 'errUserChars',
+    'Too many attempts. Try again later.': 'errTooMany',
+    'Wrong username or recovery phrase': 'recoverFailed',
+  };
+  final key = map[raw.trim()];
+  return key != null ? context.t(key) : raw;
 }
 
 String localizedProfileValue(BuildContext context, String v) {

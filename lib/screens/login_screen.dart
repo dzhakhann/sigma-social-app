@@ -88,7 +88,9 @@ class _LoginScreenState extends State<LoginScreen>
         final reg = await ApiService.register(username, password);
         if (reg['success'] != true) {
           setState(() {
-            _error = reg['error'] ?? context.t('registrationFailed');
+            _error = reg['error'] != null
+                ? localizedServerError(context, reg['error'].toString())
+                : context.t('registrationFailed');
             _isLoading = false;
           });
           return;
@@ -127,7 +129,9 @@ class _LoginScreenState extends State<LoginScreen>
           }
         }
       } else {
-        setState(() => _error = data['error'] ?? context.t('loginFailed'));
+        setState(() => _error = data['error'] != null
+            ? localizedServerError(context, data['error'].toString())
+            : context.t('loginFailed'));
       }
     } catch (e) {
       if (mounted) setState(() => _error = context.t('connError'));
