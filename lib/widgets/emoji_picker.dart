@@ -184,11 +184,13 @@ class EmojiPickerButton extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: c.surface,
+      // Light barrier so the content behind (story, comments) stays visible.
+      barrierColor: Colors.black26,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => StatefulBuilder(
+      builder: (sheetCtx) => StatefulBuilder(
         builder: (ctx, setSheet) => SizedBox(
-          height: 330,
+          height: 280,
           child: Column(children: [
             const SizedBox(height: 8),
             Container(
@@ -224,7 +226,12 @@ class EmojiPickerButton extends StatelessWidget {
                 padding: const EdgeInsets.all(6),
                 children: _cats[cat].emojis
                     .map((e) => GestureDetector(
-                          onTap: () => _insert(e),
+                          onTap: () {
+                            _insert(e);
+                            // Close right away so the reply field and the
+                            // content behind are visible again.
+                            Navigator.pop(sheetCtx);
+                          },
                           child: Center(
                               child: Text(e, style: const TextStyle(fontSize: 24))),
                         ))

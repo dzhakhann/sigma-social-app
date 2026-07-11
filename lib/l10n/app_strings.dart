@@ -696,3 +696,38 @@ class S {
 extension TrContext on BuildContext {
   String t(String key) => S.t(this, key);
 }
+
+// ─── PROFILE ENUM VALUES (gender / relationship) ─────────────────────────────
+// New profiles store canonical ids ('male', 'married', …); older rows may hold
+// localized strings in either language. Both map to the same id here, so the
+// display always follows the current app language.
+String canonicalProfileValue(String v) {
+  switch (v.trim()) {
+    case 'male': case 'Мужской': case 'Male':
+      return 'male';
+    case 'female': case 'Женский': case 'Female':
+      return 'female';
+    case 'other_gender': case 'Другое': case 'Other':
+      return 'other_gender';
+    case 'single': case 'Холост/Не замужем': case 'Single':
+      return 'single';
+    case 'relationship': case 'В отношениях': case 'In a relationship':
+      return 'relationship';
+    case 'married': case 'Женат/Замужем': case 'Married':
+      return 'married';
+    case 'complicated': case 'Всё сложно': case "It's complicated":
+      return 'complicated';
+    default:
+      return v.trim();
+  }
+}
+
+String localizedProfileValue(BuildContext context, String v) {
+  const keys = {
+    'male': 'gMale', 'female': 'gFemale', 'other_gender': 'gOther',
+    'single': 'rSingle', 'relationship': 'rRelationship',
+    'married': 'rMarried', 'complicated': 'rComplicated',
+  };
+  final key = keys[canonicalProfileValue(v)];
+  return key != null ? context.t(key) : v;
+}

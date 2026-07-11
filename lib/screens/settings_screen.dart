@@ -12,8 +12,8 @@ class SettingsScreen extends StatelessWidget {
   final Map user;
   const SettingsScreen({super.key, required this.user});
 
-  static const String _privacyUrl = 'https://sigmacta.pages.dev/privacy.html';
-  static const String _termsUrl = 'https://sigmacta.pages.dev/terms.html';
+  static const String _privacyUrl = 'https://sigmacta.pages.dev/privacy';
+  static const String _termsUrl = 'https://sigmacta.pages.dev/terms';
   static const String _version = '1.0.0';
 
   void _setLang(String l) =>

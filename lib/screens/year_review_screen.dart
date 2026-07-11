@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -60,6 +65,42 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     if (mounted) setState(() => _sharing = false);
   }
 
+  Future<Uint8List?> _capturePoster() async {
+    try {
+      final boundary =
+          _posterKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      return bytes?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // System share sheet — Instagram, Telegram, WhatsApp, anything installed.
+  Future<void> _shareAnywhere() async {
+    final png = await _capturePoster();
+    if (png == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.t('couldNotRender'))));
+      }
+      return;
+    }
+    try {
+      if (kIsWeb) {
+        await Share.share(context.t('shareStoryText'));
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final file = File(
+          '${dir.path}/sigmacta_year_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(png);
+      await Share.shareXFiles([XFile(file.path)],
+          text: context.t('shareStoryText'));
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.k;
@@ -88,6 +129,22 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
                                 strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.ios_share_rounded),
                     label: Text(_sharing ? context.t('publishing') : context.t('publishToStory'),
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: c.accent,
+                        side: BorderSide(color: c.accent.withOpacity(0.6)),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    onPressed: _shareAnywhere,
+                    icon: const Icon(Icons.share_rounded, size: 19),
+                    label: Text(context.t('shareBtn'),
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),

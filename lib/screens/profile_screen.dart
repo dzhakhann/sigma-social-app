@@ -471,7 +471,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _stat(c, _fmtAura(userProfile['aura']), context.t('aura')),
             _stat(c, '${userProfile['followers_count'] ?? 0}',
                 context.t('followers')),
             _stat(c, '${userProfile['posts_count'] ?? userPosts.length}',
@@ -606,7 +605,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ..._detailDefs.map((d) {
             final key = d[0] as String;
             final icon = d[1] as IconData;
-            final val = (d[2] ?? '').toString().trim();
+            var val = (d[2] ?? '').toString().trim();
+            // Gender / relationship are stored canonically — translate here.
+            if (key == 'gender' || key == 'relationship') {
+              val = localizedProfileValue(context, val);
+            }
             if (val.isEmpty) return const SizedBox.shrink();
             if (!widget.isOwnProfile && _hidden.contains(key)) {
               return const SizedBox.shrink();

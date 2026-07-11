@@ -59,14 +59,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (hf is List) _hidden.addAll(hf.map((e) => e.toString()));
   }
 
-  List<String> get _genders =>
-      [context.t('gMale'), context.t('gFemale'), context.t('gOther')];
-  List<String> get _relationships => [
-        context.t('rSingle'),
-        context.t('rRelationship'),
-        context.t('rMarried'),
-        context.t('rComplicated'),
-      ];
+  // Canonical ids — stored in the DB, translated only for display.
+  static const _genders = ['male', 'female', 'other_gender'];
+  static const _relationships = [
+    'single', 'relationship', 'married', 'complicated',
+  ];
 
   Future<void> _finish({bool skip = false}) async {
     if (skip) {
@@ -79,12 +76,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'last_name': _last.text.trim(),
       'middle_name': _middle.text.trim(),
       'birthday': _birthday.text.trim(),
-      'gender': _gender ?? '',
+      'gender': canonicalProfileValue(_gender ?? ''),
       'birthplace': _birthplace.text.trim(),
       'education': _education.text.trim(),
       'work': _work.text.trim(),
       'website': _website.text.trim(),
-      'relationship': _relationship ?? '',
+      'relationship': canonicalProfileValue(_relationship ?? ''),
       'skills': _skills.text.trim(),
       'about': _about.text.trim(),
       'hidden_fields': _hidden.toList(),
@@ -289,7 +286,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Wrap(
                   spacing: 8, runSpacing: 8,
                   children: options.map((o) {
-                    final sel = o == selected;
+                    final sel = canonicalProfileValue(o) ==
+                        canonicalProfileValue(selected ?? '');
                     return GestureDetector(
                       onTap: () => onSel(o),
                       child: Container(
@@ -302,7 +300,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               color: sel ? c.accent : Colors.transparent,
                               width: 1.2),
                         ),
-                        child: Text(o,
+                        child: Text(localizedProfileValue(context, o),
                             style: TextStyle(
                                 color: sel ? c.ink : c.inkSoft,
                                 fontWeight: FontWeight.w600,
