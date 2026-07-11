@@ -47,14 +47,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return hf is List ? hf.map((e) => e.toString()).toSet() : <String>{};
   }
 
+  // Telegram-style pull-down morph: the overscroll distance in pixels drives
+  // the round→square avatar animation directly (finger == animation).
+  final ScrollController _scrollCtrl = ScrollController();
+  final ValueNotifier<double> _stretchPx = ValueNotifier(0);
+
+  void _onScroll() {
+    final v = _scrollCtrl.hasClients && _scrollCtrl.offset < 0
+        ? (-_scrollCtrl.offset).clamp(0.0, 200.0)
+        : 0.0;
+    if (v != _stretchPx.value) _stretchPx.value = v;
+  }
+
   @override
   void initState() {
     super.initState();
+    _scrollCtrl.addListener(_onScroll);
     userProfile = widget.isOwnProfile ? Map.from(widget.user) : {};
     _loadProfile();
     _loadPosts();
     _loadStories();
     if (!widget.isOwnProfile) _checkFollow();
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
+    _stretchPx.dispose();
+    super.dispose();
   }
 
   Map _analytics = {};
@@ -302,13 +323,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final c = context.k;
     return Scaffold(
       backgroundColor: c.bg,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await _loadProfile();
-          await _loadPosts();
-          await _loadStories();
-        },
-        child: CustomScrollView(
+      // No RefreshIndicator here: it would swallow the overscroll gesture that
+      // drives the Telegram-style avatar morph. A deep pull (stretch trigger)
+      // refreshes the profile instead.
+      body: CustomScrollView(
+          controller: _scrollCtrl,
           // Bouncing physics enables the Telegram-style stretch of the header
           // (round avatar morphs into a full-width square photo on pull-down).
           physics: const BouncingScrollPhysics(
@@ -354,7 +373,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -376,6 +394,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return SliverAppBar(
       pinned: true,
       stretch: true,
+      // Deep pull (past the morph) refreshes the profile — replaces the old
+      // RefreshIndicator, which used to swallow the overscroll gesture.
+      onStretchTrigger: () async {
+        await _loadProfile();
+        await _loadPosts();
+        await _loadStories();
+      },
       expandedHeight: expanded,
       backgroundColor: c.bg,
       surfaceTintColor: Colors.transparent,
@@ -399,20 +424,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ],
       flexibleSpace: LayoutBuilder(
-        builder: (ctx, cons) {
+        builder: (ctx, cons) => ValueListenableBuilder<double>(
+        valueListenable: _stretchPx,
+        builder: (ctx2, px, __) {
           final w = cons.biggest.width;
           final h = cons.biggest.height;
           final maxH = expanded + topPad;
           final minH = kToolbarHeight + topPad;
           final t = ((h - minH) / (maxH - minH)).clamp(0.0, 1.0);
           final e = Curves.easeOut.transform(t);
-          // Stretch factor: 0 at rest → 1 when pulled ~150px past the top.
-          final s = h <= maxH ? 0.0 : ((h - maxH) / 150).clamp(0.0, 1.0);
+          // Morph factor driven DIRECTLY by the finger: overscroll pixels
+          // from the scroll controller (0 → circle, ~120px → full square).
+          // The bouncing physics springs it back on release — no separate
+          // animation, the photo follows the gesture both ways.
+          final s = (px / 120).clamp(0.0, 1.0);
+          // The header itself grows with the stretch; fall back to the
+          // computed height if the sliver hasn't expanded yet this frame.
+          final hh = h > maxH ? h : maxH + px;
 
           // Morphing avatar geometry (round → full-bleed square).
           final d = 44.0 + 62.0 * t; // round diameter at current collapse
           final avW = d + (w - d) * s;
-          final avH = d + (h - d) * s;
+          final avH = d + (hh - d) * s;
           final avLeft = ((w - d) / 2) * (1 - s);
           final avTop = (topPad + 34) * (1 - s);
           final radius = (d / 2) * (1 - s);
@@ -595,6 +628,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ]);
         },
+        ),
       ),
     );
   }
