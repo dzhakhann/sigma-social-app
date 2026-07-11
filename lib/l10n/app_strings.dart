@@ -93,7 +93,7 @@ class S {
       'verifyReset': 'Reset',
       'verifyHint': 'Tap the words below in order',
       'wordLabel': 'Word',
-      'navHome': 'Home', 'navPodcasts': 'Podcasts', 'navChat': 'Chat',
+      'navHome': 'Home', 'navPodcasts': 'Rhythm', 'navChat': 'Chat',
       'navProfile': 'Profile',
       'morning': 'Good morning', 'afternoon': 'Good afternoon',
       'evening': 'Good evening', 'night': 'Good night',
@@ -362,6 +362,17 @@ class S {
       // avatar sheet
       'takePhoto': 'Take photo', 'chooseFromGallery': 'Choose from gallery',
       'removePhoto': 'Remove photo',
+      // rhythm
+      'rhythm': 'Rhythm', 'tabMusic': 'Music', 'tabPodcastsR': 'Podcasts',
+      'tabBooks': 'Audiobooks',
+      'musicSearch': 'Search music…', 'booksSearch': 'Search audiobooks…',
+      'trendingNow': 'Trending now',
+      // home cards
+      'quoteOfDay': 'Quote of the day',
+      'continueListening': 'Continue listening',
+      'streakTitle': 'Day streak', 'streakDays': '{n} days in a row',
+      'streakHint': 'Open the app daily to keep the streak',
+      'auraToday': 'today',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -449,7 +460,7 @@ class S {
       'verifyReset': 'Сбросить',
       'verifyHint': 'Нажимайте слова ниже по порядку',
       'wordLabel': 'Слово',
-      'navHome': 'Главная', 'navPodcasts': 'Подкасты', 'navChat': 'Чат',
+      'navHome': 'Главная', 'navPodcasts': 'Ритм', 'navChat': 'Чат',
       'navProfile': 'Профиль',
       'morning': 'Доброе утро', 'afternoon': 'Добрый день',
       'evening': 'Добрый вечер', 'night': 'Доброй ночи',
@@ -718,6 +729,17 @@ class S {
       // avatar sheet
       'takePhoto': 'Сделать фото', 'chooseFromGallery': 'Выбрать из галереи',
       'removePhoto': 'Удалить фото',
+      // rhythm
+      'rhythm': 'Ритм', 'tabMusic': 'Музыка', 'tabPodcastsR': 'Подкасты',
+      'tabBooks': 'Аудиокниги',
+      'musicSearch': 'Искать музыку…', 'booksSearch': 'Искать аудиокниги…',
+      'trendingNow': 'В тренде',
+      // home cards
+      'quoteOfDay': 'Цитата дня',
+      'continueListening': 'Продолжить прослушивание',
+      'streakTitle': 'Серия дней', 'streakDays': '{n} дней подряд',
+      'streakHint': 'Заходи каждый день, чтобы сохранить серию',
+      'auraToday': 'сегодня',
     },
   };
 

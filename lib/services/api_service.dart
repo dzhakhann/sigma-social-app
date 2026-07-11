@@ -362,6 +362,58 @@ class ApiService {
     return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
   }
 
+  // ─── AUDIOBOOKS (LibriVox — public domain, via backend proxy) ─────────────
+  static Future<List<Map>> searchAudiobooks(String term) async {
+    final d = await _getSafe(
+        '/audiobooks/search?term=${Uri.encodeQueryComponent(term)}');
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+  }
+
+  // ─── MUSIC (Audius — free legal streaming API, commercial use allowed) ────
+  static const String _audius = 'https://discoveryprovider.audius.co/v1';
+  static const String _audiusApp = 'app_name=sigmacta';
+
+  static Map _audiusTrack(Map t) => {
+        'title': t['title'] ?? 'Track',
+        'showTitle': (t['user']?['name'] ?? '').toString(),
+        'artwork': (t['artwork']?['480x480'] ??
+                t['artwork']?['150x150'] ??
+                '')
+            .toString(),
+        'audio': '$_audius/tracks/${t['id']}/stream?$_audiusApp',
+        'duration': t['duration']?.toString() ?? '',
+      };
+
+  static Future<List<Map>> musicTrending() async {
+    try {
+      final r = await http
+          .get(Uri.parse('$_audius/tracks/trending?$_audiusApp'))
+          .timeout(const Duration(seconds: 12));
+      final j = jsonDecode(r.body);
+      return ((j['data'] ?? []) as List)
+          .map((t) => _audiusTrack(Map.from(t)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<Map>> musicSearch(String q) async {
+    try {
+      final r = await http
+          .get(Uri.parse(
+              '$_audius/tracks/search?query=${Uri.encodeQueryComponent(q)}&$_audiusApp'))
+          .timeout(const Duration(seconds: 12));
+      final j = jsonDecode(r.body);
+      return ((j['data'] ?? []) as List)
+          .map((t) => _audiusTrack(Map.from(t)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ─── GIFs (Tenor via backend) ──────────────────────────────────────────────
   static Future<List> searchGifs(String query) async {
     final d = await _get('/gifs?q=${Uri.encodeComponent(query)}');

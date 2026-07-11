@@ -147,9 +147,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Telegram-style avatar sheet: our own styled bottom sheet instead of the
-  // bare system picker. Photo → camera, gallery → picker, remove → clears.
-  Future<void> _pickAvatar() async {
+  // Telegram logic: the camera badge goes STRAIGHT to the gallery (no menu),
+  // then into the crop editor. The full menu lives on long-press instead.
+  Future<void> _pickAvatar() => _pickAvatarFrom('gallery');
+
+  // Long-press on the avatar → full menu (view / take photo / gallery / remove).
+  Future<void> _avatarMenu() async {
     final c = context.k;
     final hasPhoto = (userProfile['avatar_url'] ?? '').toString().isNotEmpty;
     final choice = await showModalBottomSheet<String>(
@@ -221,27 +224,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (choice == null) return;
-
     if (choice == 'remove') {
-      setState(() => isUploadingAvatar = true);
-      await ApiService.updateUser(
-          widget.user['id'].toString(), {'avatar_url': null});
-      widget.user['avatar_url'] = null;
-      await Session.patch({'avatar_url': null});
-      feedRefresh.value++;
-      if (mounted) {
-        setState(() {
-          userProfile['avatar_url'] = null;
-          isUploadingAvatar = false;
-        });
-      }
+      await _removeAvatar();
       return;
     }
+    await _pickAvatarFrom(choice);
+  }
 
+  Future<void> _removeAvatar() async {
+    setState(() => isUploadingAvatar = true);
+    await ApiService.updateUser(
+        widget.user['id'].toString(), {'avatar_url': null});
+    widget.user['avatar_url'] = null;
+    await Session.patch({'avatar_url': null});
+    feedRefresh.value++;
+    if (mounted) {
+      setState(() {
+        userProfile['avatar_url'] = null;
+        isUploadingAvatar = false;
+      });
+    }
+  }
+
+  Future<void> _pickAvatarFrom(String source) async {
     final picker = ImagePicker();
     // Pick at high resolution — the crop editor decides the visible square.
     final file = await picker.pickImage(
-        source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+        source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
         maxWidth: 2000,
         imageQuality: 90);
     if (file == null) return;
@@ -430,6 +439,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _pickAvatar();
                       }
                     },
+                    // Telegram: long-press the photo → full avatar menu.
+                    onLongPress:
+                        widget.isOwnProfile ? _avatarMenu : null,
                     child: Hero(
                       tag: avatarUrl?.toString() ?? 'avatar_$_targetId',
                       child: ClipRRect(

@@ -713,6 +713,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         );
 
       default:
+        final content = (msg['content'] ?? '').toString();
+        // Telegram-style: a message that is a single emoji renders big with a
+        // pop-in animation (tap to replay). Stored as plain Unicode text.
+        if (_isSingleEmoji(content)) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _BigEmoji(emoji: content),
+                  _metaRow(msg, isOwn, c),
+                ]),
+          );
+        }
         return Padding(
           padding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -720,7 +735,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-            Text(msg['content'] ?? '',
+            Text(content,
                 style: TextStyle(
                     color: textColor, fontSize: 15, height: 1.3)),
             const SizedBox(height: 3),
@@ -728,6 +743,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ]),
         );
     }
+  }
+
+  // One emoji and nothing else (multi-codepoint emoji like ❤️/👍🏽 count too).
+  static bool _isSingleEmoji(String s) {
+    final t = s.trim();
+    if (t.isEmpty || t.length > 8) return false;
+    if (t.characters.length != 1) return false;
+    final code = t.runes.first;
+    return code > 0x2000; // beyond regular text/latin/cyrillic ranges
   }
 
   String _fmtTime(dynamic raw) {
@@ -1108,5 +1132,45 @@ class _CircleAvatar extends StatelessWidget {
             : Icon(Icons.person_rounded, color: c.inkSoft, size: size * 0.6),
       ),
     );
+  }
+}
+
+// Telegram-style animated single emoji: pops in with an elastic bounce,
+// tap to replay. Purely visual — the message stays plain Unicode text.
+class _BigEmoji extends StatefulWidget {
+  final String emoji;
+  const _BigEmoji({required this.emoji});
+  @override
+  State<_BigEmoji> createState() => _BigEmojiState();
+}
+
+class _BigEmojiState extends State<_BigEmoji>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ac = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 700));
+  late final Animation<double> _scale =
+      CurvedAnimation(parent: _ac, curve: Curves.elasticOut);
+
+  @override
+  void initState() {
+    super.initState();
+    _ac.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _ac.forward(from: 0),
+      child: ScaleTransition(
+        scale: _scale,
+        child: Text(widget.emoji, style: const TextStyle(fontSize: 52)),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ac.dispose();
+    super.dispose();
   }
 }

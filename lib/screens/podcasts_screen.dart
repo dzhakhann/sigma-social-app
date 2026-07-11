@@ -88,6 +88,9 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
         .then((_) => _loadLocal());
   }
 
+  // 0 Музыка · 1 Подкасты · 2 Аудиокниги ("Ритм" — the media hub)
+  int _mediaTab = 1;
+
   @override
   Widget build(BuildContext context) {
     final c = context.k;
@@ -98,16 +101,68 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Row(children: [
-              Icon(Icons.podcasts_rounded, color: c.accent, size: 26),
+              Icon(Icons.graphic_eq_rounded, color: c.accent, size: 26),
               const SizedBox(width: 8),
-              Text(context.t('podcasts'),
+              Text(context.t('rhythm'),
                   style: TextStyle(
                       color: c.ink, fontSize: 24, fontWeight: FontWeight.w800)),
             ]),
           ),
-          _segments(c),
-          Expanded(child: _bodyTab(c)),
+          _mediaTabs(c),
+          if (_mediaTab == 1) _segments(c),
+          Expanded(
+            child: _mediaTab == 0
+                ? MusicTab(key: const PageStorageKey('music'), openEpisode: _openEpisode)
+                : _mediaTab == 2
+                    ? BooksTab(key: const PageStorageKey('books'))
+                    : _bodyTab(c),
+          ),
         ]),
+      ),
+    );
+  }
+
+  Widget _mediaTabs(BrutalColors c) {
+    final tabs = [
+      [Icons.music_note_rounded, context.t('tabMusic')],
+      [Icons.podcasts_rounded, context.t('tabPodcastsR')],
+      [Icons.menu_book_rounded, context.t('tabBooks')],
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Row(
+        children: List.generate(tabs.length, (i) {
+          final sel = _mediaTab == i;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _mediaTab = i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: sel ? c.accent : c.surface,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(tabs[i][0] as IconData,
+                          size: 16, color: sel ? c.onAccent : c.inkSoft),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(tabs[i][1] as String,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: sel ? c.onAccent : c.inkSoft,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12.5)),
+                      ),
+                    ]),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -719,5 +774,261 @@ class _PodcastEpisodesScreenState extends State<PodcastEpisodesScreen> {
         ),
       ]),
     );
+  }
+}
+
+// ─── МУЗЫКА (Audius — legal free streaming, commercial use allowed) ──────────
+class MusicTab extends StatefulWidget {
+  final void Function(List<Map>, int) openEpisode;
+  const MusicTab({Key? key, required this.openEpisode}) : super(key: key);
+  @override
+  State<MusicTab> createState() => _MusicTabState();
+}
+
+class _MusicTabState extends State<MusicTab> {
+  final _search = TextEditingController();
+  List<Map> _tracks = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrending();
+  }
+
+  Future<void> _loadTrending() async {
+    setState(() => _loading = true);
+    final data = await ApiService.musicTrending();
+    if (mounted) setState(() { _tracks = data; _loading = false; });
+  }
+
+  Future<void> _run(String q) async {
+    if (q.trim().isEmpty) return _loadTrending();
+    setState(() => _loading = true);
+    final data = await ApiService.musicSearch(q.trim());
+    if (mounted) setState(() { _tracks = data; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+        child: TextField(
+          controller: _search,
+          textInputAction: TextInputAction.search,
+          onSubmitted: _run,
+          decoration: InputDecoration(
+            hintText: context.t('musicSearch'),
+            prefixIcon: Icon(Icons.search_rounded, color: c.inkSoft),
+            filled: true,
+            fillColor: c.surface,
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none),
+            isDense: true,
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            _search.text.trim().isEmpty ? context.t('trendingNow') : '',
+            style: TextStyle(
+                color: c.inkSoft, fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ),
+      Expanded(
+        child: _loading
+            ? Center(child: CircularProgressIndicator(color: c.accent))
+            : _tracks.isEmpty
+                ? Center(
+                    child: Text(context.t('pNothing'),
+                        style: TextStyle(color: c.inkSoft)))
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _tracks.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: c.ink.withOpacity(0.05)),
+                    itemBuilder: (_, i) {
+                      final t = _tracks[i];
+                      final art = (t['artwork'] ?? '').toString();
+                      return ListTile(
+                        onTap: () => widget.openEpisode(_tracks, i),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: art.isEmpty
+                              ? Container(
+                                  width: 52, height: 52,
+                                  color: c.surface2,
+                                  child: Icon(Icons.music_note_rounded,
+                                      color: c.inkSoft))
+                              : CachedNetworkImage(
+                                  imageUrl: art,
+                                  width: 52, height: 52,
+                                  fit: BoxFit.cover),
+                        ),
+                        title: Text((t['title'] ?? '').toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: c.ink,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14.5)),
+                        subtitle: Text((t['showTitle'] ?? '').toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                TextStyle(color: c.inkSoft, fontSize: 12)),
+                        trailing: Icon(Icons.play_circle_fill_rounded,
+                            color: c.accent, size: 30),
+                      );
+                    },
+                  ),
+      ),
+    ]);
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+}
+
+// ─── АУДИОКНИГИ (LibriVox — public domain) ───────────────────────────────────
+class BooksTab extends StatefulWidget {
+  const BooksTab({Key? key}) : super(key: key);
+  @override
+  State<BooksTab> createState() => _BooksTabState();
+}
+
+class _BooksTabState extends State<BooksTab> {
+  final _search = TextEditingController();
+  List<Map> _books = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _run('');
+  }
+
+  Future<void> _run(String q) async {
+    setState(() => _loading = true);
+    final data = await ApiService.searchAudiobooks(q.trim());
+    if (mounted) setState(() { _books = data; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+        child: TextField(
+          controller: _search,
+          textInputAction: TextInputAction.search,
+          onSubmitted: _run,
+          decoration: InputDecoration(
+            hintText: context.t('booksSearch'),
+            prefixIcon: Icon(Icons.search_rounded, color: c.inkSoft),
+            filled: true,
+            fillColor: c.surface,
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none),
+            isDense: true,
+          ),
+        ),
+      ),
+      Expanded(
+        child: _loading
+            ? Center(child: CircularProgressIndicator(color: c.accent))
+            : _books.isEmpty
+                ? Center(
+                    child: Text(context.t('pNothing'),
+                        style: TextStyle(color: c.inkSoft)))
+                : GridView.builder(
+                    padding: const EdgeInsets.all(14),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.72,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: _books.length,
+                    itemBuilder: (_, i) {
+                      final b = _books[i];
+                      final art = (b['artwork'] ?? '').toString();
+                      return GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  PodcastEpisodesScreen(show: b)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: art.isEmpty
+                                    ? Container(
+                                        width: double.infinity,
+                                        color: c.surface2,
+                                        child: Icon(
+                                            Icons.menu_book_rounded,
+                                            size: 44,
+                                            color: c.inkSoft))
+                                    : CachedNetworkImage(
+                                        imageUrl: art,
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                        placeholder: (_, __) =>
+                                            Container(color: c.surface2),
+                                        errorWidget: (_, __, ___) =>
+                                            Container(
+                                                color: c.surface2,
+                                                child: Icon(
+                                                    Icons
+                                                        .menu_book_rounded,
+                                                    size: 44,
+                                                    color: c.inkSoft)),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 7),
+                            Text((b['title'] ?? '').toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: c.ink,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700)),
+                            Text((b['artist'] ?? '').toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: c.inkSoft, fontSize: 11)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+      ),
+    ]);
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 }

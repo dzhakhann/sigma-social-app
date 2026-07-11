@@ -16,6 +16,9 @@ import 'settings_screen.dart';
 import 'story_view_screen.dart';
 import 'story_editor_screen.dart';
 import 'story_camera_screen.dart';
+import 'podcast_player_screen.dart';
+import '../services/podcast_store.dart';
+import '../services/podcast_audio.dart';
 import 'notifications_screen.dart';
 import 'login_screen.dart';
 import 'search_screen.dart';
@@ -70,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadStories();
     _loadAi();
     _loadHoro();
+    _updateStreak();
+    _loadLastListened();
   }
 
   // Horoscope is cached per week (updates only on Monday) so it's instant and
@@ -490,11 +495,196 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               SliverToBoxAdapter(child: _horoCard(c)),
+              SliverToBoxAdapter(child: _streakCard(c)),
+              SliverToBoxAdapter(child: _continueListeningCard(c)),
+              SliverToBoxAdapter(child: _quoteCard(c)),
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ─── 🔥 Day streak (stored locally: just two small values) ────────────────
+  int _streak = 0;
+
+  Future<void> _updateStreak() async {
+    final p = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month}-${now.day}';
+    final last = p.getString('streak_last') ?? '';
+    var count = p.getInt('streak_count') ?? 0;
+    if (last != today) {
+      final y = now.subtract(const Duration(days: 1));
+      final yesterday = '${y.year}-${y.month}-${y.day}';
+      count = last == yesterday ? count + 1 : 1;
+      await p.setString('streak_last', today);
+      await p.setInt('streak_count', count);
+    }
+    if (mounted) setState(() => _streak = count);
+  }
+
+  Widget _streakCard(BrutalColors c) {
+    if (_streak <= 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.ink.withOpacity(0.06)),
+      ),
+      child: Row(children: [
+        const Text('🔥', style: TextStyle(fontSize: 30)),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(context.t('streakDays').replaceAll('{n}', '$_streak'),
+                style: TextStyle(
+                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 2),
+            Text(context.t('streakHint'),
+                style: TextStyle(color: c.inkSoft, fontSize: 12)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // ─── 🎵 Continue listening (last item from local history) ─────────────────
+  Map? _lastListened;
+
+  Future<void> _loadLastListened() async {
+    final h = await PodcastStore.history();
+    if (mounted && h.isNotEmpty) setState(() => _lastListened = h.first);
+  }
+
+  Widget _continueListeningCard(BrutalColors c) {
+    final ep = _lastListened;
+    if (ep == null) return const SizedBox.shrink();
+    final art = (ep['artwork'] ?? '').toString();
+    return GestureDetector(
+      onTap: () {
+        PodcastAudio.instance.playList([Map.from(ep)], 0);
+        Navigator.push(context, PodcastPlayerScreen.route());
+      },
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: c.ink.withOpacity(0.06)),
+        ),
+        child: Row(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: art.isEmpty
+                ? Container(
+                    width: 52, height: 52,
+                    color: c.surface2,
+                    child: Icon(Icons.music_note_rounded, color: c.inkSoft))
+                : CachedNetworkImage(
+                    imageUrl: art, width: 52, height: 52, fit: BoxFit.cover),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(context.t('continueListening'),
+                  style: TextStyle(
+                      color: c.inkSoft,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 3),
+              Text((ep['title'] ?? '').toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: c.ink,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14)),
+              Text((ep['showTitle'] ?? '').toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.inkSoft, fontSize: 12)),
+            ]),
+          ),
+          Icon(Icons.play_circle_fill_rounded, color: c.accent, size: 36),
+        ]),
+      ),
+    );
+  }
+
+  // ─── 💬 Quote of the day (local catalog — free, no API) ───────────────────
+  static const _quotesEn = [
+    'The secret of getting ahead is getting started.',
+    'Small steps every day lead to big results.',
+    'Discipline is choosing what you want most over what you want now.',
+    'You do not have to be great to start, but you have to start to be great.',
+    'Success is the sum of small efforts repeated daily.',
+    'The best time to plant a tree was 20 years ago. The second best is now.',
+    'Dream big. Start small. Act now.',
+    'Motivation gets you going, habit keeps you growing.',
+    'Focus on progress, not perfection.',
+    'Every day is a chance to get better.',
+    'Do something today that your future self will thank you for.',
+    'Great things never come from comfort zones.',
+    'Energy flows where attention goes.',
+    'One goal at a time. One day at a time.',
+  ];
+  static const _quotesRu = [
+    'Секрет успеха — просто начать.',
+    'Маленькие шаги каждый день ведут к большим результатам.',
+    'Дисциплина — выбирать то, чего хочешь больше всего, а не то, чего хочется сейчас.',
+    'Не обязательно быть великим, чтобы начать. Но нужно начать, чтобы стать великим.',
+    'Успех — это сумма маленьких усилий, повторяемых ежедневно.',
+    'Лучшее время посадить дерево было 20 лет назад. Второе лучшее — сегодня.',
+    'Мечтай масштабно. Начинай с малого. Действуй сейчас.',
+    'Мотивация запускает, привычка ведёт вперёд.',
+    'Фокус на прогрессе, а не на идеале.',
+    'Каждый день — шанс стать лучше.',
+    'Сделай сегодня то, за что будущий ты скажет спасибо.',
+    'Великое не рождается в зоне комфорта.',
+    'Энергия там, где твоё внимание.',
+    'Одна цель за раз. Один день за раз.',
+  ];
+
+  Widget _quoteCard(BrutalColors c) {
+    final lang = AppScope.of(context).lang;
+    final list = lang == 'ru' ? _quotesRu : _quotesEn;
+    final day = DateTime.now().difference(DateTime(2026)).inDays;
+    final quote = list[day % list.length];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [
+          c.accent3.withOpacity(0.14),
+          c.accent.withOpacity(0.08),
+        ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.accent.withOpacity(0.15)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('💬', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Text(context.t('quoteOfDay'),
+              style: TextStyle(
+                  color: c.inkSoft,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 8),
+        Text(quote,
+            style: TextStyle(
+                color: c.ink,
+                fontSize: 14.5,
+                height: 1.45,
+                fontStyle: FontStyle.italic)),
+      ]),
     );
   }
 
@@ -762,14 +952,29 @@ class _HomeScreenState extends State<HomeScreen> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           children: [
+            // Telegram/Instagram logic: no story → tap opens the camera;
+            // has story → tap VIEWS it, the "+" badge adds a new one.
             _MyStoryBtn(
               user: widget.user,
               hasStory: myStories.isNotEmpty,
+              onAdd: _addStory,
               onTap: () {
                 if (myStories.isEmpty) {
                   _addStory();
                 } else {
-                  _showStoryOptions(myStories);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StoryViewScreen(
+                        stories: myStories,
+                        allGroups: [myStories],
+                        groupIndex: 0,
+                        startIndex: 0,
+                        user: widget.user,
+                        onStoryDeleted: _loadStories,
+                      ),
+                    ),
+                  );
                 }
               },
             ),
@@ -779,61 +984,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 )),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showStoryOptions(List myStories) {
-    final c = context.k;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: c.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 36, height: 4,
-            decoration: BoxDecoration(
-                color: c.ink.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(2)),
-          ),
-          const SizedBox(height: 18),
-          _SheetTile(
-              icon: Icons.camera_alt_rounded,
-              label: context.t('camera'),
-              onTap: () {
-                Navigator.pop(context);
-                _addStory(source: ImageSource.camera);
-              }),
-          _SheetTile(
-              icon: Icons.photo_library_rounded,
-              label: context.t('gallery'),
-              onTap: () {
-                Navigator.pop(context);
-                _addStory(source: ImageSource.gallery);
-              }),
-          _SheetTile(
-              icon: Icons.visibility_rounded,
-              label: context.t('viewMyStories'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StoryViewScreen(
-                      stories: myStories,
-                      allGroups: [myStories],
-                      groupIndex: 0,
-                      startIndex: 0,
-                      user: widget.user,
-                      onStoryDeleted: _loadStories,
-                    ),
-                  ),
-                );
-              }),
-        ]),
       ),
     );
   }
@@ -1111,10 +1261,12 @@ class _MyStoryBtn extends StatelessWidget {
   final Map user;
   final bool hasStory;
   final VoidCallback onTap;
+  final VoidCallback? onAdd; // "+" badge — always opens the camera
   const _MyStoryBtn({
     required this.user,
     required this.hasStory,
     required this.onTap,
+    this.onAdd,
   });
   @override
   Widget build(BuildContext context) {
@@ -1129,14 +1281,17 @@ class _MyStoryBtn extends StatelessWidget {
             Positioned(
               bottom: 0,
               right: 4,
-              child: Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                    color: c.accent,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: c.bg, width: 2)),
-                child: const Icon(Icons.add, size: 12, color: Colors.white),
+              child: GestureDetector(
+                onTap: onAdd ?? onTap,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                      color: c.accent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: c.bg, width: 2)),
+                  child: const Icon(Icons.add, size: 12, color: Colors.white),
+                ),
               ),
             ),
           ]),
