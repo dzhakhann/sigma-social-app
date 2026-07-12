@@ -44,3 +44,6 @@ app.*.map.json
 /android/app/release
 .vercel
 .wrangler/
+android/key.properties
+android/upload-keystore.jks
+android/keystore_password.txt

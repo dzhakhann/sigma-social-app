@@ -1,4 +1,4 @@
-package com.example.sigma_social_app
+package com.sigmacta.app
 
 import com.ryanheise.audioservice.AudioServiceActivity
 
