@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'theme/brutal_theme.dart';
 import 'screens/splash_screen.dart';
+import 'services/deep_links.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,7 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     );
   } catch (_) {}
+  DeepLinks.init();
   runApp(const PulseApp());
 }
 
@@ -43,6 +45,7 @@ class PulseApp extends StatelessWidget {
             config: config,
             child: MaterialApp(
               title: 'Sigmacta',
+              navigatorKey: DeepLinks.navKey,
               debugShowCheckedModeBanner: false,
               theme: buildBrutalTheme(theme),
               builder: (context, child) => _Responsive(child: child!),

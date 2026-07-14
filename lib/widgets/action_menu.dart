@@ -8,7 +8,7 @@ import '../services/api_service.dart';
 /// Instagram/Telegram-style "⋯" action sheets, shared across the app
 /// (profiles, posts, comments). Also hosts the report reason picker.
 class ActionMenu {
-  static const String base = 'https://sigmacta.app';
+  static const String base = 'https://sigmacta.pages.dev';
 
   static void _snack(BuildContext c, String msg) {
     ScaffoldMessenger.of(c)

@@ -331,6 +331,11 @@ class ApiService {
         'link': link,
       });
 
+  static Future<Map> userByUsername(String username) async {
+    final d = await _getSafe('/users/by-username/$username');
+    return d['success'] == true ? (d['data'] ?? {}) : {};
+  }
+
   static Future<Map> blockUser(String id) => _post('/block/$id', {});
   static Future<Map> unblockUser(String id) => _delete('/block/$id');
   static Future<Map> hideUser(String id) => _post('/hide/$id', {});
