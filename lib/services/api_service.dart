@@ -320,6 +320,37 @@ class ApiService {
 
   static Future<Map> dailyReward() => _post('/daily-reward', {});
 
+  // ─── MODERATION: report / block / hide / verification ─────────────────────
+  static Future<Map> report(String targetType, String targetId,
+          {String reason = 'other', String note = '', String link = ''}) =>
+      _post('/reports', {
+        'target_type': targetType,
+        'target_id': targetId,
+        'reason': reason,
+        'note': note,
+        'link': link,
+      });
+
+  static Future<Map> blockUser(String id) => _post('/block/$id', {});
+  static Future<Map> unblockUser(String id) => _delete('/block/$id');
+  static Future<Map> hideUser(String id) => _post('/hide/$id', {});
+  static Future<Map> blockStatus(String id) async {
+    final d = await _getSafe('/block/status/$id');
+    return d['success'] == true ? d : {};
+  }
+
+  static Future<Map> applyVerification(
+          {String email = '', String wiki = '', String info = ''}) =>
+      _post('/verification', {'email': email, 'wiki': wiki, 'info': info});
+
+  // News (Google News RSS proxy — headlines + link, nothing stored).
+  static Future<List<Map>> news(String category) async {
+    final d = await _getSafe(
+        '/news?cat=$category&lang=${appConfig.value.lang}');
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+  }
+
   static Future<Map> visitProfile(String userId) =>
       _post('/users/$userId/visit', {});
   static Future<Map> myAnalytics() async {

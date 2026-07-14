@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
+import '../widgets/action_menu.dart';
 
 /// Threads-style thread view: the post at the top, replies below as a thread.
 class CommentsScreen extends StatefulWidget {
@@ -291,7 +292,14 @@ class _CommentsScreenState extends State<CommentsScreen> {
   Widget _reply(BrutalColors c, Map cm) {
     final isOwn = cm['user_id'] == widget.user['id'];
     return GestureDetector(
-      onLongPress: isOwn ? () => _menu(cm) : null,
+      onLongPress: isOwn
+          ? () => _menu(cm) // own: edit / delete
+          : () => ActionMenu.comment(
+                context,
+                text: (cm['content'] ?? '').toString(),
+                isOwn: false,
+                commentId: '${cm['id']}',
+              ),
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         decoration: BoxDecoration(

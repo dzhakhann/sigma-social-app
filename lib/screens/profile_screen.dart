@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import '../widgets/brutal.dart';
+import '../widgets/action_menu.dart';
 import 'onboarding_screen.dart';
 import 'story_view_screen.dart';
 import 'chat_detail_screen.dart';
@@ -67,7 +68,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfile();
     _loadPosts();
     _loadStories();
-    if (!widget.isOwnProfile) _checkFollow();
+    if (!widget.isOwnProfile) {
+      _checkFollow();
+      _checkBlock();
+    }
+  }
+
+  // Block state gates the whole profile (Instagram "profile unavailable").
+  bool _iBlocked = false;
+  bool _blockedByThem = false;
+
+  Future<void> _checkBlock() async {
+    final r = await ApiService.blockStatus(_targetId.toString());
+    if (mounted) {
+      setState(() {
+        _iBlocked = r['i_blocked'] == true;
+        _blockedByThem = r['blocked_me'] == true;
+      });
+    }
   }
 
   @override
@@ -312,6 +330,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return parts.join(' ').trim();
   }
 
+  Widget _blockedPage(BrutalColors c) {
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: AppBar(
+        backgroundColor: c.bg,
+        elevation: 0,
+        iconTheme: IconThemeData(color: c.ink),
+        actions: [
+          // Blocker can unblock from here.
+          if (_iBlocked)
+            TextButton(
+              onPressed: () async {
+                await ApiService.unblockUser(_targetId.toString());
+                _checkBlock();
+              },
+              child: Text(context.t('mUnblock'),
+                  style: TextStyle(color: c.accent)),
+            ),
+        ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_person_rounded, size: 64, color: c.inkSoft),
+              const SizedBox(height: 18),
+              Text(context.t('profileUnavailable'),
+                  style: TextStyle(
+                      color: c.ink,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(context.t('userBlockedYou'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: c.inkSoft, height: 1.4)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // Whether a field should be shown to the current viewer.
   bool _visible(String key) {
     if (widget.isOwnProfile) return true; // owner sees everything
@@ -321,6 +383,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.k;
+    // Instagram-style gate: if either side blocked, show an "unavailable" page.
+    if (!widget.isOwnProfile && (_iBlocked || _blockedByThem)) {
+      return _blockedPage(c);
+    }
     return Scaffold(
       backgroundColor: c.bg,
       // No RefreshIndicator here: it would swallow the overscroll gesture that
@@ -421,7 +487,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: Icon(Icons.edit_rounded, color: c.ink),
             onPressed: _editProfile,
           ),
-        ],
+        ] else
+          IconButton(
+            icon: Icon(Icons.more_vert_rounded, color: c.ink),
+            onPressed: () => ActionMenu.profile(
+              context,
+              userId: _targetId.toString(),
+              username: (userProfile['username'] ?? '').toString(),
+              isBlocked: _iBlocked,
+              onChanged: () {
+                _checkBlock();
+                _loadProfile();
+              },
+            ),
+          ),
       ],
       flexibleSpace: LayoutBuilder(
         builder: (ctx, cons) => ValueListenableBuilder<double>(

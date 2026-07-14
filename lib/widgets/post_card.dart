@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/brutal_theme.dart';
+import 'action_menu.dart';
 
 class PostCard extends StatelessWidget {
   final Map post;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onUserTap;
+  final VoidCallback? onChanged;
 
   const PostCard({
     super.key,
@@ -14,6 +16,7 @@ class PostCard extends StatelessWidget {
     required this.onLike,
     required this.onComment,
     required this.onUserTap,
+    this.onChanged,
   });
 
   @override
@@ -58,7 +61,16 @@ class PostCard extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.more_horiz_rounded, color: c.inkSoft, size: 20),
+            GestureDetector(
+              onTap: () => ActionMenu.post(
+                context,
+                postId: '${post['id']}',
+                authorId: '${post['user_id']}',
+                onChanged: onChanged,
+              ),
+              child: Icon(Icons.more_horiz_rounded,
+                  color: c.inkSoft, size: 22),
+            ),
           ]),
         ),
 

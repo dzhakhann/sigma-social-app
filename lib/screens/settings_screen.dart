@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import 'login_screen.dart';
 import 'pro_screen.dart';
 import 'onboarding_screen.dart';
+import 'verification_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   final Map user;
@@ -132,6 +133,13 @@ class SettingsScreen extends StatelessWidget {
               MaterialPageRoute(
                   builder: (_) =>
                       OnboardingScreen(user: user, editMode: true)),
+            );
+          }),
+          const SizedBox(height: 8),
+          _tile(c, Icons.verified_outlined, context.t('verifBadge'), () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VerificationScreen()),
             );
           }),
           const SizedBox(height: 26),

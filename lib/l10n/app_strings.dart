@@ -421,6 +421,42 @@ class S {
       'bMystery': 'Mystery', 'bFantasy': 'Fantasy', 'bBio': 'Biography',
       'bScience': 'Science', 'bPhilosophy': 'Philosophy', 'bPoetry': 'Poetry',
       'bHistory': 'History', 'bChildren': 'Children',
+      // weather
+      'weatherTitle': 'Weather', 'feelsLike': 'Feels great',
+      'wClear': 'Clear', 'wPartly': 'Partly cloudy', 'wCloudy': 'Cloudy',
+      'wFog': 'Fog', 'wDrizzle': 'Drizzle', 'wRain': 'Rain',
+      'wSnow': 'Snow', 'wStorm': 'Thunderstorm',
+      // news
+      'newsTitle': 'World news', 'newsAll': 'Top',
+      'nWorld': 'World', 'nPolitics': 'Politics', 'nEconomy': 'Economy',
+      'nTech': 'Technology', 'nAI': 'AI', 'nScience': 'Science',
+      'nAuto': 'Auto', 'nFootball': 'Football', 'nSport': 'Sport',
+      'nShow': 'Showbiz', 'nGames': 'Games', 'nMovies': 'Movies', 'nMusic': 'Music',
+      'readMore': 'Read at source', 'newsEmpty': 'No news right now',
+      // three-dot menu / moderation
+      'mShareProfile': 'Share profile', 'mCopyLink': 'Copy link',
+      'mReport': 'Report', 'mBlock': 'Block user', 'mUnblock': 'Unblock',
+      'mHide': 'Hide user', 'mShare': 'Share', 'mNotInterested': 'Not interested',
+      'mHideAuthor': "Hide author's posts", 'mReply': 'Reply',
+      'mCopyText': 'Copy text', 'mDelete': 'Delete',
+      'blockedDone': 'User blocked', 'unblockedDone': 'User unblocked',
+      'hiddenDone': 'You will see less from this user',
+      'reportSentShort': 'Thanks. Report sent for review.',
+      'copiedShort': 'Copied',
+      'reportReason': 'Why are you reporting?',
+      'rSpam': 'Spam', 'rHarass': 'Harassment or bullying',
+      'rViolence': 'Violence', 'rSexual': 'Sexual content',
+      'rHate': 'Hate speech', 'rOther': 'Something else',
+      // profile unavailable
+      'profileUnavailable': 'This profile is unavailable',
+      'userBlockedYou': 'You can no longer view this profile.',
+      // verification
+      'verifBadge': 'Verification', 'verifyDesc':
+          'Apply for a blue checkmark. Provide details that confirm your identity or notability.',
+      'verifyEmail': 'Contact email', 'verifyWiki': 'Wikipedia link (optional)',
+      'verifyInfo': 'Additional info', 'verifySubmit': 'Submit application',
+      'verifySent': 'Application submitted. We\'ll review it soon.',
+      'verifyWait': 'You can apply again in {n} days.',
     },
     'ru': {
       'appName': 'Sigmacta',
@@ -836,6 +872,42 @@ class S {
       'bMystery': 'Детективы', 'bFantasy': 'Фэнтези', 'bBio': 'Биографии',
       'bScience': 'Наука', 'bPhilosophy': 'Философия', 'bPoetry': 'Поэзия',
       'bHistory': 'История', 'bChildren': 'Детям',
+      // weather
+      'weatherTitle': 'Погода', 'feelsLike': 'Хорошая погода',
+      'wClear': 'Ясно', 'wPartly': 'Переменная облачность', 'wCloudy': 'Облачно',
+      'wFog': 'Туман', 'wDrizzle': 'Морось', 'wRain': 'Дождь',
+      'wSnow': 'Снег', 'wStorm': 'Гроза',
+      // news
+      'newsTitle': 'Новости мира', 'newsAll': 'Топ',
+      'nWorld': 'Мир', 'nPolitics': 'Политика', 'nEconomy': 'Экономика',
+      'nTech': 'Технологии', 'nAI': 'ИИ', 'nScience': 'Наука',
+      'nAuto': 'Авто', 'nFootball': 'Футбол', 'nSport': 'Спорт',
+      'nShow': 'Шоу-бизнес', 'nGames': 'Игры', 'nMovies': 'Кино', 'nMusic': 'Музыка',
+      'readMore': 'Читать в источнике', 'newsEmpty': 'Сейчас новостей нет',
+      // three-dot menu / moderation
+      'mShareProfile': 'Поделиться профилем', 'mCopyLink': 'Скопировать ссылку',
+      'mReport': 'Пожаловаться', 'mBlock': 'Заблокировать', 'mUnblock': 'Разблокировать',
+      'mHide': 'Скрыть пользователя', 'mShare': 'Поделиться', 'mNotInterested': 'Не интересно',
+      'mHideAuthor': 'Скрыть публикации автора', 'mReply': 'Ответить',
+      'mCopyText': 'Скопировать текст', 'mDelete': 'Удалить',
+      'blockedDone': 'Пользователь заблокирован', 'unblockedDone': 'Пользователь разблокирован',
+      'hiddenDone': 'Вы будете реже видеть этого пользователя',
+      'reportSentShort': 'Спасибо. Жалоба отправлена на проверку.',
+      'copiedShort': 'Скопировано',
+      'reportReason': 'На что жалуетесь?',
+      'rSpam': 'Спам', 'rHarass': 'Травля или оскорбления',
+      'rViolence': 'Насилие', 'rSexual': 'Сексуальный контент',
+      'rHate': 'Разжигание ненависти', 'rOther': 'Другое',
+      // profile unavailable
+      'profileUnavailable': 'Профиль недоступен',
+      'userBlockedYou': 'Вы больше не можете просматривать этот профиль.',
+      // verification
+      'verifBadge': 'Верификация', 'verifyDesc':
+          'Подайте заявку на синюю галочку. Укажите данные, подтверждающие вашу личность или значимость.',
+      'verifyEmail': 'Контактный email', 'verifyWiki': 'Ссылка на Wikipedia (по желанию)',
+      'verifyInfo': 'Дополнительная информация', 'verifySubmit': 'Отправить заявку',
+      'verifySent': 'Заявка отправлена. Мы скоро её рассмотрим.',
+      'verifyWait': 'Повторная подача возможна через {n} дней.',
     },
   };
 

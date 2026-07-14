@@ -19,6 +19,8 @@ import 'story_camera_screen.dart';
 import 'podcast_player_screen.dart';
 import '../services/podcast_store.dart';
 import '../services/podcast_audio.dart';
+import '../services/weather_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'notifications_screen.dart';
 import 'login_screen.dart';
 import 'search_screen.dart';
@@ -76,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _updateStreak();
     _loadLastListened();
     _loadAura();
+    _loadWeather();
     _loadFriendActivity();
     _loadWeekPlan();
     _loadHomeAnalytics();
@@ -498,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     childCount: _goals.length,
                   ),
                 ),
+              SliverToBoxAdapter(child: _weatherCard(c)),
               SliverToBoxAdapter(child: _horoCard(c)),
               SliverToBoxAdapter(child: _auraCard(c)),
               SliverToBoxAdapter(child: _streakCard(c)),
@@ -507,12 +511,257 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _achievementCard(c)),
               SliverToBoxAdapter(child: _challengeCard(c)),
               SliverToBoxAdapter(child: _weekStatsCard(c)),
+              SliverToBoxAdapter(child: _newsCard(c)),
               SliverToBoxAdapter(child: _quoteCard(c)),
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ─── 📰 World news (Google Discover-style card feed, links to source) ──────
+  static const _newsCats = [
+    ['world', 'nWorld'], ['tech', 'nTech'], ['ai', 'nAI'],
+    ['economy', 'nEconomy'], ['politics', 'nPolitics'], ['science', 'nScience'],
+    ['sport', 'nSport'], ['football', 'nFootball'], ['auto', 'nAuto'],
+    ['show', 'nShow'], ['games', 'nGames'], ['movies', 'nMovies'],
+    ['music', 'nMusic'],
+  ];
+  String _newsCat = 'world';
+  List _news = [];
+  bool _newsLoading = false;
+  String? _newsLangLoaded;
+
+  Future<void> _loadNews({bool force = false}) async {
+    if (_newsLoading) return;
+    setState(() => _newsLoading = true);
+    final data = await ApiService.news(_newsCat);
+    if (mounted) {
+      setState(() {
+        _news = data;
+        _newsLoading = false;
+        _newsLangLoaded = _lang;
+      });
+    }
+  }
+
+  Widget _newsCard(BrutalColors c) {
+    // Lazy first load + reload on language switch.
+    if ((_news.isEmpty && !_newsLoading) || _newsLangLoaded != _lang) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadNews());
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10, left: 2),
+          child: Row(children: [
+            const Text('📰', style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 8),
+            Text(context.t('newsTitle'),
+                style: TextStyle(
+                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 17)),
+          ]),
+        ),
+        // Category chips
+        SizedBox(
+          height: 34,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: _newsCats.map((cat) {
+              final sel = _newsCat == cat[0];
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _newsCat = cat[0]);
+                    _loadNews(force: true);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: sel ? c.accent : c.surface,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Text(context.t(cat[1]),
+                        style: TextStyle(
+                            color: sel ? c.onAccent : c.inkSoft,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12.5)),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_newsLoading && _news.isEmpty)
+          SizedBox(
+            height: 120,
+            child: Center(child: CircularProgressIndicator(color: c.accent)),
+          )
+        else if (_news.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(
+                child: Text(context.t('newsEmpty'),
+                    style: TextStyle(color: c.inkSoft))),
+          )
+        else
+          ..._news.take(10).map((n) => _newsTile(c, n)),
+      ]),
+    );
+  }
+
+  Widget _newsTile(BrutalColors c, Map n) {
+    return GestureDetector(
+      onTap: () => _openNews((n['link'] ?? '').toString()),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.ink.withOpacity(0.06)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: c.accent.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text((n['source'] ?? '').toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: c.accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
+            ),
+            const Spacer(),
+            Text(_newsTime(n['date']),
+                style: TextStyle(color: c.inkSoft, fontSize: 11)),
+          ]),
+          const SizedBox(height: 8),
+          Text((n['title'] ?? '').toString(),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: c.ink,
+                  fontSize: 15,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  String _newsTime(dynamic raw) {
+    if (raw == null) return '';
+    final d = DateTime.tryParse(raw.toString());
+    if (d == null) return '';
+    final diff = DateTime.now().difference(d.toLocal());
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    return '${diff.inDays}d';
+  }
+
+  Future<void> _openNews(String url) async {
+    if (url.isEmpty) return;
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  // ─── 🌤️ Weather (IP location + Open-Meteo, cached 30 min, no server) ──────
+  Map? _weather;
+
+  Future<void> _loadWeather() async {
+    final w = await WeatherService.get();
+    if (mounted && w != null) setState(() => _weather = w);
+  }
+
+  Widget _weatherCard(BrutalColors c) {
+    final w = _weather;
+    if (w == null) return const SizedBox.shrink();
+    final lang = AppScope.of(context).lang;
+    final cur = WeatherService.describe(w['code'] as int);
+    final days = (w['days'] as List).take(7).toList();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF3A6FE0).withOpacity(0.30),
+            const Color(0xFF6E92FF).withOpacity(0.14),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.accent.withOpacity(0.18)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(cur.emoji, style: const TextStyle(fontSize: 44)),
+          const SizedBox(width: 14),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${w['temp']}°',
+                style: TextStyle(
+                    color: c.ink,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    height: 1)),
+            Text(context.t(cur.key),
+                style: TextStyle(color: c.inkSoft, fontSize: 13)),
+          ]),
+          const Spacer(),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Icon(Icons.location_on_rounded, size: 16, color: c.inkSoft),
+            const SizedBox(height: 2),
+            Text((w['city'] ?? '').toString(),
+                style: TextStyle(
+                    color: c.ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ]),
+        const SizedBox(height: 14),
+        // 7-day strip
+        SizedBox(
+          height: 74,
+          child: Row(
+            children: days.map<Widget>((d) {
+              final desc = WeatherService.describe(d['code'] as int);
+              return Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(WeatherService.weekday(d['date'], lang),
+                        style: TextStyle(color: c.inkSoft, fontSize: 11)),
+                    const SizedBox(height: 4),
+                    Text(desc.emoji, style: const TextStyle(fontSize: 18)),
+                    const SizedBox(height: 4),
+                    Text('${d['max']}°',
+                        style: TextStyle(
+                            color: c.ink,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700)),
+                    Text('${d['min']}°',
+                        style: TextStyle(color: c.inkSoft, fontSize: 11)),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
     );
   }
 
