@@ -67,7 +67,7 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
 
   Future<void> _init() async {
     final p = await SharedPreferences.getInstance();
-    _read = (p.getStringList('news_read_v1') ?? []).toSet();
+    _read = (p.getStringList('news_read_v2') ?? []).toSet();
     _soundOn.value = p.getBool('news_sound') ?? false;
     _load();
   }
@@ -111,7 +111,7 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
     final p = await SharedPreferences.getInstance();
     var list = _read.toList();
     if (list.length > 400) list = list.sublist(list.length - 400);
-    await p.setStringList('news_read_v1', list);
+    await p.setStringList('news_read_v2', list);
     // History keeps light text metadata only (no media), on-device only.
     final hist = p.getStringList('news_hist_v1') ?? [];
     hist.insert(0, jsonEncode({
