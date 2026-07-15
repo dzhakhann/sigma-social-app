@@ -348,10 +348,9 @@ class ApiService {
           {String email = '', String wiki = '', String info = ''}) =>
       _post('/verification', {'email': email, 'wiki': wiki, 'info': info});
 
-  // News (Google News RSS proxy — headlines + link, nothing stored).
-  static Future<List<Map>> news(String category) async {
-    final d = await _getSafe(
-        '/news?cat=$category&lang=${appConfig.value.lang}');
+  // "Газета" — one mixed stream: articles + YouTube news videos, per language.
+  static Future<List<Map>> news() async {
+    final d = await _getSafe('/news?lang=${appConfig.value.lang}');
     if (d['success'] != true) return [];
     return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
   }

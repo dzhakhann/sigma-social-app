@@ -485,6 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _header(c)),
               SliverToBoxAdapter(child: _storiesRow(c)),
               SliverToBoxAdapter(child: _greeting(c)),
+              SliverToBoxAdapter(child: _quoteCard(c)),
               SliverToBoxAdapter(child: _aiCard(c)),
               SliverToBoxAdapter(child: _StatsFooter(user: widget.user)),
               SliverToBoxAdapter(child: _goalsHeader(c)),
@@ -512,8 +513,8 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _achievementCard(c)),
               SliverToBoxAdapter(child: _challengeCard(c)),
               SliverToBoxAdapter(child: _weekStatsCard(c)),
+              // «Газета» — the very last section on the home screen.
               SliverToBoxAdapter(child: _newsCard(c)),
-              SliverToBoxAdapter(child: _quoteCard(c)),
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
           ),
@@ -527,7 +528,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _newsLangLoaded;
 
   Future<void> _loadNews({bool force = false}) async {
-    final data = await ApiService.news('world');
+    final data = await ApiService.news();
     if (mounted) {
       setState(() {
         _news = data;

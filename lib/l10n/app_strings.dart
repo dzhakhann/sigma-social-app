@@ -427,7 +427,7 @@ class S {
       'wFog': 'Fog', 'wDrizzle': 'Drizzle', 'wRain': 'Rain',
       'wSnow': 'Snow', 'wStorm': 'Thunderstorm',
       // news
-      'newsTitle': 'World news', 'newsAll': 'Top',
+      'newsTitle': 'Gazette', 'newsAll': 'Top',
       'nWorld': 'World', 'nPolitics': 'Politics', 'nEconomy': 'Economy',
       'nTech': 'Technology', 'nAI': 'AI', 'nScience': 'Science',
       'nAuto': 'Auto', 'nFootball': 'Football', 'nSport': 'Sport',
@@ -884,7 +884,7 @@ class S {
       'wFog': 'Туман', 'wDrizzle': 'Морось', 'wRain': 'Дождь',
       'wSnow': 'Снег', 'wStorm': 'Гроза',
       // news
-      'newsTitle': 'Новости мира', 'newsAll': 'Топ',
+      'newsTitle': 'Газета', 'newsAll': 'Топ',
       'nWorld': 'Мир', 'nPolitics': 'Политика', 'nEconomy': 'Экономика',
       'nTech': 'Технологии', 'nAI': 'ИИ', 'nScience': 'Наука',
       'nAuto': 'Авто', 'nFootball': 'Футбол', 'nSport': 'Спорт',
