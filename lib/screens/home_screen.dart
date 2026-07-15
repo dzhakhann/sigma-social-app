@@ -21,6 +21,7 @@ import '../services/podcast_store.dart';
 import '../services/podcast_audio.dart';
 import '../services/weather_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'news_feed_screen.dart';
 import 'notifications_screen.dart';
 import 'login_screen.dart';
 import 'search_screen.dart';
@@ -521,161 +522,127 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ─── 📰 World news (Google Discover-style card feed, links to source) ──────
-  static const _newsCats = [
-    ['world', 'nWorld'], ['tech', 'nTech'], ['ai', 'nAI'],
-    ['economy', 'nEconomy'], ['politics', 'nPolitics'], ['science', 'nScience'],
-    ['sport', 'nSport'], ['football', 'nFootball'], ['auto', 'nAuto'],
-    ['show', 'nShow'], ['games', 'nGames'], ['movies', 'nMovies'],
-    ['music', 'nMusic'],
-  ];
-  String _newsCat = 'world';
+  // ─── 📰 News teaser → opens the full-screen Tinder-style deck ──────────────
   List _news = [];
-  bool _newsLoading = false;
   String? _newsLangLoaded;
 
   Future<void> _loadNews({bool force = false}) async {
-    if (_newsLoading) return;
-    setState(() => _newsLoading = true);
-    final data = await ApiService.news(_newsCat);
+    final data = await ApiService.news('world');
     if (mounted) {
       setState(() {
         _news = data;
-        _newsLoading = false;
         _newsLangLoaded = _lang;
       });
     }
   }
 
   Widget _newsCard(BrutalColors c) {
-    // Lazy first load + reload on language switch.
-    if ((_news.isEmpty && !_newsLoading) || _newsLangLoaded != _lang) {
+    if (_news.isEmpty || _newsLangLoaded != _lang) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadNews());
     }
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10, left: 2),
-          child: Row(children: [
-            const Text('📰', style: TextStyle(fontSize: 16)),
-            const SizedBox(width: 8),
-            Text(context.t('newsTitle'),
-                style: TextStyle(
-                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 17)),
-          ]),
-        ),
-        // Category chips
-        SizedBox(
-          height: 34,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: _newsCats.map((cat) {
-              final sel = _newsCat == cat[0];
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() => _newsCat = cat[0]);
-                    _loadNews(force: true);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: sel ? c.accent : c.surface,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Text(context.t(cat[1]),
-                        style: TextStyle(
-                            color: sel ? c.onAccent : c.inkSoft,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12.5)),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (_newsLoading && _news.isEmpty)
-          SizedBox(
-            height: 120,
-            child: Center(child: CircularProgressIndicator(color: c.accent)),
-          )
-        else if (_news.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Center(
-                child: Text(context.t('newsEmpty'),
-                    style: TextStyle(color: c.inkSoft))),
-          )
-        else
-          ..._news.take(10).map((n) => _newsTile(c, n)),
-      ]),
-    );
-  }
-
-  Widget _newsTile(BrutalColors c, Map n) {
+    final top = _news.isNotEmpty ? _news.first : null;
+    final img = (top?['image'] ?? '').toString();
     return GestureDetector(
-      onTap: () => _openNews((n['link'] ?? '').toString()),
+      onTap: () => Navigator.push(
+        context,
+        PageRouteBuilder(
+          transitionDuration: const Duration(milliseconds: 300),
+          pageBuilder: (_, __, ___) => const NewsFeedScreen(),
+          transitionsBuilder: (_, a, __, child) {
+            final curved = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
+            return FadeTransition(
+              opacity: curved,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                        begin: const Offset(0, 0.06), end: Offset.zero)
+                    .animate(curved),
+                child: child,
+              ),
+            );
+          },
+        ),
+      ),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        height: 170,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
           color: c.surface,
-          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: c.ink.withOpacity(0.06)),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: c.accent.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(6),
+        child: Stack(fit: StackFit.expand, children: [
+          if (img.isNotEmpty)
+            CachedNetworkImage(
+              imageUrl: img,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => Container(color: c.surface2),
+              errorWidget: (_, __, ___) => Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                      colors: [c.accent, c.accent3]),
+                ),
               ),
-              child: Text((n['source'] ?? '').toString(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: c.accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700)),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                gradient:
+                    LinearGradient(colors: [c.accent, c.accent3]),
+              ),
             ),
-            const Spacer(),
-            Text(_newsTime(n['date']),
-                style: TextStyle(color: c.inkSoft, fontSize: 11)),
-          ]),
-          const SizedBox(height: 8),
-          Text((n['title'] ?? '').toString(),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: c.ink,
-                  fontSize: 15,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600)),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black26, Colors.black87],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(children: [
+                  const Text('📰', style: TextStyle(fontSize: 15)),
+                  const SizedBox(width: 7),
+                  Text(context.t('newsTitle'),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14)),
+                  const Spacer(),
+                  const Icon(Icons.swipe_rounded,
+                      color: Colors.white70, size: 18),
+                ]),
+                if (top != null)
+                  Text((top['title'] ?? '').toString(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16.5,
+                          height: 1.3,
+                          fontWeight: FontWeight.w700)),
+                Row(children: [
+                  Text(context.t('newsOpenFeed'),
+                      style: TextStyle(
+                          color: c.accent2,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_rounded,
+                      color: c.accent2, size: 14),
+                ]),
+              ],
+            ),
+          ),
         ]),
       ),
     );
-  }
-
-  String _newsTime(dynamic raw) {
-    if (raw == null) return '';
-    final d = DateTime.tryParse(raw.toString());
-    if (d == null) return '';
-    final diff = DateTime.now().difference(d.toLocal());
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    return '${diff.inDays}d';
-  }
-
-  Future<void> _openNews(String url) async {
-    if (url.isEmpty) return;
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {}
   }
 
   // ─── 🌤️ Weather (IP location + Open-Meteo, cached 30 min, no server) ──────
