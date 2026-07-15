@@ -116,6 +116,8 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
 
   // ─── Swipe handling ─────────────────────────────────────────────────────────
   bool get _canGoBack => _index > 0;
+  // Card is "at rest" → safe to mount the video WebView (no active transform).
+  bool get _atRest => _drag == Offset.zero && !_flyCtrl.isAnimating;
 
   void _onPanUpdate(DragUpdateDetails d) {
     if (_flyCtrl.isAnimating) return;
@@ -127,9 +129,10 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
     final w = MediaQuery.of(context).size.width;
     final dx = _drag.dx;
     final vx = d.velocity.pixelsPerSecond.dx;
-    // Light, flick-friendly: a small quick flick is enough to send it flying.
-    final goNext = dx < -w * 0.15 || vx < -260;
-    final goPrev = (dx > w * 0.15 || vx > 260) && _canGoBack;
+    // Feather-light: a tiny flick (or a small drag) sends the card flying.
+    // Velocity is the primary trigger, position is a low fallback.
+    final goNext = vx < -90 || dx < -w * 0.06;
+    final goPrev = (vx > 90 || dx > w * 0.06) && _canGoBack;
     if (goNext || goPrev) {
       _flyingBack = goPrev;
       final target = Offset(goNext ? -w * 1.4 : w * 1.4, _drag.dy * 2);
@@ -308,14 +311,9 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
         ],
       ),
       child: Stack(fit: StackFit.expand, children: [
-        // Media
-        if (isVideo && interactive && videoId.isNotEmpty)
-          _CardYouTube(
-              key: ValueKey('yt_$videoId'),
-              videoId: videoId,
-              thumbnail: img,
-              soundOn: _soundOn)
-        else if (img.isNotEmpty)
+        // Base layer: the real photo — ALWAYS shown, so a video card never
+        // flashes gray while its player boots.
+        if (img.isNotEmpty)
           CachedNetworkImage(
             imageUrl: img,
             fit: BoxFit.cover,
@@ -324,7 +322,15 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
           )
         else
           _fallbackCover(c),
-        // Play badge on non-interactive video thumbnails
+        // Video: overlay the official YouTube player only when the card is
+        // at rest (not being dragged/flung) — WebViews glitch under Transform.
+        if (isVideo && interactive && videoId.isNotEmpty)
+          _CardYouTube(
+              key: ValueKey('yt_$videoId'),
+              videoId: videoId,
+              active: _atRest,
+              soundOn: _soundOn),
+        // Play badge on the peeking (non-interactive) video card
         if (isVideo && !interactive)
           const Center(
             child: Icon(Icons.play_circle_fill_rounded,
@@ -509,17 +515,19 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
   }
 }
 
-// ─── YouTube video card layer (official player — ToS-compliant) ──────────────
-// Autoplays muted; tap = pause/resume; the deck's sound switch mutes/unmutes.
-// A blurred thumbnail fills the card, the 16:9 player sits centered on top.
+// ─── YouTube video overlay (official player — ToS-compliant) ─────────────────
+// Sits ON TOP of the card's static photo, so the photo is always visible and
+// the card never flashes gray. The player is only mounted while [active]
+// (card at rest), because WebViews glitch under an animating Transform.
+// Autoplays muted; tap = pause/resume; the deck's 🔊 switch un/mutes.
 class _CardYouTube extends StatefulWidget {
   final String videoId;
-  final String thumbnail;
+  final bool active;
   final ValueNotifier<bool> soundOn;
   const _CardYouTube({
     super.key,
     required this.videoId,
-    required this.thumbnail,
+    required this.active,
     required this.soundOn,
   });
 
@@ -528,13 +536,26 @@ class _CardYouTube extends StatefulWidget {
 }
 
 class _CardYouTubeState extends State<_CardYouTube> {
-  late final YoutubePlayerController _yt;
+  YoutubePlayerController? _yt;
   bool _paused = false;
+  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    _yt = YoutubePlayerController.fromVideoId(
+    if (widget.active) _mount();
+    widget.soundOn.addListener(_applySound);
+  }
+
+  @override
+  void didUpdateWidget(_CardYouTube old) {
+    super.didUpdateWidget(old);
+    // Mount when the card comes to rest; keep it mounted afterwards.
+    if (widget.active && _yt == null) _mount();
+  }
+
+  void _mount() {
+    final ctrl = YoutubePlayerController.fromVideoId(
       videoId: widget.videoId,
       autoPlay: true,
       params: const YoutubePlayerParams(
@@ -546,54 +567,52 @@ class _CardYouTubeState extends State<_CardYouTube> {
         strictRelatedVideos: true,
       ),
     );
-    if (widget.soundOn.value) {
-      // Give the iframe a moment to boot before unmuting.
-      Future.delayed(const Duration(milliseconds: 1200), _applySound);
-    }
-    widget.soundOn.addListener(_applySound);
+    _yt = ctrl;
+    // Fade the player in once it actually starts, so the photo shows meanwhile.
+    ctrl.listen((v) {
+      if (!_ready && v.playerState == PlayerState.playing && mounted) {
+        setState(() => _ready = true);
+        if (widget.soundOn.value) ctrl.unMute();
+      }
+    });
   }
 
   void _applySound() {
     if (widget.soundOn.value) {
-      _yt.unMute();
+      _yt?.unMute();
     } else {
-      _yt.mute();
+      _yt?.mute();
     }
   }
 
   void _togglePause() {
+    final ctrl = _yt;
+    if (ctrl == null) return;
     if (_paused) {
-      _yt.playVideo();
+      ctrl.playVideo();
     } else {
-      _yt.pauseVideo();
+      ctrl.pauseVideo();
     }
     setState(() => _paused = !_paused);
   }
 
   @override
   Widget build(BuildContext context) {
+    final ctrl = _yt;
     return Stack(fit: StackFit.expand, children: [
-      // Blurred backdrop from the thumbnail
-      if (widget.thumbnail.isNotEmpty)
-        ImageFiltered(
-          imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: CachedNetworkImage(
-              imageUrl: widget.thumbnail, fit: BoxFit.cover),
-        )
-      else
-        Container(color: Colors.black),
-      Container(color: Colors.black38),
-      // Centered 16:9 official player. IgnorePointer keeps the iframe from
-      // eating swipes — all touches are handled by our own gesture layer.
-      Center(
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: IgnorePointer(
-            child: YoutubePlayer(controller: _yt),
+      // Player fades in over the photo once playing (photo stays as base).
+      if (ctrl != null)
+        AnimatedOpacity(
+          opacity: _ready ? 1 : 0,
+          duration: const Duration(milliseconds: 250),
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: IgnorePointer(child: YoutubePlayer(controller: ctrl)),
+            ),
           ),
         ),
-      ),
-      // Our tap layer: single tap = pause / resume (Threads-style)
+      // Tap layer: single tap = pause / resume (Threads-style)
       GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _togglePause,
@@ -615,7 +634,7 @@ class _CardYouTubeState extends State<_CardYouTube> {
   @override
   void dispose() {
     widget.soundOn.removeListener(_applySound);
-    _yt.close();
+    _yt?.close();
     super.dispose();
   }
 }
