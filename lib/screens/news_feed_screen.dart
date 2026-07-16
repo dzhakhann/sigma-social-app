@@ -311,24 +311,33 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
         ],
       ),
       child: Stack(fit: StackFit.expand, children: [
-        // Base layer: the real photo — ALWAYS shown, so a video card never
-        // flashes gray while its player boots.
+        // Base layer: the real HD photo — ALWAYS shown, so a card never
+        // flashes gray. For videos this is the HD thumbnail; if maxres is
+        // missing it falls back to the hq thumbnail from the server.
         if (img.isNotEmpty)
           CachedNetworkImage(
             imageUrl: img,
             fit: BoxFit.cover,
             placeholder: (_, __) => Container(color: c.surface2),
-            errorWidget: (_, __, ___) => _fallbackCover(c),
+            errorWidget: (_, __, ___) {
+              final fb = (n['thumb'] ?? '').toString();
+              if (fb.isNotEmpty) {
+                return CachedNetworkImage(
+                    imageUrl: fb,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => _fallbackCover(c));
+              }
+              return _fallbackCover(c);
+            },
           )
         else
           _fallbackCover(c),
-        // Video: overlay the official YouTube player only when the card is
-        // at rest (not being dragged/flung) — WebViews glitch under Transform.
+        // Video: tap-to-play (reliable — a user gesture satisfies the WebView
+        // autoplay policy that silently blocks inline autoplay on Android).
         if (isVideo && interactive && videoId.isNotEmpty)
           _CardYouTube(
               key: ValueKey('yt_$videoId'),
               videoId: videoId,
-              active: _atRest,
               soundOn: _soundOn),
         // Play badge on the peeking (non-interactive) video card
         if (isVideo && !interactive)
@@ -516,18 +525,16 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
 }
 
 // ─── YouTube video overlay (official player — ToS-compliant) ─────────────────
-// Sits ON TOP of the card's static photo, so the photo is always visible and
-// the card never flashes gray. The player is only mounted while [active]
-// (card at rest), because WebViews glitch under an animating Transform.
-// Autoplays muted; tap = pause/resume; the deck's 🔊 switch un/mutes.
+// Reliable tap-to-play: the HD thumbnail (drawn by the card behind us) shows a
+// big play button; the first tap mounts the player and starts playback — a
+// user gesture always satisfies Android WebView's autoplay policy, which is
+// why silent inline autoplay was flaky. Sound follows the deck's 🔊 switch.
 class _CardYouTube extends StatefulWidget {
   final String videoId;
-  final bool active;
   final ValueNotifier<bool> soundOn;
   const _CardYouTube({
     super.key,
     required this.videoId,
-    required this.active,
     required this.soundOn,
   });
 
@@ -537,93 +544,65 @@ class _CardYouTube extends StatefulWidget {
 
 class _CardYouTubeState extends State<_CardYouTube> {
   YoutubePlayerController? _yt;
-  bool _paused = false;
-  bool _ready = false;
+  bool _playing = false;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.active) _mount();
-    widget.soundOn.addListener(_applySound);
-  }
-
-  @override
-  void didUpdateWidget(_CardYouTube old) {
-    super.didUpdateWidget(old);
-    // Mount when the card comes to rest; keep it mounted afterwards.
-    if (widget.active && _yt == null) _mount();
-  }
-
-  void _mount() {
-    final ctrl = YoutubePlayerController.fromVideoId(
-      videoId: widget.videoId,
-      autoPlay: true,
-      params: const YoutubePlayerParams(
-        mute: true,
-        showControls: false,
-        showFullscreenButton: false,
-        playsInline: true,
-        enableCaption: false,
-        strictRelatedVideos: true,
-      ),
-    );
-    _yt = ctrl;
-    // Fade the player in once it actually starts, so the photo shows meanwhile.
-    ctrl.listen((v) {
-      if (!_ready && v.playerState == PlayerState.playing && mounted) {
-        setState(() => _ready = true);
-        if (widget.soundOn.value) ctrl.unMute();
-      }
-    });
-  }
-
-  void _applySound() {
-    if (widget.soundOn.value) {
-      _yt?.unMute();
+  void _startOrToggle() {
+    if (_yt == null) {
+      final ctrl = YoutubePlayerController.fromVideoId(
+        videoId: widget.videoId,
+        autoPlay: true,
+        params: YoutubePlayerParams(
+          mute: !widget.soundOn.value,
+          showControls: false,
+          showFullscreenButton: false,
+          playsInline: true,
+          enableCaption: false,
+          strictRelatedVideos: true,
+        ),
+      );
+      setState(() {
+        _yt = ctrl;
+        _playing = true;
+      });
+      widget.soundOn.addListener(_applySound);
+    } else if (_playing) {
+      _yt!.pauseVideo();
+      setState(() => _playing = false);
     } else {
-      _yt?.mute();
+      _yt!.playVideo();
+      setState(() => _playing = true);
     }
   }
 
-  void _togglePause() {
-    final ctrl = _yt;
-    if (ctrl == null) return;
-    if (_paused) {
-      ctrl.playVideo();
-    } else {
-      ctrl.pauseVideo();
-    }
-    setState(() => _paused = !_paused);
-  }
+  void _applySound() =>
+      widget.soundOn.value ? _yt?.unMute() : _yt?.mute();
 
   @override
   Widget build(BuildContext context) {
     final ctrl = _yt;
     return Stack(fit: StackFit.expand, children: [
-      // Player fades in over the photo once playing (photo stays as base).
+      // Player (over the HD thumbnail the card already painted).
       if (ctrl != null)
-        AnimatedOpacity(
-          opacity: _ready ? 1 : 0,
-          duration: const Duration(milliseconds: 250),
-          child: Center(
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: IgnorePointer(child: YoutubePlayer(controller: ctrl)),
-            ),
+        Center(
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: IgnorePointer(child: YoutubePlayer(controller: ctrl)),
           ),
         ),
-      // Tap layer: single tap = pause / resume (Threads-style)
+      // Tap layer + play/pause badge
       GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTap: _togglePause,
+        onTap: _startOrToggle,
         child: AnimatedOpacity(
-          opacity: _paused ? 1 : 0,
+          opacity: _playing ? 0 : 1,
           duration: const Duration(milliseconds: 180),
-          child: const ColoredBox(
+          child: Container(
             color: Colors.black26,
-            child: Center(
-              child: Icon(Icons.play_arrow_rounded,
-                  size: 84, color: Colors.white),
+            child: const Center(
+              child: Icon(Icons.play_circle_fill_rounded,
+                  size: 84,
+                  color: Colors.white,
+                  shadows: [Shadow(blurRadius: 18, color: Colors.black54)]),
             ),
           ),
         ),
