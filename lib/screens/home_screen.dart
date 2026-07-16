@@ -523,126 +523,34 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ─── 📰 News teaser → opens the full-screen Tinder-style deck ──────────────
-  List _news = [];
-  String? _newsLangLoaded;
-
-  Future<void> _loadNews({bool force = false}) async {
-    final data = await ApiService.news();
-    if (mounted) {
-      setState(() {
-        _news = data;
-        _newsLangLoaded = _lang;
-      });
-    }
-  }
-
+  // ─── 🗞️ «Газета» — the deck lives INLINE on the home screen. Swipe cards
+  // right here; vertical scroll passes through to the home feed. ─────────────
   Widget _newsCard(BrutalColors c) {
-    if (_news.isEmpty || _newsLangLoaded != _lang) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadNews());
-    }
-    final top = _news.isNotEmpty ? _news.first : null;
-    final img = (top?['image'] ?? '').toString();
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        PageRouteBuilder(
-          transitionDuration: const Duration(milliseconds: 300),
-          pageBuilder: (_, __, ___) => const NewsFeedScreen(),
-          transitionsBuilder: (_, a, __, child) {
-            final curved = CurvedAnimation(parent: a, curve: Curves.easeOutCubic);
-            return FadeTransition(
-              opacity: curved,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                        begin: const Offset(0, 0.06), end: Offset.zero)
-                    .animate(curved),
-                child: child,
+    final h = MediaQuery.of(context).size.height * 0.66;
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 16, 10),
+          child: Row(children: [
+            const Text('🗞️', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Text(context.t('newsTitle'),
+                style: TextStyle(
+                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 19)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const NewsHistoryScreen()),
               ),
-            );
-          },
+              child: Icon(Icons.history_rounded, color: c.inkSoft, size: 22),
+            ),
+          ]),
         ),
-      ),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-        height: 170,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: c.surface,
-          border: Border.all(color: c.ink.withOpacity(0.06)),
-        ),
-        child: Stack(fit: StackFit.expand, children: [
-          if (img.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: img,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(color: c.surface2),
-              errorWidget: (_, __, ___) => Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                      colors: [c.accent, c.accent3]),
-                ),
-              ),
-            )
-          else
-            Container(
-              decoration: BoxDecoration(
-                gradient:
-                    LinearGradient(colors: [c.accent, c.accent3]),
-              ),
-            ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black26, Colors.black87],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(children: [
-                  const Text('📰', style: TextStyle(fontSize: 15)),
-                  const SizedBox(width: 7),
-                  Text(context.t('newsTitle'),
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14)),
-                  const Spacer(),
-                  const Icon(Icons.swipe_rounded,
-                      color: Colors.white70, size: 18),
-                ]),
-                if (top != null)
-                  Text((top['title'] ?? '').toString(),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16.5,
-                          height: 1.3,
-                          fontWeight: FontWeight.w700)),
-                Row(children: [
-                  Text(context.t('newsOpenFeed'),
-                      style: TextStyle(
-                          color: c.accent2,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12.5)),
-                  const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded,
-                      color: c.accent2, size: 14),
-                ]),
-              ],
-            ),
-          ),
-        ]),
-      ),
+        SizedBox(height: h, child: const NewsDeck()),
+      ]),
     );
   }
 

@@ -11,41 +11,75 @@ import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 
-/// «Газета» — one mixed Tinder-style deck: articles + YouTube news videos.
-/// · swipe left → next story, swipe right → previous (light, flick-friendly)
-/// · double-tap → Instagram heart (pure visual, never stored)
-/// · videos autoplay muted through the OFFICIAL YouTube player; tap = pause,
-///   one 🔊 button; the sound choice persists across cards and sessions
-/// · a story is "read" only after you swipe it away — never on display
-/// · read stories are remembered by ID only and never shown again
-/// · History re-lists what you've read (light text only, on-device)
-class NewsFeedScreen extends StatefulWidget {
+/// Standalone «Газета» screen (from the home teaser's history button etc).
+class NewsFeedScreen extends StatelessWidget {
   const NewsFeedScreen({Key? key}) : super(key: key);
 
   @override
-  State<NewsFeedScreen> createState() => _NewsFeedScreenState();
+  Widget build(BuildContext context) {
+    final c = context.k;
+    return Scaffold(
+      backgroundColor: c.bg,
+      body: SafeArea(
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            child: Row(children: [
+              IconButton(
+                icon: Icon(Icons.arrow_back_rounded, color: c.ink),
+                onPressed: () => Navigator.pop(context),
+              ),
+              Text('🗞️ ${context.t('newsTitle')}',
+                  style: TextStyle(
+                      color: c.ink, fontSize: 20, fontWeight: FontWeight.w800)),
+              const Spacer(),
+              IconButton(
+                icon: Icon(Icons.history_rounded, color: c.inkSoft),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NewsHistoryScreen()),
+                ),
+              ),
+            ]),
+          ),
+          const Expanded(child: NewsDeck()),
+          const SizedBox(height: 12),
+        ]),
+      ),
+    );
+  }
 }
 
-class _NewsFeedScreenState extends State<NewsFeedScreen>
+/// «Газета» deck — one mixed Tinder-style stack of article + video cards.
+/// Designed to be embedded directly on the home screen (fixed height) OR used
+/// full-screen. Horizontal drags flick cards; vertical drags pass THROUGH to a
+/// parent scroll view, so it works inline in the scrolling home feed.
+///
+/// · light flick → next / previous
+/// · double-tap → Instagram heart (visual only, never stored)
+/// · video card → tap plays fullscreen via the official YouTube player
+/// · a card is "read" only after it's swiped away, never on display
+class NewsDeck extends StatefulWidget {
+  const NewsDeck({Key? key}) : super(key: key);
+
+  @override
+  State<NewsDeck> createState() => _NewsDeckState();
+}
+
+class _NewsDeckState extends State<NewsDeck>
     with SingleTickerProviderStateMixin {
   List<Map> _deck = [];
   int _index = 0;
   bool _loading = true;
 
-  // Swipe physics
-  Offset _drag = Offset.zero;
+  double _dx = 0; // horizontal drag only
   late final AnimationController _flyCtrl = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 230));
-  Animation<Offset>? _flyAnim;
-  bool _flyingBack = false; // true → after fly-out we go to previous
+  Animation<double>? _flyAnim;
+  bool _flyingBack = false;
 
-  // Heart (visual only — never persisted anywhere)
   bool _heartVisible = false;
   final Set<String> _hearted = {};
-
-  // Sound preference for videos (persists across cards + sessions)
-  static final ValueNotifier<bool> _soundOn = ValueNotifier(false);
-
   Set<String> _read = {};
 
   @override
@@ -60,7 +94,6 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
   Future<void> _init() async {
     final p = await SharedPreferences.getInstance();
     _read = (p.getStringList('news_read_v2') ?? []).toSet();
-    _soundOn.value = p.getBool('news_sound') ?? false;
     _load();
   }
 
@@ -69,11 +102,10 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
       _loading = true;
       _deck = [];
       _index = 0;
-      _drag = Offset.zero;
+      _dx = 0;
     });
     final all = await ApiService.news();
     if (!mounted) return;
-    // Never show what was already read — the next fetch brings new stories.
     final fresh = all.where((n) => !_read.contains(_id(n))).toList();
     setState(() {
       _deck = fresh;
@@ -101,69 +133,53 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
     var list = _read.toList();
     if (list.length > 400) list = list.sublist(list.length - 400);
     await p.setStringList('news_read_v2', list);
-    // History keeps light text metadata only (no media), on-device only.
     final hist = p.getStringList('news_hist_v1') ?? [];
     hist.insert(0, jsonEncode({
-      'id': id,
-      't': n['title'],
-      's': n['source'],
-      'l': n['link'],
+      'id': id, 't': n['title'], 's': n['source'], 'l': n['link'],
       'ts': DateTime.now().toIso8601String(),
     }));
     if (hist.length > 200) hist.removeRange(200, hist.length);
     await p.setStringList('news_hist_v1', hist);
   }
 
-  // ─── Swipe handling ─────────────────────────────────────────────────────────
+  // ─── Swipe (horizontal only, so vertical scroll passes through) ─────────────
   bool get _canGoBack => _index > 0;
-  // Card is "at rest" → safe to mount the video WebView (no active transform).
-  bool get _atRest => _drag == Offset.zero && !_flyCtrl.isAnimating;
 
-  void _onPanUpdate(DragUpdateDetails d) {
+  void _onDragUpdate(DragUpdateDetails d) {
     if (_flyCtrl.isAnimating) return;
-    setState(() => _drag += d.delta);
+    setState(() => _dx += d.delta.dx);
   }
 
-  void _onPanEnd(DragEndDetails d) {
+  void _onDragEnd(DragEndDetails d) {
     if (_flyCtrl.isAnimating) return;
     final w = MediaQuery.of(context).size.width;
-    final dx = _drag.dx;
     final vx = d.velocity.pixelsPerSecond.dx;
-    // Feather-light: a tiny flick (or a small drag) sends the card flying.
-    // Velocity is the primary trigger, position is a low fallback.
-    final goNext = vx < -90 || dx < -w * 0.06;
-    final goPrev = (vx > 90 || dx > w * 0.06) && _canGoBack;
+    final goNext = vx < -90 || _dx < -w * 0.06;
+    final goPrev = (vx > 90 || _dx > w * 0.06) && _canGoBack;
     if (goNext || goPrev) {
       _flyingBack = goPrev;
-      final target = Offset(goNext ? -w * 1.4 : w * 1.4, _drag.dy * 2);
-      _flyAnim = Tween(begin: _drag, end: target).animate(
+      final target = goNext ? -w * 1.4 : w * 1.4;
+      _flyAnim = Tween(begin: _dx, end: target).animate(
           CurvedAnimation(parent: _flyCtrl, curve: Curves.easeOut));
       _flyCtrl.forward(from: 0);
       HapticFeedback.selectionClick();
     } else {
-      // Spring back
       final ctrl = AnimationController(
           vsync: this, duration: const Duration(milliseconds: 240));
-      final anim = Tween(begin: _drag, end: Offset.zero).animate(
+      final anim = Tween(begin: _dx, end: 0.0).animate(
           CurvedAnimation(parent: ctrl, curve: Curves.easeOutBack));
-      anim.addListener(() => setState(() => _drag = anim.value));
+      anim.addListener(() => setState(() => _dx = anim.value));
       ctrl.forward().whenComplete(ctrl.dispose);
     }
   }
 
   void _onFlyDone() {
-    // "Read" only when the user actually swiped the card away — never on
-    // display (marking on display used to silently drain the deck).
-    if (!_flyingBack && _index < _deck.length) {
-      _markRead(_deck[_index]);
-    }
+    if (!_flyingBack && _index < _deck.length) _markRead(_deck[_index]);
     setState(() {
-      if (_flyingBack) {
-        _index = math.max(0, _index - 1);
-      } else {
-        _index = math.min(_deck.length, _index + 1);
-      }
-      _drag = Offset.zero;
+      _index = _flyingBack
+          ? math.max(0, _index - 1)
+          : math.min(_deck.length, _index + 1);
+      _dx = 0;
       _heartVisible = false;
     });
     _flyCtrl.reset();
@@ -174,7 +190,7 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
 
   void _doubleTap() {
     final id = _index < _deck.length ? _id(_deck[_index]) : '';
-    if (_hearted.contains(id)) return; // animate once per card
+    if (_hearted.contains(id)) return;
     _hearted.add(id);
     HapticFeedback.mediumImpact();
     setState(() => _heartVisible = true);
@@ -190,68 +206,37 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
     } catch (_) {}
   }
 
-  Future<void> _toggleSound() async {
-    _soundOn.value = !_soundOn.value;
-    final p = await SharedPreferences.getInstance();
-    p.setBool('news_sound', _soundOn.value);
+  void _playVideo(Map n) {
+    final id = (n['videoId'] ?? '').toString();
+    if (id.isEmpty) return;
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (_, __, ___) =>
+            _FullscreenVideo(videoId: id, title: (n['title'] ?? '').toString()),
+      ),
+    );
   }
 
   // ─── UI ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final c = context.k;
-    return Scaffold(
-      backgroundColor: c.bg,
-      body: SafeArea(
-        child: Column(children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-            child: Row(children: [
-              IconButton(
-                icon: Icon(Icons.arrow_back_rounded, color: c.ink),
-                onPressed: () => Navigator.pop(context),
-              ),
-              Text('🗞️ ${context.t('newsTitle')}',
-                  style: TextStyle(
-                      color: c.ink,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800)),
-              const Spacer(),
-              IconButton(
-                tooltip: context.t('newsHistory'),
-                icon: Icon(Icons.history_rounded, color: c.inkSoft),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const _NewsHistoryScreen()),
-                ),
-              ),
-            ]),
-          ),
-          // Deck — one mixed stream, no categories
-          Expanded(child: _buildDeck(c)),
-          const SizedBox(height: 12),
-        ]),
-      ),
-    );
-  }
-
-  Widget _buildDeck(BrutalColors c) {
     if (_loading) {
       return Center(child: CircularProgressIndicator(color: c.accent));
     }
     if (_index >= _deck.length) return _caughtUp(c);
-
     final size = MediaQuery.of(context).size;
 
     return AnimatedBuilder(
       animation: _flyCtrl,
       builder: (_, __) {
-        final d = _flyAnim?.value ?? _drag;
-        final a = d.dx / size.width * 0.35;
-        final progress = (d.dx.abs() / (size.width * 0.5)).clamp(0.0, 1.0);
+        final dx = _flyAnim?.value ?? _dx;
+        final a = dx / size.width * 0.35;
+        final progress = (dx.abs() / (size.width * 0.5)).clamp(0.0, 1.0);
         return Stack(alignment: Alignment.center, children: [
-          // Next card peeking underneath (scales up as you drag)
           if (_index + 1 < _deck.length)
             Transform.scale(
               scale: 0.93 + 0.07 * progress,
@@ -260,20 +245,19 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
                 child: _card(c, _deck[_index + 1], interactive: false),
               ),
             ),
-          // Top card — follows the finger with rotation, Tinder-style
           Transform.translate(
-            offset: d,
+            offset: Offset(dx, 0),
             child: Transform.rotate(
               angle: a,
               child: GestureDetector(
-                onPanUpdate: _onPanUpdate,
-                onPanEnd: _onPanEnd,
+                // Horizontal only → vertical scroll passes to the parent.
+                onHorizontalDragUpdate: _onDragUpdate,
+                onHorizontalDragEnd: _onDragEnd,
                 onDoubleTap: _doubleTap,
                 child: _card(c, _deck[_index], interactive: true),
               ),
             ),
           ),
-          // Instagram heart burst (visual only)
           IgnorePointer(
             child: AnimatedScale(
               scale: _heartVisible ? 1.0 : 0.4,
@@ -283,7 +267,7 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
                 opacity: _heartVisible ? 1 : 0,
                 duration: const Duration(milliseconds: 200),
                 child: const Icon(Icons.favorite_rounded,
-                    size: 130,
+                    size: 120,
                     color: Colors.white,
                     shadows: [Shadow(blurRadius: 30, color: Colors.black54)]),
               ),
@@ -295,25 +279,20 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
   }
 
   Widget _card(BrutalColors c, Map n, {required bool interactive}) {
-    final size = MediaQuery.of(context).size;
     final img = (n['image'] ?? '').toString();
     final isVideo = (n['type'] ?? '') == 'video';
-    final videoId = (n['videoId'] ?? '').toString();
     return Container(
-      width: size.width - 28,
       margin: const EdgeInsets.symmetric(horizontal: 14),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         color: c.surface,
         boxShadow: const [
-          BoxShadow(blurRadius: 26, color: Colors.black38, offset: Offset(0, 10)),
+          BoxShadow(blurRadius: 24, color: Colors.black38, offset: Offset(0, 8)),
         ],
       ),
       child: Stack(fit: StackFit.expand, children: [
-        // Base layer: the real HD photo — ALWAYS shown, so a card never
-        // flashes gray. For videos this is the HD thumbnail; if maxres is
-        // missing it falls back to the hq thumbnail from the server.
+        // HD photo (og:image). Video cards fall back maxres → hq thumbnail.
         if (img.isNotEmpty)
           CachedNetworkImage(
             imageUrl: img,
@@ -332,20 +311,21 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
           )
         else
           _fallbackCover(c),
-        // Video: tap-to-play (reliable — a user gesture satisfies the WebView
-        // autoplay policy that silently blocks inline autoplay on Android).
-        if (isVideo && interactive && videoId.isNotEmpty)
-          _CardYouTube(
-              key: ValueKey('yt_$videoId'),
-              videoId: videoId,
-              soundOn: _soundOn),
-        // Play badge on the peeking (non-interactive) video card
-        if (isVideo && !interactive)
-          const Center(
-            child: Icon(Icons.play_circle_fill_rounded,
-                size: 74, color: Colors.white70),
+        if (isVideo)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: interactive ? () => _playVideo(n) : null,
+              child: Container(
+                color: Colors.black26,
+                child: const Center(
+                  child: Icon(Icons.play_circle_fill_rounded,
+                      size: 82,
+                      color: Colors.white,
+                      shadows: [Shadow(blurRadius: 18, color: Colors.black54)]),
+                ),
+              ),
+            ),
           ),
-        // Bottom darkening for readability
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -355,7 +335,6 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
             ),
           ),
         ),
-        // Glass info panel
         Positioned(
           left: 14, right: 14, bottom: 14,
           child: ClipRRect(
@@ -363,7 +342,7 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
               child: Container(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(22),
@@ -399,26 +378,26 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
                           style: const TextStyle(
                               color: Colors.white70, fontSize: 12)),
                     ]),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 9),
                     Text((n['title'] ?? '').toString(),
-                        maxLines: 4,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 21,
+                            fontSize: 20,
                             height: 1.25,
                             fontWeight: FontWeight.w800)),
                     if ((n['desc'] ?? '').toString().isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 7),
                       Text((n['desc'] ?? '').toString(),
-                          maxLines: 3,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               color: Colors.white70,
-                              fontSize: 13.5,
+                              fontSize: 13,
                               height: 1.4)),
                     ],
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     GestureDetector(
                       onTap: interactive
                           ? () => _openLink((n['link'] ?? '').toString())
@@ -440,25 +419,6 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
             ),
           ),
         ),
-        // Single sound button — only for videos
-        if (isVideo && interactive)
-          Positioned(
-            top: 14, right: 14,
-            child: ValueListenableBuilder<bool>(
-              valueListenable: _soundOn,
-              builder: (_, on, __) => GestureDetector(
-                onTap: _toggleSound,
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: const BoxDecoration(
-                      color: Colors.black45, shape: BoxShape.circle),
-                  child: Icon(
-                      on ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-                      color: Colors.white, size: 20),
-                ),
-              ),
-            ),
-          ),
       ]),
     );
   }
@@ -471,25 +431,30 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
             colors: [c.accent.withOpacity(0.85), c.accent3.withOpacity(0.85)],
           ),
         ),
-        child: const Center(
-            child: Text('🗞️', style: TextStyle(fontSize: 72))),
+        child: const Center(child: Text('🗞️', style: TextStyle(fontSize: 64))),
       );
 
   Widget _caughtUp(BrutalColors c) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(36),
+          padding: const EdgeInsets.all(28),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('🎉', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: 16),
+            const Text('🎉', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 14),
             Text(context.t('newsCaughtUp'),
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                    color: c.ink,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
+                    color: c.ink, fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
             Text(context.t('newsCaughtUpSub'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: c.inkSoft, height: 1.4)),
+                style: TextStyle(color: c.inkSoft, height: 1.4, fontSize: 13)),
+            const SizedBox(height: 14),
+            TextButton.icon(
+              onPressed: _load,
+              icon: Icon(Icons.refresh_rounded, color: c.accent),
+              label: Text(context.t('newsRefresh'),
+                  style: TextStyle(color: c.accent)),
+            ),
           ]),
         ),
       );
@@ -498,15 +463,13 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
     if (raw == null) return '';
     DateTime? d = DateTime.tryParse(raw.toString());
     if (d == null) {
-      // RFC 822 (RSS pubDate): "Tue, 15 Jul 2026 10:00:00 GMT"
       try {
         final parts = raw.toString().split(' ');
         const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        final day = int.parse(parts[1]);
-        final month = months.indexOf(parts[2]) + 1;
-        final year = int.parse(parts[3]);
-        final hms = parts[4].split(':').map(int.parse).toList();
-        d = DateTime.utc(year, month, day, hms[0], hms[1], hms[2]);
+        d = DateTime.utc(int.parse(parts[3]), months.indexOf(parts[2]) + 1,
+            int.parse(parts[1]),
+            int.parse(parts[4].split(':')[0]),
+            int.parse(parts[4].split(':')[1]));
       } catch (_) {
         return '';
       }
@@ -524,109 +487,81 @@ class _NewsFeedScreenState extends State<NewsFeedScreen>
   }
 }
 
-// ─── YouTube video overlay (official player — ToS-compliant) ─────────────────
-// Reliable tap-to-play: the HD thumbnail (drawn by the card behind us) shows a
-// big play button; the first tap mounts the player and starts playback — a
-// user gesture always satisfies Android WebView's autoplay policy, which is
-// why silent inline autoplay was flaky. Sound follows the deck's 🔊 switch.
-class _CardYouTube extends StatefulWidget {
+// ─── Fullscreen YouTube player (official, ToS-compliant, reliable) ───────────
+// Opened on tap. Autoplays with sound (a user gesture opened it, so the WebView
+// autoplay policy is satisfied). Tap = pause/resume, back / ✕ = close.
+class _FullscreenVideo extends StatefulWidget {
   final String videoId;
-  final ValueNotifier<bool> soundOn;
-  const _CardYouTube({
-    super.key,
-    required this.videoId,
-    required this.soundOn,
-  });
+  final String title;
+  const _FullscreenVideo({required this.videoId, required this.title});
 
   @override
-  State<_CardYouTube> createState() => _CardYouTubeState();
+  State<_FullscreenVideo> createState() => _FullscreenVideoState();
 }
 
-class _CardYouTubeState extends State<_CardYouTube> {
-  YoutubePlayerController? _yt;
-  bool _playing = false;
-
-  void _startOrToggle() {
-    if (_yt == null) {
-      final ctrl = YoutubePlayerController.fromVideoId(
-        videoId: widget.videoId,
-        autoPlay: true,
-        params: YoutubePlayerParams(
-          mute: !widget.soundOn.value,
-          showControls: false,
-          showFullscreenButton: false,
-          playsInline: true,
-          enableCaption: false,
-          strictRelatedVideos: true,
-        ),
-      );
-      setState(() {
-        _yt = ctrl;
-        _playing = true;
-      });
-      widget.soundOn.addListener(_applySound);
-    } else if (_playing) {
-      _yt!.pauseVideo();
-      setState(() => _playing = false);
-    } else {
-      _yt!.playVideo();
-      setState(() => _playing = true);
-    }
-  }
-
-  void _applySound() =>
-      widget.soundOn.value ? _yt?.unMute() : _yt?.mute();
+class _FullscreenVideoState extends State<_FullscreenVideo> {
+  late final YoutubePlayerController _yt = YoutubePlayerController.fromVideoId(
+    videoId: widget.videoId,
+    autoPlay: true,
+    params: const YoutubePlayerParams(
+      showControls: true,
+      showFullscreenButton: false,
+      playsInline: true,
+      strictRelatedVideos: true,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = _yt;
-    return Stack(fit: StackFit.expand, children: [
-      // Player (over the HD thumbnail the card already painted).
-      if (ctrl != null)
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(children: [
         Center(
           child: AspectRatio(
             aspectRatio: 16 / 9,
-            child: IgnorePointer(child: YoutubePlayer(controller: ctrl)),
+            child: YoutubePlayer(controller: _yt),
           ),
         ),
-      // Tap layer + play/pause badge
-      GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: _startOrToggle,
-        child: AnimatedOpacity(
-          opacity: _playing ? 0 : 1,
-          duration: const Duration(milliseconds: 180),
-          child: Container(
-            color: Colors.black26,
-            child: const Center(
-              child: Icon(Icons.play_circle_fill_rounded,
-                  size: 84,
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8,
+          left: 8,
+          child: IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        Positioned(
+          left: 16, right: 16,
+          bottom: MediaQuery.of(context).padding.bottom + 20,
+          child: Text(widget.title,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                   color: Colors.white,
-                  shadows: [Shadow(blurRadius: 18, color: Colors.black54)]),
-            ),
-          ),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  shadows: [Shadow(blurRadius: 8, color: Colors.black)])),
         ),
-      ),
-    ]);
+      ]),
+    );
   }
 
   @override
   void dispose() {
-    widget.soundOn.removeListener(_applySound);
-    _yt?.close();
+    _yt.close();
     super.dispose();
   }
 }
 
 // ─── History: read stories (light text metadata only, stored on-device) ──────
-class _NewsHistoryScreen extends StatefulWidget {
-  const _NewsHistoryScreen();
+class NewsHistoryScreen extends StatefulWidget {
+  const NewsHistoryScreen({Key? key}) : super(key: key);
 
   @override
-  State<_NewsHistoryScreen> createState() => _NewsHistoryScreenState();
+  State<NewsHistoryScreen> createState() => _NewsHistoryScreenState();
 }
 
-class _NewsHistoryScreenState extends State<_NewsHistoryScreen> {
+class _NewsHistoryScreenState extends State<NewsHistoryScreen> {
   List<Map> _items = [];
 
   @override

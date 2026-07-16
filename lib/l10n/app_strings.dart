@@ -436,9 +436,10 @@ class S {
       'nSpace': 'Space', 'nBusiness': 'Business',
       'newsHistory': 'History',
       'newsCaughtUp': "You're all caught up",
-      'newsCaughtUpSub': 'New stories arrive tomorrow. Check other categories!',
+      'newsCaughtUpSub': 'New stories arrive tomorrow.',
       'newsOpenFeed': 'Open news feed',
       'newsHistEmpty': 'Stories you read will appear here',
+      'newsRefresh': 'Refresh',
       // three-dot menu / moderation
       'mShareProfile': 'Share profile', 'mCopyLink': 'Copy link',
       'mReport': 'Report', 'mBlock': 'Block user', 'mUnblock': 'Unblock',
@@ -893,7 +894,8 @@ class S {
       'nSpace': 'Космос', 'nBusiness': 'Бизнес',
       'newsHistory': 'История',
       'newsCaughtUp': 'Вы всё посмотрели',
-      'newsCaughtUpSub': 'Новые истории появятся завтра. Загляните в другие категории!',
+      'newsCaughtUpSub': 'Новые истории появятся завтра.',
+      'newsRefresh': 'Обновить',
       'newsOpenFeed': 'Открыть ленту новостей',
       'newsHistEmpty': 'Прочитанные новости появятся здесь',
       // three-dot menu / moderation
