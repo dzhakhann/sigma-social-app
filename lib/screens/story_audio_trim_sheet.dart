@@ -1,26 +1,36 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../l10n/app_strings.dart';
 import '../theme/brutal_theme.dart';
 
-/// Telegram-style audio editor: pick WHICH part of the track plays and for how
-/// long. Returns `(startSec, lengthSec)` via Navigator.pop.
+/// Telegram-style audio trimmer (Пункт 4): the selection WINDOW sits right on
+/// the waveform — drag the window to move the fragment, drag its edge handles
+/// to resize. No playhead line, no separate slider. The chosen fragment plays
+/// looped while you adjust, so you hear exactly what will be published.
+/// Returns `(startSec, lengthSec)` via Navigator.pop.
 ///
-/// The waveform bars are generated deterministically from the title — real
-/// amplitude analysis would mean decoding the whole file on-device for a purely
-/// decorative strip. The trim itself is real: ffmpeg seeks to the chosen second.
+/// Bars are generated deterministically from the title — decoding the whole
+/// file for a decorative strip would burn CPU for nothing. The TRIM is real:
+/// ffmpeg seeks to the chosen second on export.
 class AudioTrimSheet extends StatefulWidget {
   final String title;
   final int totalSec;
   final int startSec;
   final int lenSec;
+
+  /// Track source (http url or local file path) — played as a live preview.
+  final String? audioUrl;
+
   const AudioTrimSheet({
     Key? key,
     required this.title,
     required this.totalSec,
     required this.startSec,
     required this.lenSec,
+    this.audioUrl,
   }) : super(key: key);
 
   @override
@@ -28,12 +38,45 @@ class AudioTrimSheet extends StatefulWidget {
 }
 
 class _AudioTrimSheetState extends State<AudioTrimSheet> {
-  late int _start = widget.startSec;
+  late double _start = widget.startSec.toDouble();
   late int _len = widget.lenSec;
-  // Rhythm doesn't always report a duration — assume 3 min so the UI still works.
+  // Rhythm doesn't always report a duration — assume 3 min so the UI works.
   late final int _total = widget.totalSec > 0 ? widget.totalSec : 180;
 
-  int get _maxStart => (_total - _len).clamp(0, _total);
+  final AudioPlayer _player = AudioPlayer();
+  bool _dragging = false;
+
+  double get _maxStart => (_total - _len).clamp(0, _total).toDouble();
+
+  @override
+  void initState() {
+    super.initState();
+    _restartPreview();
+  }
+
+  @override
+  void dispose() {
+    _player.dispose(); // hard stop — no sound leaking out of the sheet
+    super.dispose();
+  }
+
+  /// (Re)plays the currently selected fragment, looped.
+  Future<void> _restartPreview() async {
+    final url = widget.audioUrl;
+    if (url == null || url.isEmpty) return;
+    try {
+      await _player.setAudioSource(
+        ClippingAudioSource(
+          child: AudioSource.uri(
+              url.startsWith('http') ? Uri.parse(url) : Uri.file(url)),
+          start: Duration(seconds: _start.round()),
+          end: Duration(seconds: _start.round() + _len),
+        ),
+      );
+      await _player.setLoopMode(LoopMode.one);
+      await _player.play();
+    } catch (_) {}
+  }
 
   String _fmt(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 
@@ -46,7 +89,7 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
         filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF121316).withOpacity(0.86),
+            color: const Color(0xFF121316).withOpacity(0.88),
             border:
                 Border(top: BorderSide(color: Colors.white.withOpacity(0.10))),
           ),
@@ -77,43 +120,122 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
                             fontWeight: FontWeight.w800)),
                   ),
                 ]),
-                const SizedBox(height: 16),
-                // Waveform with the selected window lit up.
-                SizedBox(
-                  height: 56,
-                  child: CustomPaint(
-                    size: const Size(double.infinity, 56),
-                    painter: _WavePainter(
-                      seed: widget.title.hashCode,
-                      from: _start / _total,
-                      to: ((_start + _len) / _total).clamp(0.0, 1.0),
-                      accent: c.accent,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Slide the window across the track.
-                Slider(
-                  value: _start.toDouble().clamp(0, _maxStart.toDouble()),
-                  max: _maxStart <= 0 ? 1 : _maxStart.toDouble(),
-                  activeColor: c.accent,
-                  inactiveColor: Colors.white24,
-                  onChanged: (v) => setState(() => _start = v.round()),
-                ),
+                const SizedBox(height: 18),
+                // ── Waveform + draggable window (the whole interaction) ──
+                LayoutBuilder(builder: (_, box) {
+                  final w = box.maxWidth;
+                  final winW = (_len / _total * w).clamp(24.0, w);
+                  final winX = (_start / _total * w)
+                      .clamp(0.0, (w - winW).clamp(0.0, w));
+                  const handleW = 22.0;
+                  return SizedBox(
+                    height: 72,
+                    child: Stack(children: [
+                      // waves
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: _WavePainter(
+                            seed: widget.title.hashCode,
+                            from: _start / _total,
+                            to: ((_start + _len) / _total).clamp(0.0, 1.0),
+                            accent: c.accent,
+                          ),
+                        ),
+                      ),
+                      // selection window — drag to move
+                      Positioned(
+                        left: winX,
+                        top: 0,
+                        bottom: 0,
+                        width: winW,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: (_) =>
+                              setState(() => _dragging = true),
+                          onHorizontalDragUpdate: (d) => setState(() {
+                            _start = (_start + d.delta.dx / w * _total)
+                                .clamp(0.0, _maxStart);
+                          }),
+                          onHorizontalDragEnd: (_) {
+                            setState(() => _dragging = false);
+                            HapticFeedback.selectionClick();
+                            _restartPreview();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            decoration: BoxDecoration(
+                              color: Colors.white
+                                  .withOpacity(_dragging ? 0.16 : 0.10),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: Colors.white, width: 2),
+                            ),
+                            // edge handles (visual)
+                            child: Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                _handle(),
+                                _handle(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // left edge — resize (shrinks/grows from the left)
+                      Positioned(
+                        left: winX - handleW / 2,
+                        top: 0,
+                        bottom: 0,
+                        width: handleW,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragUpdate: (d) => setState(() {
+                            final endSec = _start + _len;
+                            final ns = (_start + d.delta.dx / w * _total)
+                                .clamp(0.0, endSec - 5);
+                            _len = (endSec - ns).round().clamp(5, 60);
+                            _start = (endSec - _len).toDouble().clamp(0, _maxStart);
+                          }),
+                          onHorizontalDragEnd: (_) => _restartPreview(),
+                        ),
+                      ),
+                      // right edge — resize
+                      Positioned(
+                        left: winX + winW - handleW / 2,
+                        top: 0,
+                        bottom: 0,
+                        width: handleW,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragUpdate: (d) => setState(() {
+                            final ne = (_start + _len + d.delta.dx / w * _total)
+                                .clamp(_start + 5, _total.toDouble());
+                            _len = (ne - _start).round().clamp(5, 60);
+                          }),
+                          onHorizontalDragEnd: (_) => _restartPreview(),
+                        ),
+                      ),
+                    ]),
+                  );
+                }),
+                const SizedBox(height: 10),
+                // range readout: «0:36 – 0:51»
                 Row(children: [
                   Text(_fmt(0),
                       style:
-                          const TextStyle(color: Colors.white54, fontSize: 11)),
+                          const TextStyle(color: Colors.white38, fontSize: 11)),
                   const Spacer(),
-                  Text('${_fmt(_start)} – ${_fmt(_start + _len)}',
+                  Text(
+                      '${_fmt(_start.round())} – ${_fmt(_start.round() + _len)}',
                       style: TextStyle(
                           color: c.accent2,
-                          fontSize: 12.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w800)),
                   const Spacer(),
                   Text(_fmt(_total),
                       style:
-                          const TextStyle(color: Colors.white54, fontSize: 11)),
+                          const TextStyle(color: Colors.white38, fontSize: 11)),
                 ]),
                 const SizedBox(height: 14),
                 Wrap(
@@ -124,10 +246,13 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
                       ChoiceChip(
                         label: Text('$s ${context.t('secShort')}'),
                         selected: _len == s,
-                        onSelected: (_) => setState(() {
-                          _len = s;
-                          if (_start > _maxStart) _start = _maxStart;
-                        }),
+                        onSelected: (_) {
+                          setState(() {
+                            _len = s;
+                            if (_start > _maxStart) _start = _maxStart;
+                          });
+                          _restartPreview();
+                        },
                         labelStyle: TextStyle(
                             color: _len == s ? Colors.black : Colors.white,
                             fontWeight: FontWeight.w700,
@@ -145,7 +270,8 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
                     style: FilledButton.styleFrom(
                         backgroundColor: c.accent,
                         padding: const EdgeInsets.symmetric(vertical: 13)),
-                    onPressed: () => Navigator.pop(context, (_start, _len)),
+                    onPressed: () =>
+                        Navigator.pop(context, (_start.round(), _len)),
                     child: Text(context.t('done'),
                         style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 15)),
@@ -158,6 +284,16 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
       ),
     );
   }
+
+  Widget _handle() => Container(
+        width: 4,
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: 5),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      );
 }
 
 class _WavePainter extends CustomPainter {
@@ -178,7 +314,6 @@ class _WavePainter extends CustomPainter {
     if (n <= 0) return;
     var s = seed.abs() % 100000;
     for (var i = 0; i < n; i++) {
-      // Deterministic pseudo-random: organic-looking but stable across repaints.
       s = (s * 1103515245 + 12345) & 0x7fffffff;
       final h = (0.18 + (s % 1000) / 1000 * 0.82) * size.height;
       final x = i * (barW + gap);

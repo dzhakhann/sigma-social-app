@@ -649,6 +649,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         totalSec: _audioTotalSec,
         startSec: _audioStartSec,
         lenSec: _audioSeconds,
+        audioUrl: _audioUrl,
       ),
     );
     if (res != null && mounted) {
