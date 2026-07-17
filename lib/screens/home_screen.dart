@@ -12,6 +12,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/story_publisher.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import 'comments_screen.dart';
@@ -78,6 +79,9 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
     _loadStories();
+    StoryPublisher.instance.onPublished = () {
+      if (mounted) _loadStories();
+    };
     _loadAi();
     _loadHoro();
     _updateStreak();
@@ -313,11 +317,16 @@ class _HomeScreenState extends State<HomeScreen> {
             builder: (_) => StoryEditorScreen(videoPath: trimmed)),
       );
       if (edited == null || !mounted) return;
-      final data = await ApiService.uploadVideoStory(
-          widget.user['id'].toString(),
-          await File(edited.videoPath ?? trimmed).readAsBytes(),
-          links: edited.links);
-      if (data['success'] == true) _loadStories();
+      // Пункт 5: editor closes instantly; upload runs in the background with
+      // a progress notification + the ring on the "Me" avatar.
+      StoryPublisher.instance.publishVideo(
+        widget.user['id'].toString(),
+        edited.videoPath ?? trimmed,
+        links: edited.links,
+        uploadingText: context.t('storyUploading'),
+        doneText: context.t('storyPublished'),
+        failText: context.t('storyUploadFailed'),
+      );
       return;
     }
 
@@ -333,17 +342,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (edited == null || !mounted) return;
     if (edited.isVideo) {
-      final data = await ApiService.uploadVideoStory(
-          widget.user['id'].toString(),
-          await File(edited.videoPath!).readAsBytes(),
-          links: edited.links);
-      if (data['success'] == true) _loadStories();
+      StoryPublisher.instance.publishVideo(
+        widget.user['id'].toString(),
+        edited.videoPath!,
+        links: edited.links,
+        uploadingText: context.t('storyUploading'),
+        doneText: context.t('storyPublished'),
+        failText: context.t('storyUploadFailed'),
+      );
       return;
     }
-    final data = await ApiService.uploadStory(
-        widget.user['id'], base64Encode(edited.photo!),
-        links: edited.links);
-    if (data['success'] == true) _loadStories();
+    StoryPublisher.instance.publishPhoto(
+      widget.user['id'].toString(),
+      edited.photo!,
+      links: edited.links,
+      uploadingText: context.t('storyUploading'),
+      doneText: context.t('storyPublished'),
+      failText: context.t('storyUploadFailed'),
+    );
   }
 
 
@@ -562,6 +578,46 @@ class _HomeScreenState extends State<HomeScreen> {
             slivers: [
               SliverToBoxAdapter(child: _header(c)),
               SliverToBoxAdapter(child: _storiesRow(c)),
+              // Failed-upload banner with Retry (Пункт 5).
+              SliverToBoxAdapter(
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: StoryPublisher.instance.failed,
+                  builder: (_, f, __) => !f
+                      ? const SizedBox.shrink()
+                      : Container(
+                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF3B30).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: const Color(0xFFFF3B30).withOpacity(0.4)),
+                          ),
+                          child: Row(children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: Color(0xFFFF3B30), size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(context.t('storyUploadFailed'),
+                                  style: TextStyle(
+                                      color: c.ink, fontSize: 13)),
+                            ),
+                            TextButton(
+                              onPressed: () => StoryPublisher.instance.retry(
+                                uploadingText: context.t('storyUploading'),
+                                doneText: context.t('storyPublished'),
+                                failText: context.t('storyUploadFailed'),
+                              ),
+                              child: Text(context.t('retryBtn'),
+                                  style: TextStyle(
+                                      color: c.accent,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ]),
+                        ),
+                ),
+              ),
               SliverToBoxAdapter(child: _greeting(c)),
               SliverToBoxAdapter(child: _quoteCard(c)),
               SliverToBoxAdapter(child: _aiCard(c)),
@@ -1599,7 +1655,30 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Telegram/Instagram logic: no story → tap opens the camera;
             // has story → tap VIEWS it, the "+" badge adds a new one.
-            _MyStoryBtn(
+            // While publishing, a progress ring runs around the avatar (Пункт 5).
+            ValueListenableBuilder<double?>(
+              valueListenable: StoryPublisher.instance.progress,
+              builder: (_, p, child) => Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  child!,
+                  if (p != null)
+                    Positioned(
+                      top: 0,
+                      child: SizedBox(
+                        width: 64,
+                        height: 64,
+                        child: CircularProgressIndicator(
+                          value: p > 0.02 ? p : null,
+                          strokeWidth: 2.6,
+                          color: c.accent,
+                          backgroundColor: c.accent.withOpacity(0.2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              child: _MyStoryBtn(
               user: widget.user,
               hasStory: myStories.isNotEmpty,
               onAdd: _addStory,
@@ -1622,6 +1701,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }
               },
+            ),
             ),
             ...grouped.values.map((uStories) => _StoryAvatar(
                   stories: uStories,

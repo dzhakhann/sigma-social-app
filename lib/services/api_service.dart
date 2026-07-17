@@ -10,6 +10,10 @@ class ApiService {
   // be trusted to send its own user id on writes.
   static String? _token;
   static void setToken(String? token) => _token = token;
+
+  /// Read-only token access for services that talk to the API directly
+  /// (the background story publisher uses dio for upload progress).
+  static String? get token => _token;
   static void clearToken() => _token = null;
   static bool get isAuthed => _token != null;
 
@@ -187,6 +191,11 @@ class ApiService {
     return _post('/stories/upload',
         {'user_id': userId, 'media_url': packStoryLinks(url, links)});
   }
+
+  /// Creates a story record from an already-uploaded media URL (used by the
+  /// background publisher, which uploads the file itself for progress).
+  static Future<Map> createStoryFromUrl(String userId, String mediaUrl) =>
+      _post('/stories/upload', {'user_id': userId, 'media_url': mediaUrl});
 
   /// Publish a VIDEO story. The clip is uploaded as a file first (base64 JSON
   /// can't carry 60s of video), then only its URL is stored — reusing the same
