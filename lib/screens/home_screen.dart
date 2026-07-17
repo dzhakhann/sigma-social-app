@@ -1,9 +1,13 @@
 import 'dart:convert';
+import 'dart:io' show File;
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart' show RequestType;
+import 'sigma_gallery_screen.dart';
+import 'story_video_editor_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -80,7 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadLastListened();
     _loadAura();
     _loadWeather();
-    _loadFriendActivity();
+    // _loadFriendActivity() intentionally not called — the friends-activity card
+    // was removed from home (kept for a future profile section). No point
+    // spending a request on data nothing renders.
     _loadWeekPlan();
     _loadHomeAnalytics();
   }
@@ -242,17 +248,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _addStory({ImageSource? source}) async {
     Uint8List? bytes;
-    if (kIsWeb || source == ImageSource.gallery) {
-      // Web (no in-app camera) or explicit gallery request.
+    String? videoPath;
+
+    if (kIsWeb) {
+      // Web has no in-app camera or MediaStore — fall back to the file picker.
       final picker = ImagePicker();
       final img = await picker.pickImage(
           source: ImageSource.gallery, maxWidth: 1080, imageQuality: 85);
       if (img == null) return;
       bytes = await img.readAsBytes();
+    } else if (source == ImageSource.gallery) {
+      // Sigmacta's own gallery — photos AND videos, like Telegram Stories.
+      final picked = await Navigator.push<dynamic>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => const SigmaGalleryScreen(type: RequestType.common)),
+      );
+      if (picked == null) return;
+      if (picked is Uint8List) {
+        // Photo from the gallery's camera shortcut.
+        bytes = picked;
+      } else if (picked is List<File> && picked.isNotEmpty) {
+        final f = picked.first;
+        if (ApiService.isVideoStory(f.path)) {
+          videoPath = f.path;
+        } else {
+          bytes = await f.readAsBytes();
+        }
+      } else {
+        return;
+      }
     } else {
-      // Telegram-style: tap "Me" → straight into the in-app camera
-      // (shutter, flash, flip, gallery shortcut inside).
-      bytes = await Navigator.push<Uint8List>(
+      // Telegram-style: tap "Me" → straight into the in-app camera.
+      // Tap = photo, hold = video (max 60s).
+      final cap = await Navigator.push<StoryCapture>(
         context,
         PageRouteBuilder(
           fullscreenDialog: true,
@@ -262,19 +291,58 @@ class _HomeScreenState extends State<HomeScreen> {
               FadeTransition(opacity: a, child: child),
         ),
       );
-      if (bytes == null) return;
+      if (cap == null) return;
+      bytes = cap.photo;
+      videoPath = cap.videoPath;
     }
     if (!mounted) return;
-    // Instagram-style editor: preview + text overlay before publishing.
-    final edited = await Navigator.push<Uint8List>(
+
+    // ── Video story: trim → editor (overlays, music) → publish ─────────────
+    if (videoPath != null) {
+      final trimmed = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => StoryVideoEditorScreen(path: videoPath!)),
+      );
+      if (trimmed == null || !mounted) return;
+      final edited = await Navigator.push<StoryCapture>(
+        context,
+        MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => StoryEditorScreen(videoPath: trimmed)),
+      );
+      if (edited == null || !mounted) return;
+      final data = await ApiService.uploadVideoStory(
+          widget.user['id'].toString(),
+          await File(edited.videoPath ?? trimmed).readAsBytes(),
+          links: edited.links);
+      if (data['success'] == true) _loadStories();
+      return;
+    }
+
+    // ── Photo story ────────────────────────────────────────────────────────
+    if (bytes == null) return;
+    // Editor: overlays, drawing, GIF, badges, music. It returns plain photo
+    // bytes — or, if music was added, a rendered MP4 to publish as a video.
+    final edited = await Navigator.push<StoryCapture>(
       context,
       MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => StoryEditorScreen(imageBytes: bytes!)),
     );
-    if (edited == null) return;
-    final data =
-        await ApiService.uploadStory(widget.user['id'], base64Encode(edited));
+    if (edited == null || !mounted) return;
+    if (edited.isVideo) {
+      final data = await ApiService.uploadVideoStory(
+          widget.user['id'].toString(),
+          await File(edited.videoPath!).readAsBytes(),
+          links: edited.links);
+      if (data['success'] == true) _loadStories();
+      return;
+    }
+    final data = await ApiService.uploadStory(
+        widget.user['id'], base64Encode(edited.photo!),
+        links: edited.links);
     if (data['success'] == true) _loadStories();
   }
 
@@ -293,10 +361,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 : context.t('evening');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
-      child: Text(
-        name.isEmpty ? part : '$part, $name',
-        style: TextStyle(
-            color: c.ink, fontSize: 22, fontWeight: FontWeight.w800),
+      // Soft fade + rise on appear.
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeOutCubic,
+        builder: (_, t, child) => Opacity(
+          opacity: t,
+          child: Transform.translate(offset: Offset(0, (1 - t) * 12), child: child),
+        ),
+        child: Text(
+          name.isEmpty ? part : '$part, $name',
+          style: TextStyle(
+              color: c.ink, fontSize: 22, fontWeight: FontWeight.w800),
+        ),
       ),
     );
   }
@@ -503,16 +581,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     childCount: _goals.length,
                   ),
                 ),
-              SliverToBoxAdapter(child: _weatherCard(c)),
+              // Weather now lives as a chip in the header (tap = full forecast).
+              // "Friends activity" and "Weekly summary" removed — they crowded
+              // the screen; they belong in the profile later.
               SliverToBoxAdapter(child: _horoCard(c)),
               SliverToBoxAdapter(child: _auraCard(c)),
               SliverToBoxAdapter(child: _streakCard(c)),
-              SliverToBoxAdapter(child: _friendsActivityCard(c)),
               SliverToBoxAdapter(child: _continueListeningCard(c)),
               SliverToBoxAdapter(child: _weekForYouCard(c)),
               SliverToBoxAdapter(child: _achievementCard(c)),
               SliverToBoxAdapter(child: _challengeCard(c)),
-              SliverToBoxAdapter(child: _weekStatsCard(c)),
               // «Газета» — the very last section on the home screen.
               SliverToBoxAdapter(child: _newsCard(c)),
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
@@ -1294,26 +1372,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Tiny weather chip for the header: "☀️ 41° / Tashkent".
+  Widget _miniWeather(BrutalColors c) {
+    final w = _weather;
+    if (w == null) return const SizedBox(height: 32);
+    final cur = WeatherService.describe(w['code'] as int);
+    final city = (w['city'] ?? '').toString();
+    return GestureDetector(
+      onTap: _openWeatherSheet,
+      behavior: HitTestBehavior.opaque,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(cur.emoji, style: const TextStyle(fontSize: 20)),
+        const SizedBox(width: 7),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${w['temp']}°',
+                style: TextStyle(
+                    color: c.ink,
+                    fontSize: 16,
+                    height: 1.1,
+                    fontWeight: FontWeight.w800)),
+            Text(city.isNotEmpty ? city : context.t(cur.key),
+                style: TextStyle(
+                    color: c.inkSoft, fontSize: 10.5, height: 1.2)),
+          ],
+        ),
+      ]),
+    );
+  }
+
+  // Full forecast on demand — the detail people want a couple of seconds a day.
+  void _openWeatherSheet() {
+    if (_weather == null) return;
+    final c = context.k;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: c.inkSoft.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            _weatherCard(c),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _header(BrutalColors c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       child: Row(
         children: [
-          // Logo
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              gradient: c.buttonGradient,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            alignment: Alignment.center,
-            child: const Text('Σ',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800)),
-          ),
+          // Compact weather, inline in the header (replaces the Σ logo and the
+          // big forecast card). Tap opens the full week forecast in a sheet, so
+          // nothing is lost — it just doesn't eat half the screen anymore.
+          _miniWeather(c),
           const Spacer(),
           GestureDetector(
             onTap: () => Navigator.push(

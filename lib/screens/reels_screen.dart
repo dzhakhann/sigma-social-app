@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart' show RequestType;
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
+import 'sigma_gallery_screen.dart';
 
 class ReelsScreen extends StatefulWidget {
   final Map user;
@@ -32,11 +34,17 @@ class _ReelsScreenState extends State<ReelsScreen> {
   }
 
   Future<void> _upload() async {
-    final picker = ImagePicker();
-    final file = await picker.pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(seconds: 60));
-    if (file == null) return;
+    // Sigmacta's own gallery (videos only) instead of the system picker.
+    final picked = await Navigator.push<dynamic>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SigmaGalleryScreen(
+            type: RequestType.video, allowCamera: false),
+      ),
+    );
+    if (picked is! List<File> || picked.isEmpty) return;
+    final file = picked.first;
+    if (!mounted) return;
 
     final c = context.k;
     final captionCtrl = TextEditingController();

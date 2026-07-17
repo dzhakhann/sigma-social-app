@@ -172,9 +172,70 @@ class ApiService {
     return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
-  static Future<Map> uploadStory(String userId, String base64Image) =>
-      _post('/stories/upload',
+  static Future<Map> uploadStory(String userId, String base64Image,
+      {List<Map> links = const []}) async {
+    if (links.isEmpty) {
+      return _post('/stories/upload',
           {'user_id': userId, 'image_base64': base64Image});
+    }
+    // Link stickers have to be attached to the media URL, and that URL only
+    // exists after the file is stored — so upload first, then create the story
+    // once. (Posting twice would leave two stories in the feed.)
+    final url = await uploadMedia(base64Decode(base64Image),
+        folder: 'story', ext: 'jpg', contentType: 'image/jpeg', userId: userId);
+    if (url == null) return {'success': false, 'error': 'Upload failed'};
+    return _post('/stories/upload',
+        {'user_id': userId, 'media_url': packStoryLinks(url, links)});
+  }
+
+  /// Publish a VIDEO story. The clip is uploaded as a file first (base64 JSON
+  /// can't carry 60s of video), then only its URL is stored — reusing the same
+  /// `image_url` field, so nothing new is added to the database.
+  static Future<Map> uploadVideoStory(String userId, List<int> bytes,
+      {List<Map> links = const []}) async {
+    final url = await uploadMedia(bytes,
+        folder: 'story', ext: 'mp4', contentType: 'video/mp4', userId: userId);
+    if (url == null) return {'success': false, 'error': 'Upload failed'};
+    return _post('/stories/upload',
+        {'user_id': userId, 'media_url': packStoryLinks(url, links)});
+  }
+
+  /// A story is a video when its media URL points at a clip.
+  static bool isVideoStory(String url) {
+    final u = url.toLowerCase().split('#').first.split('?').first;
+    return u.endsWith('.mp4') || u.endsWith('.mov') || u.endsWith('.webm');
+  }
+
+  // ─── Story link stickers ───────────────────────────────────────────────────
+  // Tappable links can't be baked into the picture — they'd just be pixels. We
+  // keep them as data in the media URL's #fragment: fragments are client-side
+  // only (never sent to the server), so the image/video still loads normally
+  // and the database needs no new column.
+
+  /// Packs link stickers onto a media URL. [links] items:
+  /// {label, url, x, y, scale, style}
+  static String packStoryLinks(String mediaUrl, List<Map> links) {
+    if (links.isEmpty) return mediaUrl;
+    final base = mediaUrl.split('#').first;
+    final payload = base64Url.encode(utf8.encode(jsonEncode(links)));
+    return '$base#lnk=$payload';
+  }
+
+  /// Reads link stickers back out of a story's media URL.
+  static List<Map> unpackStoryLinks(String mediaUrl) {
+    final i = mediaUrl.indexOf('#lnk=');
+    if (i < 0) return const [];
+    try {
+      final raw = mediaUrl.substring(i + 5);
+      final json = utf8.decode(base64Url.decode(raw));
+      return (jsonDecode(json) as List).map((e) => Map.from(e)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// The URL to actually fetch — without our fragment.
+  static String storyMediaUrl(String url) => url.split('#').first;
 
   static Future<Map> deleteStory(String storyId) =>
       _delete('/stories/$storyId');

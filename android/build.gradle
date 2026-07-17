@@ -13,12 +13,26 @@ subprojects {
     project.evaluationDependsOn(':app')
 }
 
+
 // Fix: remove -Werror and silence obsolete source/target warnings in ALL subprojects
 gradle.projectsEvaluated {
     allprojects {
         tasks.withType(JavaCompile) { t ->
             t.options.compilerArgs.remove('-Werror')
             t.options.compilerArgs << '-Xlint:-options'
+        }
+    }
+    // photo_manager compiles its Kotlin for JVM 21 while its Java targets 17,
+    // failing Gradle's JVM-target consistency check. Pin just this plugin's
+    // Kotlin to 17. Deliberately scoped: a project-wide pin breaks plugins that
+    // legitimately build at Java 1.8 (audio_session, mobile_scanner).
+    // hasProperty() avoids needing the Kotlin plugin on the root classpath.
+    def pm = findProject(':photo_manager')
+    if (pm != null) {
+        pm.tasks.configureEach { t ->
+            if (t.hasProperty('kotlinOptions')) {
+                t.kotlinOptions.jvmTarget = '17'
+            }
         }
     }
 }

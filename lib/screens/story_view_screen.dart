@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -60,17 +62,61 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     ApiService.viewStoryStat(id); // fire-and-forget
   }
 
+  // Video stories: the clip drives the progress bar and its own length, instead
+  // of the fixed 5s photo timer.
+  VideoPlayerController? _vid;
+
+  Future<void> _disposeVideo() async {
+    final v = _vid;
+    _vid = null;
+    await v?.dispose();
+  }
+
+  Future<void> _initVideo(String url) async {
+    await _disposeVideo();
+    final v = VideoPlayerController.networkUrl(Uri.parse(url));
+    _vid = v;
+    try {
+      await v.initialize();
+      await v.setLooping(false);
+      if (!_isPaused) await v.play();
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
   void _startTimer() {
     _timer?.cancel();
     if (!mounted) return;
     _recordView();
     setState(() => _progress = 0);
+    final story = _currentStories[_currentIndex];
+    final url = ApiService.storyMediaUrl((story['image_url'] ?? '').toString());
+    final isVid = ApiService.isVideoStory(url);
+    if (isVid) {
+      _initVideo(url);
+    } else {
+      _disposeVideo();
+    }
     _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (!mounted || _isPaused) return;
-      setState(() => _progress += 0.01);
-      if (_progress >= 1.0) {
-        timer.cancel();
-        _nextStory();
+      if (isVid) {
+        final v = _vid;
+        // Still buffering — hold the bar rather than racing ahead.
+        if (v == null || !v.value.isInitialized) return;
+        final total = v.value.duration.inMilliseconds;
+        final pos = v.value.position.inMilliseconds;
+        setState(() =>
+            _progress = total == 0 ? 0 : (pos / total).clamp(0.0, 1.0));
+        if (_progress >= 0.999) {
+          timer.cancel();
+          _nextStory();
+        }
+      } else {
+        setState(() => _progress += 0.01);
+        if (_progress >= 1.0) {
+          timer.cancel();
+          _nextStory();
+        }
       }
     });
   }
@@ -384,25 +430,33 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onLongPressStart: (_) {
-          _timer?.cancel();
+          // Hold pauses the story — video included.
           setState(() => _isPaused = true);
+          _vid?.pause();
         },
         onLongPressEnd: (_) {
           setState(() => _isPaused = false);
-          _startTimer();
+          if (_vid != null) {
+            _vid?.play();
+          } else {
+            _startTimer();
+          }
         },
         child: Stack(children: [
           Positioned.fill(
-            child: CachedNetworkImage(
-              imageUrl: story['image_url'],
-              fit: BoxFit.cover,
-              key: ValueKey(story['id']),
-              placeholder: (_, __) => Center(
-                  child: CircularProgressIndicator(color: c.accent)),
-              errorWidget: (_, __, ___) => const Center(
-                  child: Icon(Icons.broken_image,
-                      color: Colors.white, size: 60)),
-            ),
+            child: ApiService.isVideoStory((story['image_url'] ?? '').toString())
+                ? _videoLayer(c)
+                : CachedNetworkImage(
+                    imageUrl: ApiService.storyMediaUrl(
+                        (story['image_url'] ?? '').toString()),
+                    fit: BoxFit.cover,
+                    key: ValueKey(story['id']),
+                    placeholder: (_, __) => Center(
+                        child: CircularProgressIndicator(color: c.accent)),
+                    errorWidget: (_, __, ___) => const Center(
+                        child: Icon(Icons.broken_image,
+                            color: Colors.white, size: 60)),
+                  ),
           ),
           Positioned.fill(
             child: Row(children: [
@@ -418,6 +472,10 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                       child: Container(color: Colors.transparent))),
             ]),
           ),
+          // Link stickers sit ABOVE the prev/next layer and swallow the tap
+          // (HitTestBehavior.opaque), so tapping one opens the link instead of
+          // skipping the story. Taps anywhere else still page through.
+          ..._linkButtons(story),
           Positioned(
             top: 0, left: 0, right: 0, height: 120,
             child: Container(
@@ -598,7 +656,129 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _vid?.dispose();
     _replyCtrl.dispose();
     super.dispose();
+  }
+
+  /// Tappable link stickers, positioned exactly where they were placed in the
+  /// editor (coords are relative, so they land right on any screen size).
+  List<Widget> _linkButtons(Map story) {
+    final links =
+        ApiService.unpackStoryLinks((story['image_url'] ?? '').toString());
+    if (links.isEmpty) return const [];
+    final size = MediaQuery.of(context).size;
+    return [
+      for (final l in links)
+        Positioned(
+          left: ((l['x'] as num?)?.toDouble() ?? 0.5) * size.width - 110,
+          top: ((l['y'] as num?)?.toDouble() ?? 0.35) * size.height - 24,
+          child: SizedBox(
+            width: 220,
+            child: Center(
+              child: _LinkSticker(
+                label: (l['label'] ?? '').toString(),
+                url: (l['url'] ?? '').toString(),
+                scale: (l['scale'] as num?)?.toDouble() ?? 1.0,
+                styleIdx: (l['style'] as num?)?.toInt() ?? 0,
+                onOpen: _openLink,
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// t.me/... opens Telegram when installed, otherwise the browser.
+  Future<void> _openLink(String raw) async {
+    var url = raw.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    // Pause while the user is away.
+    _vid?.pause();
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
+      } catch (_) {}
+    }
+  }
+
+  /// Fills the screen like a photo story (cover), letterboxing nothing.
+  Widget _videoLayer(BrutalColors c) {
+    final v = _vid;
+    if (v == null || !v.value.isInitialized) {
+      return Center(child: CircularProgressIndicator(color: c.accent));
+    }
+    return FittedBox(
+      fit: BoxFit.cover,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: v.value.size.width,
+        height: v.value.size.height,
+        child: VideoPlayer(v),
+      ),
+    );
+  }
+}
+
+/// The tappable link button drawn over a story. `HitTestBehavior.opaque` is the
+/// whole point: without it the tap falls through to the prev/next layer and the
+/// story just skips instead of opening the link.
+class _LinkSticker extends StatelessWidget {
+  final String label;
+  final String url;
+  final double scale;
+  final int styleIdx;
+  final Future<void> Function(String) onOpen;
+
+  const _LinkSticker({
+    required this.label,
+    required this.url,
+    required this.scale,
+    required this.styleIdx,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final white = styleIdx == 0;
+    final fg = white ? const Color(0xFF0A0A0A) : Colors.white;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onOpen(url);
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(
+            horizontal: 14 * scale, vertical: 11 * scale),
+        decoration: BoxDecoration(
+          color: white ? Colors.white : const Color(0xFF101012),
+          borderRadius: BorderRadius.circular(16 * scale),
+          boxShadow: [BoxShadow(blurRadius: 14 * scale, color: Colors.black38)],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.link_rounded, size: 19 * scale, color: fg),
+          SizedBox(width: 9 * scale),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: white
+                    ? const Color(0xFF0A66FF)
+                    : Colors.lightBlueAccent,
+                fontSize: 15 * scale,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
   }
 }

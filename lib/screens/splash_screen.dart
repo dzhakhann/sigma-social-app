@@ -27,7 +27,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 550),
     );
 
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
@@ -39,8 +39,9 @@ class _SplashScreenState extends State<SplashScreen>
     _ctrl.forward();
     _checkSession();
 
-    // Navigate after the animation finishes + a small pause.
-    Future.delayed(const Duration(milliseconds: 1800), _navigate);
+    // Navigate as soon as the session is known; the short delay just lets the
+    // logo flash briefly instead of holding on screen.
+    Future.delayed(const Duration(milliseconds: 650), _navigate);
   }
 
   Future<void> _checkSession() async {

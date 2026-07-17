@@ -1,6 +1,9 @@
+import 'dart:io' show File;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart' show RequestType;
+import 'sigma_gallery_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
@@ -286,21 +289,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickAvatarFrom(String source) async {
-    final picker = ImagePicker();
-    // Pick at high resolution — the crop editor decides the visible square.
-    final file = await picker.pickImage(
-        source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
-        maxWidth: 2000,
-        imageQuality: 90);
-    if (file == null) return;
-    final raw = await file.readAsBytes();
-    if (!mounted) return;
+    Uint8List? raw;
+    if (source == 'camera') {
+      final picker = ImagePicker();
+      // Pick at high resolution — the crop editor decides the visible square.
+      final file = await picker.pickImage(
+          source: ImageSource.camera, maxWidth: 2000, imageQuality: 90);
+      if (file != null) raw = await file.readAsBytes();
+    } else {
+      // Sigmacta's own gallery instead of the system picker.
+      final picked = await Navigator.push<dynamic>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => const SigmaGalleryScreen(type: RequestType.image)),
+      );
+      if (picked is Uint8List) {
+        raw = picked;
+      } else if (picked is List<File> && picked.isNotEmpty) {
+        raw = await picked.first.readAsBytes();
+      }
+    }
+    if (raw == null || !mounted) return;
+    final Uint8List cropSrc = raw; // stable non-null capture for the builder
     // Telegram-style crop: pan + pinch under a circular window → square crop.
     final bytes = await Navigator.push<Uint8List>(
       context,
       MaterialPageRoute(
           fullscreenDialog: true,
-          builder: (_) => AvatarCropScreen(imageBytes: raw)),
+          builder: (_) => AvatarCropScreen(imageBytes: cropSrc)),
     );
     if (bytes == null) return;
     setState(() => isUploadingAvatar = true);

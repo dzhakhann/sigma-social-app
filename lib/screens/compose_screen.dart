@@ -1,7 +1,11 @@
 import 'dart:convert';
+import 'dart:io' show File;
+import 'dart:typed_data' show Uint8List;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart' show RequestType;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'sigma_gallery_screen.dart';
 import '../services/api_service.dart';
 import '../services/events.dart';
 import '../theme/brutal_theme.dart';
@@ -27,13 +31,21 @@ class _ComposeScreenState extends State<ComposeScreen> {
   bool get _canPost =>
       _textCtrl.text.trim().isNotEmpty || _imageB64 != null || _gifUrl != null;
 
+  // Sigmacta's own gallery (MediaStore) instead of the system photo picker.
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 1080, imageQuality: 85);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    setState(() { _imageB64 = base64Encode(bytes); _gifUrl = null; });
+    final picked = await Navigator.push<dynamic>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const SigmaGalleryScreen(type: RequestType.image)),
+    );
+    Uint8List? bytes;
+    if (picked is Uint8List) {
+      bytes = picked; // came from the gallery's camera shortcut
+    } else if (picked is List<File> && picked.isNotEmpty) {
+      bytes = await picked.first.readAsBytes();
+    }
+    if (bytes == null || !mounted) return;
+    setState(() { _imageB64 = base64Encode(bytes!); _gifUrl = null; });
   }
 
   Future<void> _takePhoto() async {

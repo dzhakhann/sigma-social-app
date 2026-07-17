@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart' show RequestType;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:record/record.dart';
+import 'sigma_gallery_screen.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
@@ -231,14 +233,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       ),
     );
     if (src == null) return;
-    final file = await picker.pickImage(
-        source: src, maxWidth: 1080, imageQuality: 80);
-    if (file == null) return;
-    if (!mounted) return;
+    Uint8List? bytes;
+    if (src == ImageSource.gallery) {
+      // Sigmacta's own gallery instead of the system picker.
+      final picked = await Navigator.push<dynamic>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => const SigmaGalleryScreen(type: RequestType.image)),
+      );
+      if (picked is Uint8List) {
+        bytes = picked;
+      } else if (picked is List<File> && picked.isNotEmpty) {
+        bytes = await picked.first.readAsBytes();
+      }
+    } else {
+      final file = await picker.pickImage(
+          source: src, maxWidth: 1080, imageQuality: 80);
+      if (file != null) bytes = await File(file.path).readAsBytes();
+    }
+    if (bytes == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
         SnackBar(content: Text(context.t('sendingPhoto'))));
-    final bytes = await File(file.path).readAsBytes();
     final url = await ApiService.uploadMedia(
       bytes,
       folder: 'msg',

@@ -5,9 +5,11 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   audioplayers_windows
+  ffmpeg_kit_flutter_new
   file_selector_windows
   permission_handler_windows
   record_windows
+  screen_brightness_windows
   share_plus
   url_launcher_windows
 )
