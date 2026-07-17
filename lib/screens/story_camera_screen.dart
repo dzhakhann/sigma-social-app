@@ -33,10 +33,14 @@ class StoryCapture {
   /// baked into the media — the viewer draws them as real buttons.
   final List<Map> links;
 
-  const StoryCapture.photo(Uint8List bytes, {this.links = const []})
+  /// The story's ONE music track (Rhythm link + fragment + sticker placement),
+  /// or null. Never audio bytes — the viewer streams from the catalog.
+  final Map? music;
+
+  const StoryCapture.photo(Uint8List bytes, {this.links = const [], this.music})
       : photo = bytes,
         videoPath = null;
-  const StoryCapture.video(String path, {this.links = const []})
+  const StoryCapture.video(String path, {this.links = const [], this.music})
       : videoPath = path,
         photo = null;
 

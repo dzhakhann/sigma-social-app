@@ -221,26 +221,56 @@ class ApiService {
   // only (never sent to the server), so the image/video still loads normally
   // and the database needs no new column.
 
-  /// Packs link stickers onto a media URL. [links] items:
-  /// {label, url, x, y, scale, style}
-  static String packStoryLinks(String mediaUrl, List<Map> links) {
-    if (links.isEmpty) return mediaUrl;
+  /// Packs story extras onto the media URL: link stickers and/or ONE music
+  /// track (only its Rhythm stream link + fragment — never an audio copy).
+  static String packStoryExtras(String mediaUrl,
+      {List<Map> links = const [], Map? music}) {
     final base = mediaUrl.split('#').first;
-    final payload = base64Url.encode(utf8.encode(jsonEncode(links)));
-    return '$base#lnk=$payload';
+    if (links.isEmpty && music == null) return base;
+    final payload = base64Url.encode(utf8.encode(jsonEncode({
+      if (links.isNotEmpty) 'l': links,
+      if (music != null) 'm': music,
+    })));
+    return '$base#s2=$payload';
+  }
+
+  /// Back-compat wrapper (older call sites pass links only).
+  static String packStoryLinks(String mediaUrl, List<Map> links) =>
+      packStoryExtras(mediaUrl, links: links);
+
+  static Map<String, dynamic> _storyExtras(String mediaUrl) {
+    final i2 = mediaUrl.indexOf('#s2=');
+    if (i2 >= 0) {
+      try {
+        final json = utf8.decode(base64Url.decode(mediaUrl.substring(i2 + 4)));
+        return Map<String, dynamic>.from(jsonDecode(json));
+      } catch (_) {
+        return const {};
+      }
+    }
+    // Legacy fragment: links-only list.
+    final i = mediaUrl.indexOf('#lnk=');
+    if (i >= 0) {
+      try {
+        final json = utf8.decode(base64Url.decode(mediaUrl.substring(i + 5)));
+        return {'l': jsonDecode(json)};
+      } catch (_) {
+        return const {};
+      }
+    }
+    return const {};
   }
 
   /// Reads link stickers back out of a story's media URL.
-  static List<Map> unpackStoryLinks(String mediaUrl) {
-    final i = mediaUrl.indexOf('#lnk=');
-    if (i < 0) return const [];
-    try {
-      final raw = mediaUrl.substring(i + 5);
-      final json = utf8.decode(base64Url.decode(raw));
-      return (jsonDecode(json) as List).map((e) => Map.from(e)).toList();
-    } catch (_) {
-      return const [];
-    }
+  static List<Map> unpackStoryLinks(String mediaUrl) =>
+      ((_storyExtras(mediaUrl)['l'] as List?) ?? const [])
+          .map((e) => Map.from(e))
+          .toList();
+
+  /// The story's music: {url, title, artist, art, start, len, x, y, scale}.
+  static Map? unpackStoryMusic(String mediaUrl) {
+    final m = _storyExtras(mediaUrl)['m'];
+    return m == null ? null : Map.from(m);
   }
 
   /// The URL to actually fetch — without our fragment.

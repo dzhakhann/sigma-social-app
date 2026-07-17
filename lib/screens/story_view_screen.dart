@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
+import '../widgets/music_widgets.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 
@@ -66,6 +68,31 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   // of the fixed 5s photo timer.
   VideoPlayerController? _vid;
 
+  // The story's music (Пункт 1.4): streamed straight from the Rhythm catalog —
+  // only the link is stored with the story, never an audio copy.
+  final AudioPlayer _track = AudioPlayer();
+  Map? _music;
+
+  Future<void> _startMusic(Map m) async {
+    try {
+      final start = (m['start'] as num?)?.toInt() ?? 0;
+      final len = ((m['len'] as num?)?.toInt() ?? 15).clamp(3, 60);
+      await _track.setAudioSource(ClippingAudioSource(
+        child: AudioSource.uri(Uri.parse((m['url'] ?? '').toString())),
+        start: Duration(seconds: start),
+        end: Duration(seconds: start + len),
+      ));
+      await _track.setLoopMode(LoopMode.one);
+      if (!_isPaused) await _track.play();
+    } catch (_) {}
+  }
+
+  Future<void> _stopMusic() async {
+    try {
+      await _track.stop();
+    } catch (_) {}
+  }
+
   Future<void> _disposeVideo() async {
     final v = _vid;
     _vid = null;
@@ -79,6 +106,8 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     try {
       await v.initialize();
       await v.setLooping(false);
+      // The chosen track replaces the clip's own sound.
+      if (_music != null) await v.setVolume(0);
       if (!_isPaused) await v.play();
       if (mounted) setState(() {});
     } catch (_) {}
@@ -90,13 +119,25 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     _recordView();
     setState(() => _progress = 0);
     final story = _currentStories[_currentIndex];
-    final url = ApiService.storyMediaUrl((story['image_url'] ?? '').toString());
+    final rawUrl = (story['image_url'] ?? '').toString();
+    final url = ApiService.storyMediaUrl(rawUrl);
     final isVid = ApiService.isVideoStory(url);
+    _music = ApiService.unpackStoryMusic(rawUrl);
+    if (_music != null) {
+      _startMusic(_music!);
+    } else {
+      _stopMusic();
+    }
     if (isVid) {
       _initVideo(url);
     } else {
       _disposeVideo();
     }
+    // A photo with music runs as long as the chosen fragment (5s otherwise).
+    final photoSec = _music == null
+        ? 5.0
+        : (((_music!['len'] as num?)?.toDouble() ?? 15.0)).clamp(3.0, 60.0);
+    final photoTick = 0.05 / photoSec;
     _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (!mounted || _isPaused) return;
       if (isVid) {
@@ -112,7 +153,7 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
           _nextStory();
         }
       } else {
-        setState(() => _progress += 0.01);
+        setState(() => _progress += photoTick);
         if (_progress >= 1.0) {
           timer.cancel();
           _nextStory();
@@ -430,17 +471,17 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
       backgroundColor: Colors.black,
       body: GestureDetector(
         onLongPressStart: (_) {
-          // Hold pauses the story — video included.
+          // Hold pauses the story — video and music included.
           setState(() => _isPaused = true);
           _vid?.pause();
+          _track.pause();
         },
         onLongPressEnd: (_) {
           setState(() => _isPaused = false);
-          if (_vid != null) {
-            _vid?.play();
-          } else {
-            _startTimer();
-          }
+          _vid?.play();
+          if (_music != null) _track.play();
+          if (_vid == null && _music == null) _startTimer();
+          if (_vid == null && _music != null) _startTimer();
         },
         child: Stack(children: [
           Positioned.fill(
@@ -472,6 +513,9 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                       child: Container(color: Colors.transparent))),
             ]),
           ),
+          // Live music sticker (Пункт 1.4): a real widget with its own
+          // animation controller, so the equalizer keeps pulsing after publish.
+          ..._musicSticker(),
           // Link stickers sit ABOVE the prev/next layer and swallow the tap
           // (HitTestBehavior.opaque), so tapping one opens the link instead of
           // skipping the story. Taps anywhere else still page through.
@@ -653,9 +697,38 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     );
   }
 
+  List<Widget> _musicSticker() {
+    final m = _music;
+    if (m == null) return const [];
+    final size = MediaQuery.of(context).size;
+    final x = (m['x'] as num?)?.toDouble() ?? 0.5;
+    final y = (m['y'] as num?)?.toDouble() ?? 0.22;
+    final sc = (m['scale'] as num?)?.toDouble() ?? 1.0;
+    return [
+      Positioned(
+        left: x * size.width - 120,
+        top: y * size.height - 35,
+        child: IgnorePointer(
+          child: SizedBox(
+            width: 240,
+            child: Center(
+              child: MusicStickerCard(
+                title: (m['title'] ?? '').toString(),
+                artist: (m['artist'] ?? '').toString(),
+                artUrl: (m['art'] ?? '').toString(),
+                scale: sc,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _track.dispose();
     _vid?.dispose();
     _replyCtrl.dispose();
     super.dispose();

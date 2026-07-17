@@ -15,6 +15,7 @@ import '../l10n/app_strings.dart';
 import '../services/api_service.dart';
 import '../services/weather_service.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/music_widgets.dart';
 import 'gif_picker_screen.dart';
 import 'story_audio_trim_sheet.dart';
 import 'story_camera_screen.dart';
@@ -140,6 +141,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
 
   /// Full track length, when the source reports one (Rhythm does).
   int _audioTotalSec = 0;
+  String _audioArtist = '';
+  String _audioArtwork = '';
 
   /// True for the split second we snapshot ONLY the overlay layer (video
   /// stories) — the clip itself is hidden so the PNG stays transparent.
@@ -306,8 +309,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         final out = await _renderVideoWithOverlays();
         if (!mounted) return;
         // Fall back to the untouched clip rather than losing the story.
-        Navigator.pop(context,
-            StoryCapture.video(out ?? widget.videoPath!, links: _linkData()));
+        Navigator.pop(
+            context,
+            StoryCapture.video(out ?? widget.videoPath!,
+                links: _linkData(), music: _musicData()));
         return;
       }
 
@@ -318,22 +323,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       if (!mounted || data == null) return;
       final bytes = data.buffer.asUint8List();
 
-      // No music → a plain photo story.
-      if (_audioUrl == null) {
-        Navigator.pop(context, StoryCapture.photo(bytes, links: _linkData()));
-        return;
-      }
-
-      // Music/audio added → burn the picture + track into a short MP4, so it
-      // rides the existing video-story pipeline (a JPEG can't carry sound).
-      final path = await _renderPhotoWithAudio(bytes);
-      if (!mounted) return;
-      if (path != null) {
-        Navigator.pop(context, StoryCapture.video(path, links: _linkData()));
-      } else {
-        // Audio failed — still publish the picture rather than losing the work.
-        Navigator.pop(context, StoryCapture.photo(bytes, links: _linkData()));
-      }
+      // Photo stays a PHOTO. Music is DATA (Rhythm link + fragment) — the
+      // viewer streams it and animates the sticker live. No audio copies.
+      Navigator.pop(context,
+          StoryCapture.photo(bytes, links: _linkData(), music: _musicData()));
       return;
     } catch (_) {}
     if (mounted) {
@@ -342,6 +335,28 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         _hideLinksForCapture = false;
       });
     }
+  }
+
+  /// The story's ONE track, serialised for the viewer: Rhythm link + fragment
+  /// + sticker placement. No audio bytes anywhere.
+  Map? _musicData() {
+    final url = _audioUrl;
+    if (url == null || url.isEmpty) return null;
+    final stickers = _items.where((e) => e.kind == _ItemKind.music).toList();
+    final st = stickers.isEmpty ? null : stickers.first;
+    return {
+      'url': url,
+      'title': _audioTitle ?? '',
+      'artist': _audioArtist,
+      'art': _audioArtwork,
+      'start': _audioStartSec,
+      'len': _audioSeconds,
+      if (st != null) ...{
+        'x': st.pos.dx,
+        'y': st.pos.dy,
+        'scale': st.scale,
+      },
+    };
   }
 
   /// Link stickers serialised for the viewer (position is relative, so it lands
@@ -363,11 +378,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   /// to a transparent PNG the size of the clip, composite it over every frame,
   /// and mix in the chosen track. Returns null if nothing had to change.
   Future<String?> _renderVideoWithOverlays() async {
-    final hasOverlays = _items.isNotEmpty || _strokes.isNotEmpty;
+    // Music/link stickers are data, not pixels — they don't force a render.
+    final burnable = _items.any(
+        (it) => it.kind != _ItemKind.music && it.kind != _ItemKind.link);
+    final hasOverlays = burnable || _strokes.isNotEmpty;
     final filter = _filters[_filterIdx].$3;
-    if (!hasOverlays && _audioUrl == null && filter.isEmpty) {
-      return null; // untouched clip
-    }
+    if (!hasOverlays && filter.isEmpty) return null; // untouched clip
     try {
       // Hide the video itself so only the overlays land on the PNG.
       setState(() => _captureOverlaysOnly = true);
@@ -386,24 +402,18 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       final out = '${dir.path}/story_$stamp.mp4';
 
       final cmd = StringBuffer('-y -i "${widget.videoPath}" ');
-      if (_audioUrl != null) cmd.write('-i "$_audioUrl" ');
       if (hasOverlays) {
         cmd.write('-i "$ovl" ');
         // Filter the base video first, then composite the overlay layer.
-        final ovlIdx = _audioUrl != null ? 2 : 1;
         final baseChain =
             filter.isEmpty ? '[0:v]' : '[0:v]$filter[vbase];[vbase]';
         cmd.write('-filter_complex '
-            '"[$ovlIdx:v]scale=iw:ih[o];$baseChain[o]overlay=(W-w)/2:(H-h)/2" ');
+            '"[1:v]scale=iw:ih[o];$baseChain[o]overlay=(W-w)/2:(H-h)/2" ');
       } else if (filter.isNotEmpty) {
         cmd.write('-vf "$filter" ');
       }
-      if (_audioUrl != null) {
-        // Chosen track replaces the original sound.
-        cmd.write('-map ${hasOverlays ? '0:v' : '0:v'} -map 1:a -shortest ');
-      }
       cmd.write('-c:v libx264 -preset veryfast -pix_fmt yuv420p '
-          '-c:a aac -b:a 128k "$out"');
+          '-c:a copy "$out"');
 
       final session = await FFmpegKit.execute(cmd.toString());
       if (!ReturnCode.isSuccess(await session.getReturnCode())) return null;
@@ -411,30 +421,6 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       return out;
     } catch (_) {
       if (mounted) setState(() => _captureOverlaysOnly = false);
-      return null;
-    }
-  }
-
-  /// still image + audio → MP4. `-shortest` stops at the audio/limit, and the
-  /// output lives in the temp dir (the OS reclaims it) — no extra copies kept.
-  Future<String?> _renderPhotoWithAudio(Uint8List png) async {
-    try {
-      final dir = await getTemporaryDirectory();
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final imgPath = '${dir.path}/story_$stamp.png';
-      await File(imgPath).writeAsBytes(png);
-      final out = '${dir.path}/story_$stamp.mp4';
-      // -ss before the audio input picks WHICH part of the track plays.
-      final cmd = '-y -loop 1 -i "$imgPath" '
-          '-ss $_audioStartSec -i "$_audioUrl" '
-          '-t $_audioSeconds -c:v libx264 -preset veryfast -tune stillimage '
-          '-pix_fmt yuv420p -c:a aac -b:a 128k -shortest "$out"';
-      final session = await FFmpegKit.execute(cmd);
-      if (!ReturnCode.isSuccess(await session.getReturnCode())) return null;
-      // The temp PNG has done its job.
-      try { await File(imgPath).delete(); } catch (_) {}
-      return out;
-    } catch (_) {
       return null;
     }
   }
@@ -528,7 +514,6 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       case _ElementAction.emoji: _showEmojiStrip(); break;
       case _ElementAction.text: _openTextInput(); break;
       case _ElementAction.music: _pickMusic(); break;
-      case _ElementAction.audio: _pickDeviceAudio(); break;
       case _ElementAction.gif: _addGif(); break;
       case _ElementAction.hashtag:
         _askText(context.t('elHashtag'), Icons.tag_rounded, prefix: '#');
@@ -678,10 +663,16 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     setState(() {
       _audioUrl = (picked['audio'] ?? '').toString();
       _audioTitle = (picked['title'] ?? '').toString();
+      _audioArtist = (picked['showTitle'] ?? '').toString();
+      _audioArtwork = (picked['artwork'] ?? '').toString();
       // Rhythm reports track length in seconds — lets the trim sheet show the
       // real timeline instead of guessing.
       _audioTotalSec = int.tryParse((picked['duration'] ?? '').toString()) ?? 0;
+      // HARD RULE: one track per story — a new pick replaces the old one.
+      _items.removeWhere((it) => it.kind == _ItemKind.music);
     });
+    // The track replaces the clip's own sound — mute the video preview.
+    _vid?.setVolume(0);
     setState(() => _items.add(_StoryItem(
           text: _audioTitle ?? '',
           kind: _ItemKind.music,
@@ -717,25 +708,6 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       });
       _startPreview();
     }
-  }
-
-  // ── Audio file from the device ────────────────────────────────────────────
-  Future<void> _pickDeviceAudio() async {
-    final res = await FilePicker.platform
-        .pickFiles(type: FileType.audio, allowMultiple: false);
-    final path = res?.files.single.path;
-    if (path == null || !mounted) return;
-    setState(() {
-      _audioUrl = path; // local path — ffmpeg reads it directly
-      _audioTitle = path.split(Platform.pathSeparator).last;
-    });
-    setState(() => _items.add(_StoryItem(
-          text: _audioTitle ?? '',
-          kind: _ItemKind.music,
-          pos: const Offset(0.5, 0.22),
-        )));
-    if (!widget.isVideo) await _askAudioLength();
-    _startPreview();
   }
 
   void _addEmoji(String e) {
@@ -827,8 +799,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   }
 
   Widget _overlay(_StoryItem it, Size size) {
-    // Links are never flattened — the viewer renders them as real buttons.
-    if (_hideLinksForCapture && it.kind == _ItemKind.link) {
+    // Links and music are never flattened: links must stay tappable, the
+    // music sticker must keep ANIMATING in the viewer (baked pixels can't).
+    if (_hideLinksForCapture &&
+        (it.kind == _ItemKind.link || it.kind == _ItemKind.music)) {
       return const SizedBox.shrink();
     }
     return Positioned(
@@ -1109,65 +1083,9 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     final title = it.text;
     final artist = it.artist ?? '';
     switch (it.styleIdx) {
-      case 1: // Instagram-style white card: artwork + equalizer, title, artist
-        return Container(
-          padding: EdgeInsets.all(9 * s),
-          constraints: BoxConstraints(maxWidth: 240 * s),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18 * s),
-            boxShadow: [
-              BoxShadow(blurRadius: 16 * s, color: Colors.black26),
-            ],
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            // Artwork with the pulsing equalizer bars ON it, like Instagram.
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12 * s),
-              child: SizedBox(
-                width: 52 * s,
-                height: 52 * s,
-                child: Stack(fit: StackFit.expand, children: [
-                  it.artwork != null && it.artwork!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: it.artwork!, fit: BoxFit.cover)
-                      : Container(
-                          color: const Color(0xFF222327),
-                          child: Icon(Icons.music_note_rounded,
-                              size: 22 * s, color: Colors.white70)),
-                  Container(color: Colors.black26),
-                  Center(child: _EqualizerBars(scale: s)),
-                ]),
-              ),
-            ),
-            SizedBox(width: 10 * s),
-            Flexible(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: const Color(0xFF101012),
-                          fontSize: 15 * s,
-                          fontWeight: FontWeight.w800)),
-                  if (artist.isNotEmpty) ...[
-                    SizedBox(height: 2 * s),
-                    Text(artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: const Color(0xFF7A7C85),
-                            fontSize: 12.5 * s,
-                            fontWeight: FontWeight.w500)),
-                  ],
-                ],
-              ),
-            ),
-          ]),
-        );
+      case 1: // Instagram-style white card (shared widget)
+        return MusicStickerCard(
+            title: title, artist: artist, artUrl: it.artwork ?? '', scale: s);
       case 2: // mini player
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 12 * s, vertical: 9 * s),
@@ -1592,7 +1510,7 @@ class _DrawPainter extends CustomPainter {
 //  "Add element" sheet — frosted glass, card grid, spring press feedback.
 // ═══════════════════════════════════════════════════════════════════════════
 enum _ElementAction {
-  location, link, weather, time, emoji, text, music, audio, gif, hashtag, mention,
+  location, link, weather, time, emoji, text, music, gif, hashtag, mention,
 }
 
 class _ElementsSheet extends StatelessWidget {
@@ -1609,7 +1527,6 @@ class _ElementsSheet extends StatelessWidget {
       (_ElementAction.emoji, Icons.emoji_emotions_rounded, context.t('elEmoji')),
       (_ElementAction.text, Icons.text_fields_rounded, context.t('elText')),
       (_ElementAction.music, Icons.music_note_rounded, context.t('elMusic')),
-      (_ElementAction.audio, Icons.audiotrack_rounded, context.t('elAudio')),
       (_ElementAction.gif, Icons.gif_box_rounded, context.t('elGif')),
       (_ElementAction.hashtag, Icons.tag_rounded, context.t('elHashtag')),
       (_ElementAction.mention, Icons.alternate_email_rounded, context.t('elMention')),
@@ -1796,50 +1713,4 @@ class _WaveformState extends State<_Waveform>
 }
 
 
-/// Pulsing equalizer bars drawn over the artwork (Instagram-style).
-class _EqualizerBars extends StatefulWidget {
-  final double scale;
-  const _EqualizerBars({required this.scale});
-  @override
-  State<_EqualizerBars> createState() => _EqualizerBarsState();
-}
 
-class _EqualizerBarsState extends State<_EqualizerBars>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 700))
-    ..repeat(reverse: true);
-
-  static const _phases = [0.9, 0.45, 0.75];
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.scale;
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, __) => Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < _phases.length; i++) ...[
-            Container(
-              width: 5 * s,
-              height: (8 + 16 * _phases[i] * (0.35 + 0.65 * _c.value)) * s,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(3 * s),
-              ),
-            ),
-            if (i != _phases.length - 1) SizedBox(width: 3.5 * s),
-          ],
-        ],
-      ),
-    );
-  }
-}

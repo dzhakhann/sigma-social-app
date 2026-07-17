@@ -46,6 +46,7 @@ class StoryPublisher {
   Uint8List? _photoBytes;
   String? _videoPath;
   List<Map> _links = const [];
+  Map? _music;
 
   Future<void> _initNotifications() async {
     if (_notifReady) return;
@@ -109,6 +110,7 @@ class StoryPublisher {
   /// Photo story. Returns immediately; work happens in the background.
   void publishPhoto(String userId, Uint8List bytes,
       {List<Map> links = const [],
+      Map? music,
       String uploadingText = 'Uploading story…',
       String doneText = 'Story published',
       String failText = 'Upload failed'}) {
@@ -116,12 +118,14 @@ class StoryPublisher {
     _photoBytes = bytes;
     _videoPath = null;
     _links = links;
+    _music = music;
     _run(uploadingText, doneText, failText);
   }
 
   /// Video story (path to a local clip). Returns immediately.
   void publishVideo(String userId, String path,
       {List<Map> links = const [],
+      Map? music,
       String uploadingText = 'Uploading story…',
       String doneText = 'Story published',
       String failText = 'Upload failed'}) {
@@ -129,6 +133,7 @@ class StoryPublisher {
     _photoBytes = null;
     _videoPath = path;
     _links = links;
+    _music = music;
     _run(uploadingText, doneText, failText);
   }
 
@@ -168,7 +173,8 @@ class StoryPublisher {
       );
       if (url == null) throw Exception('upload failed');
 
-      final withLinks = ApiService.packStoryLinks(url, _links);
+      final withLinks =
+          ApiService.packStoryExtras(url, links: _links, music: _music);
       final r = await ApiService.createStoryFromUrl(_userId!, withLinks);
       if (r['success'] != true) throw Exception('story create failed');
 
