@@ -81,6 +81,9 @@ class _StoryVideoEditorScreenState extends State<StoryVideoEditorScreen> {
     _init();
   }
 
+  /// Filmstrip thumbnails behind the trim track (Пункт 6).
+  List<String> _thumbs = [];
+
   Future<void> _init() async {
     final c = VideoPlayerController.file(File(widget.path));
     try {
@@ -98,6 +101,29 @@ class _StoryVideoEditorScreenState extends State<StoryVideoEditorScreen> {
     await c.setVolume(_volume);
     await c.play();
     if (mounted) setState(() { _ctrl = c; _ready = true; });
+    _extractThumbs();
+  }
+
+  /// One ffmpeg pass pulls 8 evenly spaced frames for the filmstrip.
+  Future<void> _extractThumbs() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final base =
+          '${dir.path}/strip_${DateTime.now().millisecondsSinceEpoch}';
+      final durSec =
+          (_total.inMilliseconds / 1000).clamp(0.5, double.infinity);
+      final cmd = '-y -i "${widget.path}" '
+          '-vf "fps=8/${durSec.toStringAsFixed(3)},scale=-2:96" '
+          '-vsync vfr "${base}_%02d.jpg"';
+      final session = await FFmpegKit.execute(cmd);
+      if (!ReturnCode.isSuccess(await session.getReturnCode())) return;
+      final found = <String>[];
+      for (var i = 1; i <= 9; i++) {
+        final p = '${base}_${i.toString().padLeft(2, '0')}.jpg';
+        if (File(p).existsSync()) found.add(p);
+      }
+      if (mounted && found.isNotEmpty) setState(() => _thumbs = found);
+    } catch (_) {}
   }
 
   // Keep playback inside the selected range.
@@ -275,26 +301,8 @@ class _StoryVideoEditorScreenState extends State<StoryVideoEditorScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         color: Colors.black,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // ── Trim timeline ──────────────────────────────────────────
-          Text(context.t('videoTrimHint'),
-              style: const TextStyle(color: Colors.white54, fontSize: 11.5)),
-          const SizedBox(height: 6),
-          RangeSlider(
-            values: RangeValues(
-              _start.inMilliseconds / (_total.inMilliseconds == 0 ? 1 : _total.inMilliseconds),
-              _end.inMilliseconds / (_total.inMilliseconds == 0 ? 1 : _total.inMilliseconds),
-            ),
-            activeColor: c.accent,
-            inactiveColor: Colors.white24,
-            onChanged: (v) {
-              if (v.start != _start.inMilliseconds / _total.inMilliseconds) {
-                _setStart(v.start);
-              }
-              if (v.end != _end.inMilliseconds / _total.inMilliseconds) {
-                _setEnd(v.end);
-              }
-            },
-          ),
+          // ── Filmstrip trim track (Telegram-style, Пункт 6) ─────────
+          _filmstrip(c),
           Row(children: [
             Text(_fmt(_start),
                 style: const TextStyle(color: Colors.white54, fontSize: 11)),
@@ -354,6 +362,130 @@ class _StoryVideoEditorScreenState extends State<StoryVideoEditorScreen> {
             ),
           ),
         ]),
+      );
+
+  /// Frame thumbnails with a draggable selection window + edge handles —
+  /// replaces the bare RangeSlider.
+  Widget _filmstrip(BrutalColors c) {
+    final totalMs = _total.inMilliseconds == 0 ? 1 : _total.inMilliseconds;
+    return LayoutBuilder(builder: (_, box) {
+      final w = box.maxWidth;
+      final selX = _start.inMilliseconds / totalMs * w;
+      final selW =
+          ((_end - _start).inMilliseconds / totalMs * w).clamp(24.0, w);
+      const handleW = 22.0;
+      return SizedBox(
+        height: 56,
+        child: Stack(children: [
+          // frames
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: _thumbs.isEmpty
+                  ? Container(
+                      color: Colors.white10,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white38),
+                        ),
+                      ),
+                    )
+                  : Row(children: [
+                      for (final t in _thumbs)
+                        Expanded(
+                          child: Image.file(File(t),
+                              fit: BoxFit.cover,
+                              height: 56,
+                              errorBuilder: (_, __, ___) =>
+                                  Container(color: Colors.white10)),
+                        ),
+                    ]),
+            ),
+          ),
+          // dim the parts OUTSIDE the selection
+          Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: selX,
+              child: Container(color: Colors.black54)),
+          Positioned(
+              left: selX + selW,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(color: Colors.black54)),
+          // selection window — drag to MOVE the fragment
+          Positioned(
+            left: selX,
+            top: 0,
+            bottom: 0,
+            width: selW,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (d) {
+                final lenMs = (_end - _start).inMilliseconds;
+                var ns = _start.inMilliseconds + d.delta.dx / w * totalMs;
+                ns = ns.clamp(0, (totalMs - lenMs).toDouble());
+                setState(() {
+                  _start = Duration(milliseconds: ns.round());
+                  _end = Duration(milliseconds: ns.round() + lenMs);
+                });
+              },
+              onHorizontalDragEnd: (_) {
+                HapticFeedback.selectionClick();
+                _ctrl?.seekTo(_start);
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: c.accent, width: 2.5),
+                ),
+              ),
+            ),
+          ),
+          // left handle — resize start
+          Positioned(
+            left: selX - handleW / 2,
+            top: 0,
+            bottom: 0,
+            width: handleW,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragUpdate: (d) =>
+                  _setStart(((selX + d.delta.dx) / w).clamp(0.0, 1.0)),
+              child: Center(child: _grip(c)),
+            ),
+          ),
+          // right handle — resize end
+          Positioned(
+            left: selX + selW - handleW / 2,
+            top: 0,
+            bottom: 0,
+            width: handleW,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragUpdate: (d) =>
+                  _setEnd(((selX + selW + d.delta.dx) / w).clamp(0.0, 1.0)),
+              child: Center(child: _grip(c)),
+            ),
+          ),
+        ]),
+      );
+    });
+  }
+
+  Widget _grip(BrutalColors c) => Container(
+        width: 5,
+        height: 30,
+        decoration: BoxDecoration(
+          color: c.accent,
+          borderRadius: BorderRadius.circular(3),
+          boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black54)],
+        ),
       );
 
   Widget _toolChip(BrutalColors c, IconData icon, String label,
