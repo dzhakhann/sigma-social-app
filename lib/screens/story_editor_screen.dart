@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -176,6 +177,38 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   /// Plays the clip behind the overlays for a video story.
   VideoPlayerController? _vid;
 
+  /// Live music preview (Пункт 2): the chosen start..end fragment plays looped
+  /// right in the editor — you hear the story before publishing it.
+  final AudioPlayer _preview = AudioPlayer();
+
+  Future<void> _startPreview() async {
+    final url = _audioUrl;
+    if (url == null || url.isEmpty) return;
+    try {
+      final start = Duration(seconds: _audioStartSec);
+      final end = Duration(seconds: _audioStartSec + _audioSeconds);
+      // setClip plays ONLY the fragment; LoopMode.one keeps it cycling.
+      await _preview.setAudioSource(
+        ClippingAudioSource(
+          child: AudioSource.uri(
+              url.startsWith('http') ? Uri.parse(url) : Uri.file(url)),
+          start: start,
+          end: end,
+        ),
+      );
+      await _preview.setLoopMode(LoopMode.one);
+      // A video story has its own sound — keep the preview quiet-ish under it.
+      await _preview.setVolume(widget.isVideo ? 0.6 : 1.0);
+      await _preview.play();
+    } catch (_) {}
+  }
+
+  Future<void> _stopPreview() async {
+    try {
+      await _preview.stop();
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -211,6 +244,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       _editingText = false;
       _drawing = false;
     });
+    _stopPreview(); // no editor sound while rendering/publishing
     // Link stickers must stay TAPPABLE, so they're never flattened into the
     // media — they travel as data and the viewer draws a real button.
     setState(() => _hideLinksForCapture = true);
@@ -596,8 +630,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
           artist: (picked['showTitle'] ?? '').toString(),
           artwork: (picked['artwork'] ?? '').toString(),
           pos: const Offset(0.5, 0.22),
+          styleIdx: 1, // white Instagram-style card by default
         )));
     if (!widget.isVideo) await _askAudioLength();
+    _startPreview();
   }
 
   /// Audio editor: pick WHICH part of the track plays and for how long.
@@ -620,6 +656,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         _audioStartSec = res.$1;
         _audioSeconds = res.$2;
       });
+      _startPreview();
     }
   }
 
@@ -639,6 +676,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
           pos: const Offset(0.5, 0.22),
         )));
     if (!widget.isVideo) await _askAudioLength();
+    _startPreview();
   }
 
   void _addEmoji(String e) {
@@ -967,60 +1005,64 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     final title = it.text;
     final artist = it.artist ?? '';
     switch (it.styleIdx) {
-      case 1: // cover + title, Apple-Music-ish
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(16 * s),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Container(
-              padding: EdgeInsets.all(8 * s),
-              constraints: BoxConstraints(maxWidth: 230 * s),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(16 * s),
-                border: Border.all(color: Colors.white24, width: 0.9),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(9 * s),
-                  child: it.artwork != null && it.artwork!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: it.artwork!,
-                          width: 42 * s,
-                          height: 42 * s,
-                          fit: BoxFit.cover)
-                      : Container(
-                          width: 42 * s,
-                          height: 42 * s,
-                          color: Colors.white24,
-                          child: Icon(Icons.music_note_rounded,
-                              size: 20 * s, color: Colors.white)),
-                ),
-                SizedBox(width: 9 * s),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13.5 * s,
-                              fontWeight: FontWeight.w800)),
-                      if (artist.isNotEmpty)
-                        Text(artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: Colors.white70, fontSize: 11.5 * s)),
-                    ],
-                  ),
-                ),
-              ]),
-            ),
+      case 1: // Instagram-style white card: artwork + equalizer, title, artist
+        return Container(
+          padding: EdgeInsets.all(9 * s),
+          constraints: BoxConstraints(maxWidth: 240 * s),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18 * s),
+            boxShadow: [
+              BoxShadow(blurRadius: 16 * s, color: Colors.black26),
+            ],
           ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            // Artwork with the pulsing equalizer bars ON it, like Instagram.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12 * s),
+              child: SizedBox(
+                width: 52 * s,
+                height: 52 * s,
+                child: Stack(fit: StackFit.expand, children: [
+                  it.artwork != null && it.artwork!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: it.artwork!, fit: BoxFit.cover)
+                      : Container(
+                          color: const Color(0xFF222327),
+                          child: Icon(Icons.music_note_rounded,
+                              size: 22 * s, color: Colors.white70)),
+                  Container(color: Colors.black26),
+                  Center(child: _EqualizerBars(scale: s)),
+                ]),
+              ),
+            ),
+            SizedBox(width: 10 * s),
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: const Color(0xFF101012),
+                          fontSize: 15 * s,
+                          fontWeight: FontWeight.w800)),
+                  if (artist.isNotEmpty) ...[
+                    SizedBox(height: 2 * s),
+                    Text(artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: const Color(0xFF7A7C85),
+                            fontSize: 12.5 * s,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ],
+              ),
+            ),
+          ]),
         );
       case 2: // mini player
         return Container(
@@ -1380,6 +1422,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
 
   @override
   void dispose() {
+    _preview.dispose(); // stop sound the moment the editor closes
     _vid?.dispose();
     _textCtrl.dispose();
     super.dispose();
@@ -1608,6 +1651,55 @@ class _WaveformState extends State<_Waveform>
               ),
             ),
             if (i != _base.length - 1) SizedBox(width: 2.2 * s),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+
+/// Pulsing equalizer bars drawn over the artwork (Instagram-style).
+class _EqualizerBars extends StatefulWidget {
+  final double scale;
+  const _EqualizerBars({required this.scale});
+  @override
+  State<_EqualizerBars> createState() => _EqualizerBarsState();
+}
+
+class _EqualizerBarsState extends State<_EqualizerBars>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 700))
+    ..repeat(reverse: true);
+
+  static const _phases = [0.9, 0.45, 0.75];
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scale;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) => Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (var i = 0; i < _phases.length; i++) ...[
+            Container(
+              width: 5 * s,
+              height: (8 + 16 * _phases[i] * (0.35 + 0.65 * _c.value)) * s,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(3 * s),
+              ),
+            ),
+            if (i != _phases.length - 1) SizedBox(width: 3.5 * s),
           ],
         ],
       ),
