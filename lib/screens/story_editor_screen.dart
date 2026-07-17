@@ -174,6 +174,38 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     '🎉','💪','🚀','🌈','☀️','🌙','🍕','⚽','🎵','😜','🥰','😇',
   ];
 
+  // ── Filters (Пункт 3): live ColorFilter matrix + matching ffmpeg chain ────
+  // The photo export needs NO extra work: the canvas is captured with the
+  // ColorFiltered applied, so the filter is baked in automatically. Video
+  // export re-encodes with the ffmpeg equivalent.
+  static const List<(String, List<double>, String)> _filters = [
+    ('Normal', [1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,1,0], ''),
+    ('Dark', [1,0,0,0,-30, 0,1,0,0,-30, 0,0,1,0,-30, 0,0,0,1,0],
+        'eq=brightness=-0.12'),
+    ('Light', [1,0,0,0,30, 0,1,0,0,30, 0,0,1,0,30, 0,0,0,1,0],
+        'eq=brightness=0.12'),
+    ('Vivid', [1.34,-0.28,-0.06,0,0, -0.06,1.12,-0.06,0,0, -0.06,-0.28,1.34,0,0, 0,0,0,1,0],
+        'eq=saturation=1.4'),
+    ('Warm', [1.12,0,0,0,8, 0,1.02,0,0,0, 0,0,0.90,0,0, 0,0,0,1,0],
+        'colorchannelmixer=rr=1.12:bb=0.90'),
+    ('Cool', [0.90,0,0,0,0, 0,1.02,0,0,0, 0,0,1.12,0,8, 0,0,0,1,0],
+        'colorchannelmixer=rr=0.90:bb=1.12'),
+    ('B/W', [0.2126,0.7152,0.0722,0,0, 0.2126,0.7152,0.0722,0,0, 0.2126,0.7152,0.0722,0,0, 0,0,0,1,0],
+        'hue=s=0'),
+    ('Vintage', [0.9,0.5,0.1,0,-10, 0.3,0.8,0.1,0,-5, 0.2,0.3,0.5,0,5, 0,0,0,1,0],
+        'curves=preset=vintage'),
+    ('Contrast', [1.3,0,0,0,-38, 0,1.3,0,0,-38, 0,0,1.3,0,-38, 0,0,0,1,0],
+        'eq=contrast=1.3'),
+    ('Film', [1.0,0.08,0,0,-8, 0.04,1.0,0.04,0,-8, 0,0.08,0.94,0,-2, 0,0,0,1,0],
+        'eq=contrast=1.12:saturation=0.85'),
+  ];
+
+  int _filterIdx = 0;
+  bool _filterStrip = false;
+
+  /// One mid-clip frame for video filter thumbnails (photos use their bytes).
+  Uint8List? _videoFrame;
+
   /// Plays the clip behind the overlays for a video story.
   VideoPlayerController? _vid;
 
@@ -234,6 +266,25 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
           _imgAspect = v.value.aspectRatio;
         });
       }
+      _grabVideoFrame();
+    } catch (_) {}
+  }
+
+  /// Middle frame of the clip — used as the base for filter thumbnails.
+  Future<void> _grabVideoFrame() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final out =
+          '${dir.path}/frame_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final mid =
+          ((_vid?.value.duration.inMilliseconds ?? 2000) / 2000).clamp(0.5, 30.0);
+      final r = await FFmpegKit.execute(
+          '-y -ss ${mid.toStringAsFixed(2)} -i "${widget.videoPath}" '
+          '-vframes 1 -vf scale=-2:200 "$out"');
+      if (!ReturnCode.isSuccess(await r.getReturnCode())) return;
+      final bytes = await File(out).readAsBytes();
+      if (mounted) setState(() => _videoFrame = bytes);
+      try { await File(out).delete(); } catch (_) {}
     } catch (_) {}
   }
 
@@ -313,7 +364,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   /// and mix in the chosen track. Returns null if nothing had to change.
   Future<String?> _renderVideoWithOverlays() async {
     final hasOverlays = _items.isNotEmpty || _strokes.isNotEmpty;
-    if (!hasOverlays && _audioUrl == null) return null; // untouched clip
+    final filter = _filters[_filterIdx].$3;
+    if (!hasOverlays && _audioUrl == null && filter.isEmpty) {
+      return null; // untouched clip
+    }
     try {
       // Hide the video itself so only the overlays land on the PNG.
       setState(() => _captureOverlaysOnly = true);
@@ -335,10 +389,14 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       if (_audioUrl != null) cmd.write('-i "$_audioUrl" ');
       if (hasOverlays) {
         cmd.write('-i "$ovl" ');
-        // Scale the overlay to the video, then composite it over each frame.
+        // Filter the base video first, then composite the overlay layer.
         final ovlIdx = _audioUrl != null ? 2 : 1;
+        final baseChain =
+            filter.isEmpty ? '[0:v]' : '[0:v]$filter[vbase];[vbase]';
         cmd.write('-filter_complex '
-            '"[$ovlIdx:v]scale=iw:ih[o];[0:v][o]overlay=(W-w)/2:(H-h)/2" ');
+            '"[$ovlIdx:v]scale=iw:ih[o];$baseChain[o]overlay=(W-w)/2:(H-h)/2" ');
+      } else if (filter.isNotEmpty) {
+        cmd.write('-vf "$filter" ');
       }
       if (_audioUrl != null) {
         // Chosen track replaces the original sound.
@@ -894,6 +952,51 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         ));
   }
 
+  /// One filter thumbnail: the actual photo/frame with the matrix applied.
+  Widget _filterThumb(int i) {
+    final base = widget.isVideo ? _videoFrame : widget.imageBytes;
+    final sel = i == _filterIdx;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _filterIdx = i);
+      },
+      child: Container(
+        width: 64,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 60,
+            height: 68,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: sel ? Colors.amberAccent : Colors.white24,
+                  width: sel ? 2.5 : 1),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: ColorFiltered(
+              colorFilter: ColorFilter.matrix(_filters[i].$2),
+              child: base != null
+                  ? Image.memory(base,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      cacheWidth: 120)
+                  : Container(color: Colors.white12),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(_filters[i].$1,
+              style: TextStyle(
+                  color: sel ? Colors.amberAccent : Colors.white70,
+                  fontSize: 10.5,
+                  fontWeight: sel ? FontWeight.w800 : FontWeight.w500)),
+        ]),
+      ),
+    );
+  }
+
   /// Italic · outline/background · alignment — the Instagram text row.
   Widget _textStyleBar() {
     final c = context.k;
@@ -1224,7 +1327,11 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
             key: _boundaryKey,
             child: Stack(fit: StackFit.expand, children: [
               Container(color: Colors.black),
-              _zoomablePhoto(size),
+              ColorFiltered(
+                colorFilter:
+                    ColorFilter.matrix(_filters[_filterIdx].$2),
+                child: _zoomablePhoto(size),
+              ),
               // Drawing layer (on top of the photo, below stickers).
               IgnorePointer(
                 ignoring: !_drawing,
@@ -1295,6 +1402,18 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                   color: Colors.white, size: 26),
               onPressed: _openElements,
             ),
+            // Filters (Пункт 3)
+            IconButton(
+              icon: Icon(Icons.auto_awesome_rounded,
+                  color: _filterStrip || _filterIdx != 0
+                      ? Colors.amberAccent
+                      : Colors.white,
+                  size: 26),
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                setState(() => _filterStrip = !_filterStrip);
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.text_fields_rounded,
                   color: Colors.white, size: 26),
@@ -1302,6 +1421,23 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
             ),
           ]),
         ),
+
+        // ── Filter strip: live thumbnails, tap to apply (Пункт 3) ──────
+        if (_filterStrip && !_editingText)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: MediaQuery.of(context).padding.bottom + 96,
+            child: SizedBox(
+              height: 96,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _filters.length,
+                itemBuilder: (_, i) => _filterThumb(i),
+              ),
+            ),
+          ),
 
         // ── Colour palette (visible while drawing) ─────────────────────
         if (_drawing)
