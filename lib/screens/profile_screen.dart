@@ -16,7 +16,9 @@ import 'chat_detail_screen.dart';
 import 'profile_share_screen.dart';
 import 'photo_view_screen.dart';
 import 'avatar_crop_screen.dart';
+import '../widgets/fav_track.dart';
 import '../widgets/link_preview.dart';
+import 'story_music_picker_sheet.dart';
 import '../services/session.dart';
 import '../services/events.dart';
 
@@ -420,6 +422,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Column(children: [
+                  _favTrackSection(c),
                   _statsAndActions(c),
                   _analyticsCard(c),
                 ]),
@@ -906,7 +909,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _statsAndActions(BrutalColors c) {
+    // ── «Любимый трек» (Раздел 2) — Telegram-style profile music ──────────────
+  Map? get _favTrack {
+    final t = userProfile['fav_track'];
+    return t is Map ? t : null;
+  }
+
+  Widget _favTrackSection(BrutalColors c) {
+    final t = _favTrack;
+    if (t != null) {
+      return FavTrackPill(track: t, onTap: () => _openFavPlayer(t));
+    }
+    // No track: owner sees a subtle add button, visitors see nothing.
+    if (widget.isOwnProfile) {
+      return FavTrackAddButton(onTap: _pickFavTrack);
+    }
+    return const SizedBox.shrink();
+  }
+
+  void _openFavPlayer(Map t) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      isScrollControlled: true,
+      builder: (_) => FavTrackPlayerSheet(
+        track: t,
+        isOwner: widget.isOwnProfile,
+        onChange: () {
+          Navigator.pop(context);
+          _pickFavTrack();
+        },
+        onRemove: () {
+          Navigator.pop(context);
+          _saveFavTrack(null);
+        },
+      ),
+    );
+  }
+
+  /// Rhythm-only picker (with search) — the HARD RULE: no device audio.
+  Future<void> _pickFavTrack() async {
+    final picked = await showModalBottomSheet<Map>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      isScrollControlled: true,
+      builder: (_) => const MusicPickerSheet(),
+    );
+    if (picked == null || !mounted) return;
+    _saveFavTrack({
+      'url': (picked['audio'] ?? '').toString(),
+      'title': (picked['title'] ?? '').toString(),
+      'artist': (picked['showTitle'] ?? '').toString(),
+      'art': (picked['artwork'] ?? '').toString(),
+      'dur': (picked['duration'] ?? '').toString(),
+    });
+  }
+
+  /// Stores ONLY the catalog reference (or null to clear) — never audio bytes.
+  Future<void> _saveFavTrack(Map? track) async {
+    setState(() => userProfile['fav_track'] = track);
+    await ApiService.updateUser(
+        widget.user['id'].toString(), {'fav_track': track});
+  }
+
+Widget _statsAndActions(BrutalColors c) {
     return Column(children: [
       Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
