@@ -17,6 +17,7 @@ import '../theme/brutal_theme.dart';
 import 'gif_picker_screen.dart';
 import 'story_audio_trim_sheet.dart';
 import 'story_camera_screen.dart';
+import 'story_music_picker_sheet.dart';
 
 /// Instagram-style story editor:
 ///  · pinch-zoom / drag the photo (in AND out — black canvas around);
@@ -572,42 +573,14 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     _addBadge('$prefix$v', icon);
   }
 
-  // ── Music from "Rhythm" (the app's existing library) ──────────────────────
+  // ── Music from "Rhythm" — searchable picker (Пункт 1) ─────────────────────
   Future<void> _pickMusic() async {
-    final c = context.k;
-    final tracks = await ApiService.musicTrending();
-    if (!mounted) return;
     final picked = await showModalBottomSheet<Map>(
       context: context,
-      backgroundColor: c.bg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) => SafeArea(
-        child: tracks.isEmpty
-            ? Padding(
-                padding: const EdgeInsets.all(30),
-                child: Text(context.t('musicEmpty'),
-                    style: TextStyle(color: c.inkSoft)))
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: tracks.length,
-                itemBuilder: (_, i) {
-                  final t = tracks[i];
-                  return ListTile(
-                    leading: Icon(Icons.music_note_rounded, color: c.accent),
-                    title: Text((t['title'] ?? '').toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.ink, fontSize: 14.5)),
-                    subtitle: Text((t['showTitle'] ?? '').toString(),
-                        maxLines: 1,
-                        style: TextStyle(color: c.inkSoft, fontSize: 12)),
-                    onTap: () => Navigator.pop(context, t),
-                  );
-                },
-              ),
-      ),
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      isScrollControlled: true,
+      builder: (_) => const MusicPickerSheet(),
     );
     if (picked == null || !mounted) return;
     setState(() {
