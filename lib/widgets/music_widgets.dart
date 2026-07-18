@@ -216,9 +216,8 @@ class _PostMusicBarState extends State<PostMusicBar> {
     // The ONE shared preview player: starting a post track stops whatever else
     // was previewing, and only one post plays at a time.
     if (MusicPreview.i.currentUrl.value == _url &&
-        MusicPreview.i.player.playing) {
+        MusicPreview.i.isPlaying.value) {
       await MusicPreview.i.pause();
-      MusicPreview.i.currentUrl.value = null;
       return;
     }
     try {

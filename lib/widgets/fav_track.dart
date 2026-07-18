@@ -100,15 +100,19 @@ class FavTrackPlayerSheet extends StatefulWidget {
 }
 
 class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
-  // The ONE shared preview player — several simultaneous players go silent
-  // under just_audio_background; that was the endless-spinner bug.
+  // The ONE shared preview player (audioplayers — doesn't grab the system
+  // media session, so no phone-notification player and no conflicts).
   final _player = MusicPreview.i.player;
   bool _ready = false;
   bool _error = false;
+  Duration _duration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    _player.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _duration = d);
+    });
     _init();
   }
 
@@ -176,9 +180,9 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
                               color: const Color(0xFF222327),
                               child: const Icon(Icons.music_note_rounded,
                                   size: 48, color: Colors.white54)),
-                      StreamBuilder<bool>(
-                        stream: _player.playingStream,
-                        builder: (_, s) => (s.data ?? false)
+                      ValueListenableBuilder<bool>(
+                        valueListenable: MusicPreview.i.isPlaying,
+                        builder: (_, playing, __) => playing
                             ? Container(
                                 color: Colors.black26,
                                 child: const Center(
@@ -206,10 +210,10 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
                 const SizedBox(height: 10),
                 // Seek bar driven by the position stream.
                 StreamBuilder<Duration>(
-                  stream: _player.positionStream,
+                  stream: _player.onPositionChanged,
                   builder: (_, snap) {
                     final pos = snap.data ?? Duration.zero;
-                    final total = _player.duration ?? Duration.zero;
+                    final total = _duration;
                     final max = total.inMilliseconds.toDouble();
                     return Column(children: [
                       Slider(
@@ -238,14 +242,13 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
                 ),
                 const SizedBox(height: 4),
                 // Play / pause.
-                StreamBuilder<bool>(
-                  stream: _player.playingStream,
-                  builder: (_, s) {
-                    final playing = s.data ?? false;
+                ValueListenableBuilder<bool>(
+                  valueListenable: MusicPreview.i.isPlaying,
+                  builder: (_, playing, __) {
                     return GestureDetector(
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        playing ? _player.pause() : _player.play();
+                        MusicPreview.i.toggle();
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),

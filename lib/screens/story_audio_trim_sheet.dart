@@ -55,7 +55,7 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
     // sounding, DON'T reload (a stream re-prepare costs seconds on mobile
     // data). The exact fragment loads on the first drag instead.
     final alreadyPlaying = MusicPreview.i.currentUrl.value == widget.audioUrl &&
-        MusicPreview.i.player.playing;
+        MusicPreview.i.isPlaying.value;
     if (!alreadyPlaying) _restartPreview();
   }
 

@@ -5,6 +5,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as imglib;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +33,18 @@ import 'story_music_picker_sheet.dart';
 /// Photo + overlays + drawing are flattened into ONE image, so it looks
 /// identical for every viewer. Returns a [StoryCapture]: photo bytes, or — when
 /// music was added — the path of a rendered MP4.
+/// PNG snapshot → JPEG (runs in a compute isolate). Falls back to the PNG on
+/// any decode failure, so publishing never breaks.
+Uint8List _pngToJpg(Uint8List png) {
+  try {
+    final decoded = imglib.decodeImage(png);
+    if (decoded == null) return png;
+    return Uint8List.fromList(imglib.encodeJpg(decoded, quality: 88));
+  } catch (_) {
+    return png;
+  }
+}
+
 class StoryEditorScreen extends StatefulWidget {
   /// The photo being edited. Null for a video story — [videoPath] is set then
   /// and the clip plays underneath the overlays.
@@ -315,7 +329,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       final img = await boundary.toImage(pixelRatio: 2.0);
       final data = await img.toByteData(format: ui.ImageByteFormat.png);
       if (!mounted || data == null) return;
-      final bytes = data.buffer.asUint8List();
+      // Re-encode the PNG snapshot as JPEG in an isolate — a full-screen PNG is
+      // several MB (slow upload); JPEG is ~5-10× smaller with no visible loss.
+      final bytes =
+          await compute(_pngToJpg, data.buffer.asUint8List());
 
       // Rhythm track → photo stays a PHOTO, music is DATA (viewer streams).
       // DEVICE track → it must be audible but is never uploaded, so the audio

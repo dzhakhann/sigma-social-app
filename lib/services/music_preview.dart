@@ -1,6 +1,7 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:flutter/foundation.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import 'podcast_audio.dart';
 
@@ -8,23 +9,42 @@ import 'podcast_audio.dart';
 /// the editor preview, the story viewer, the profile favorite track and the
 /// post music bar.
 ///
-/// Why a singleton: `just_audio_background` is initialized app-wide (podcast
-/// lock-screen controls) and behaves badly with several simultaneously loaded
-/// players — whichever loads last steals the platform session and the others
-/// go silent. That's exactly the "picked a track but hear nothing" bug. One
-/// player for all previews (+ pausing the podcast player before starting)
-/// removes the whole class of conflicts.
+/// Built on `audioplayers` (NOT just_audio) very deliberately:
+///  · just_audio here is wrapped by just_audio_background (podcast lock-screen
+///    controls), so every just_audio preview spawned a SYSTEM MEDIA
+///    NOTIFICATION with seek bar and fought the podcast player for the one
+///    media session — sounds died randomly and the phone showed a player UI
+///    for what should be a silent inline preview;
+///  · ClippingAudioSource needs a known stream duration and kept failing into
+///    a play-the-whole-track fallback. Here the fragment window is enforced
+///    manually (position listener → seek back to start), which works for any
+///    URL or local file.
 class MusicPreview {
-  MusicPreview._();
+  MusicPreview._() {
+    player.onPlayerStateChanged.listen((s) {
+      isPlaying.value = s == ap.PlayerState.playing;
+    });
+    _posSub = player.onPositionChanged.listen((pos) {
+      // Manual fragment loop: reaching the window end rewinds to its start.
+      if (_clipLen > 0 &&
+          pos.inMilliseconds >= (_clipStart + _clipLen) * 1000) {
+        player.seek(Duration(seconds: _clipStart));
+      }
+    });
+  }
   static final MusicPreview i = MusicPreview._();
 
-  final AudioPlayer player = AudioPlayer();
+  final ap.AudioPlayer player = ap.AudioPlayer();
+  StreamSubscription? _posSub; // ignore: unused_field
 
   /// URL of whatever is currently loaded (drives play-icons in post bars).
   final ValueNotifier<String?> currentUrl = ValueNotifier(null);
 
-  // What exactly is loaded: -1/-1 = full track, otherwise the clip fragment.
-  int _clipStart = -1;
+  /// Live playing state (audioplayers has no sync `playing` getter).
+  final ValueNotifier<bool> isPlaying = ValueNotifier(false);
+
+  // Loaded fragment: len <= 0 means "full track".
+  int _clipStart = 0;
   int _clipLen = -1;
 
   void _quietPodcasts() {
@@ -33,8 +53,10 @@ class MusicPreview {
     } catch (_) {}
   }
 
-  /// Plays [start]..[start]+[len] of the track, looped. Used by the trimmer,
-  /// the editor preview and the story viewer.
+  ap.Source _source(String url) =>
+      url.startsWith('http') ? ap.UrlSource(url) : ap.DeviceFileSource(url);
+
+  /// Plays [startSec]..[startSec]+[lenSec] of the track, looped.
   Future<void> playClip(
     String url, {
     String title = '',
@@ -43,11 +65,10 @@ class MusicPreview {
     double volume = 1.0,
   }) async {
     if (url.isEmpty) return;
-    // Same fragment already playing → nothing to do. Re-preparing a stream
-    // takes seconds on mobile data; skipping it is what makes the flow feel
-    // instant (picker → trimmer → editor without re-loads).
+    // Same fragment already playing → don't re-prepare the stream (that costs
+    // seconds on mobile data and is what made starts feel slow).
     if (currentUrl.value == url &&
-        player.playing &&
+        isPlaying.value &&
         _clipStart == startSec &&
         _clipLen == lenSec) {
       await player.setVolume(volume);
@@ -58,39 +79,17 @@ class MusicPreview {
       currentUrl.value = url;
       _clipStart = startSec;
       _clipLen = lenSec;
-      await player.setAudioSource(
-        ClippingAudioSource(
-          child: AudioSource.uri(
-            url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
-            // just_audio_background rejects sources without a MediaItem tag.
-            tag: MediaItem(id: 'preview_$url', title: title),
-          ),
-          start: Duration(seconds: startSec),
-          end: Duration(seconds: startSec + lenSec),
-        ),
+      await player.stop();
+      await player.setReleaseMode(ap.ReleaseMode.loop);
+      await player.play(
+        _source(url),
+        volume: volume,
+        position: Duration(seconds: startSec),
       );
-      await player.setLoopMode(LoopMode.one);
-      await player.setVolume(volume);
-      await player.play();
     } catch (e) {
-      // Clipping needs a source with a KNOWN duration; some streams don't
-      // report one and the clip load throws. Fall back to the plain track
-      // seeked to the fragment start — looping is lost, but sound is there.
-      debugPrint('music preview clip failed, falling back: $e');
-      try {
-        await player.setAudioSource(AudioSource.uri(
-          url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
-          tag: MediaItem(id: 'preview_$url', title: title),
-        ));
-        await player.setLoopMode(LoopMode.one);
-        await player.setVolume(volume);
-        await player.seek(Duration(seconds: startSec));
-        await player.play();
-      } catch (e2) {
-        debugPrint('music preview fallback failed too: $e2');
-        currentUrl.value = null;
-        rethrow;
-      }
+      debugPrint('music preview clip failed: $e');
+      currentUrl.value = null;
+      rethrow;
     }
   }
 
@@ -102,24 +101,16 @@ class MusicPreview {
     bool loop = true,
   }) async {
     if (url.isEmpty) return;
-    // The same full track is already on → just make sure it's playing.
-    if (currentUrl.value == url &&
-        _clipStart == -1 &&
-        player.playing) {
-      return;
-    }
+    if (currentUrl.value == url && _clipLen <= 0 && isPlaying.value) return;
     _quietPodcasts();
     try {
       currentUrl.value = url;
-      _clipStart = -1;
+      _clipStart = 0;
       _clipLen = -1;
-      await player.setAudioSource(AudioSource.uri(
-        Uri.parse(url),
-        tag: MediaItem(id: 'play_$url', title: title, artist: artist),
-      ));
-      await player.setLoopMode(loop ? LoopMode.one : LoopMode.off);
-      await player.setVolume(1.0);
-      await player.play();
+      await player.stop();
+      await player
+          .setReleaseMode(loop ? ap.ReleaseMode.loop : ap.ReleaseMode.stop);
+      await player.play(_source(url), volume: 1.0);
     } catch (e) {
       debugPrint('music preview url failed: $e');
       currentUrl.value = null;
@@ -135,14 +126,23 @@ class MusicPreview {
 
   Future<void> resume() async {
     try {
-      await player.play();
+      await player.resume();
     } catch (_) {}
+  }
+
+  /// Play/pause flip for player-style UIs.
+  Future<void> toggle() async {
+    if (isPlaying.value) {
+      await pause();
+    } else {
+      await resume();
+    }
   }
 
   /// Stops and clears — call when the owning screen/sheet goes away.
   Future<void> stop() async {
     currentUrl.value = null;
-    _clipStart = -1;
+    _clipStart = 0;
     _clipLen = -1;
     try {
       await player.stop();
