@@ -1,8 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
+import '../services/music_preview.dart';
 
 /// Shared music visuals: the animated equalizer, the Instagram-style story
 /// sticker card and a marquee for long titles. One implementation everywhere —
@@ -204,10 +203,6 @@ class PostMusicBar extends StatefulWidget {
   final Map track; // {url?, title, artist, art}
   const PostMusicBar({Key? key, required this.track}) : super(key: key);
 
-  /// Shared across every card: only one post plays at a time.
-  static final AudioPlayer _player = AudioPlayer();
-  static final ValueNotifier<String?> _playingUrl = ValueNotifier(null);
-
   @override
   State<PostMusicBar> createState() => _PostMusicBarState();
 }
@@ -218,28 +213,22 @@ class _PostMusicBarState extends State<PostMusicBar> {
   Future<void> _toggle() async {
     if (_url.isEmpty) return; // device-only track: nothing to stream
     HapticFeedback.selectionClick();
-    final p = PostMusicBar._player;
-    if (PostMusicBar._playingUrl.value == _url) {
-      await p.pause();
-      PostMusicBar._playingUrl.value = null;
+    // The ONE shared preview player: starting a post track stops whatever else
+    // was previewing, and only one post plays at a time.
+    if (MusicPreview.i.currentUrl.value == _url &&
+        MusicPreview.i.player.playing) {
+      await MusicPreview.i.pause();
+      MusicPreview.i.currentUrl.value = null;
       return;
     }
     try {
-      PostMusicBar._playingUrl.value = _url;
-      await p.setAudioSource(AudioSource.uri(
-        Uri.parse(_url),
-        // just_audio_background requires the tag on every source.
-        tag: MediaItem(
-          id: 'post_$_url',
-          title: (widget.track['title'] ?? '').toString(),
-          artist: (widget.track['artist'] ?? '').toString(),
-        ),
-      ));
-      await p.setLoopMode(LoopMode.off);
-      await p.play();
-    } catch (_) {
-      PostMusicBar._playingUrl.value = null;
-    }
+      await MusicPreview.i.playUrl(
+        _url,
+        title: (widget.track['title'] ?? '').toString(),
+        artist: (widget.track['artist'] ?? '').toString(),
+        loop: false,
+      );
+    } catch (_) {}
   }
 
   @override
@@ -247,7 +236,7 @@ class _PostMusicBarState extends State<PostMusicBar> {
     final art = (widget.track['art'] ?? '').toString();
     final playable = _url.isNotEmpty;
     return ValueListenableBuilder<String?>(
-      valueListenable: PostMusicBar._playingUrl,
+      valueListenable: MusicPreview.i.currentUrl,
       builder: (_, playing, __) {
         final isPlaying = playing == _url && playable;
         return GestureDetector(

@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
+import '../services/music_preview.dart';
 import '../widgets/music_widgets.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -70,8 +69,9 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   VideoPlayerController? _vid;
 
   // The story's music (Пункт 1.4): streamed straight from the Rhythm catalog —
-  // only the link is stored with the story, never an audio copy.
-  final AudioPlayer _track = AudioPlayer();
+  // only the link is stored with the story, never an audio copy. Played through
+  // the ONE shared preview player (multiple players go silent under
+  // just_audio_background).
   Map? _music;
 
   Future<void> _startMusic(Map m) async {
@@ -82,25 +82,18 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     try {
       final start = (m['start'] as num?)?.toInt() ?? 0;
       final len = ((m['len'] as num?)?.toInt() ?? 15).clamp(3, 60);
-      await _track.setAudioSource(ClippingAudioSource(
-        child: AudioSource.uri(
-          Uri.parse(url),
-          // Required by just_audio_background — loads fail without a tag.
-          tag: MediaItem(
-              id: 'story_music', title: (m['title'] ?? '').toString()),
-        ),
-        start: Duration(seconds: start),
-        end: Duration(seconds: start + len),
-      ));
-      await _track.setLoopMode(LoopMode.one);
-      if (!_isPaused) await _track.play();
+      await MusicPreview.i.playClip(
+        url,
+        title: (m['title'] ?? '').toString(),
+        startSec: start,
+        lenSec: len,
+      );
+      if (_isPaused) await MusicPreview.i.pause();
     } catch (_) {}
   }
 
   Future<void> _stopMusic() async {
-    try {
-      await _track.stop();
-    } catch (_) {}
+    await MusicPreview.i.stop();
   }
 
   Future<void> _disposeVideo() async {
@@ -484,12 +477,12 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
           // Hold pauses the story — video and music included.
           setState(() => _isPaused = true);
           _vid?.pause();
-          _track.pause();
+          MusicPreview.i.pause();
         },
         onLongPressEnd: (_) {
           setState(() => _isPaused = false);
           _vid?.play();
-          if (_music != null) _track.play();
+          if (_music != null) MusicPreview.i.resume();
           if (_vid == null && _music == null) _startTimer();
           if (_vid == null && _music != null) _startTimer();
         },
@@ -738,7 +731,7 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _track.dispose();
+    MusicPreview.i.stop();
     _vid?.dispose();
     _replyCtrl.dispose();
     super.dispose();

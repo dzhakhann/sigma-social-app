@@ -1659,23 +1659,9 @@ class _HomeScreenState extends State<HomeScreen> {
             // Telegram/Instagram logic: no story → tap opens the camera;
             // has story → tap VIEWS it, the "+" badge adds a new one.
             // While publishing, a progress ring runs around the avatar (Пункт 5).
-            ValueListenableBuilder<double?>(
-              valueListenable: StoryPublisher.instance.progress,
-              builder: (_, p, child) => Stack(
-                alignment: Alignment.topCenter,
-                clipBehavior: Clip.none, // the ring extends past the 56px avatar
-                children: [
-                  child!,
-                  if (p != null)
-                    // Bug 6: a hand-drawn ring, mathematically centred on the
-                    // 56px avatar (its centre sits 28px from the column top).
-                    Positioned(
-                      top: 28 - 33, // ring is 66px → centre aligns with avatar
-                      child: _UploadRing(progress: p, color: c.accent),
-                    ),
-                ],
-              ),
-              child: _MyStoryBtn(
+            // Upload progress lives in the notification (and the retry
+            // banner below) — the avatar ring looked off, so it's gone.
+            _MyStoryBtn(
               user: widget.user,
               hasStory: myStories.isNotEmpty,
               onAdd: _addStory,
@@ -1698,7 +1684,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }
               },
-            ),
             ),
             ...grouped.values.map((uStories) => _StoryAvatar(
                   stories: uStories,
@@ -2237,89 +2222,3 @@ class _DonutPainter extends CustomPainter {
   bool shouldRepaint(_DonutPainter old) => old.value != value;
 }
 
-// ─── Upload progress ring around the "Me" story avatar (Bug 6) ──────────────
-// CustomPainter with an exact radius (size/2 - stroke/2), round caps and a
-// slow spin, so the ring is perfectly circular, centred and smooth at any DPI.
-class _UploadRing extends StatefulWidget {
-  final double progress; // 0..1
-  final Color color;
-  const _UploadRing({required this.progress, required this.color});
-
-  @override
-  State<_UploadRing> createState() => _UploadRingState();
-}
-
-class _UploadRingState extends State<_UploadRing>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _spin =
-      AnimationController(vsync: this, duration: const Duration(seconds: 2))
-        ..repeat();
-
-  @override
-  void dispose() {
-    _spin.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _spin,
-        builder: (_, __) => CustomPaint(
-          size: const Size(66, 66),
-          painter: _RingPainter(
-            progress: widget.progress.clamp(0.0, 1.0),
-            rotation: _spin.value,
-            color: widget.color,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RingPainter extends CustomPainter {
-  final double progress;
-  final double rotation; // 0..1, keeps the arc alive while buffering
-  final Color color;
-  _RingPainter(
-      {required this.progress, required this.rotation, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const stroke = 3.0;
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - stroke / 2;
-
-    // Faint full track underneath.
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..color = color.withOpacity(0.18),
-    );
-
-    // Progress arc: spins slowly so it feels alive even while the percent
-    // holds still; sweep is at least a dot so 0% is visible.
-    final sweep = (progress.clamp(0.02, 1.0)) * 2 * 3.1415926535;
-    final startAngle = -3.1415926535 / 2 + rotation * 2 * 3.1415926535;
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      startAngle,
-      sweep,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..strokeCap = StrokeCap.round
-        ..color = color,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter o) =>
-      o.progress != progress || o.rotation != rotation || o.color != color;
-}

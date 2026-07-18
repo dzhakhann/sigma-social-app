@@ -5,8 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -14,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../l10n/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/music_preview.dart';
 import '../services/weather_service.dart';
 import '../theme/brutal_theme.dart';
 import '../widgets/music_widgets.dart';
@@ -218,38 +217,25 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   VideoPlayerController? _vid;
 
   /// Live music preview (Пункт 2): the chosen start..end fragment plays looped
-  /// right in the editor — you hear the story before publishing it.
-  final AudioPlayer _preview = AudioPlayer();
-
+  /// right in the editor — through the ONE shared preview player (several
+  /// players fight under just_audio_background and go silent).
   Future<void> _startPreview() async {
     final url = _audioUrl;
     if (url == null || url.isEmpty) return;
     try {
-      final start = Duration(seconds: _audioStartSec);
-      final end = Duration(seconds: _audioStartSec + _audioSeconds);
-      // setClip plays ONLY the fragment; LoopMode.one keeps it cycling.
-      await _preview.setAudioSource(
-        ClippingAudioSource(
-          child: AudioSource.uri(
-            url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
-            // Required by just_audio_background — loads fail without a tag.
-            tag: MediaItem(id: 'story_preview', title: _audioTitle ?? ''),
-          ),
-          start: start,
-          end: end,
-        ),
+      await MusicPreview.i.playClip(
+        url,
+        title: _audioTitle ?? '',
+        startSec: _audioStartSec,
+        lenSec: _audioSeconds,
+        // A video story has its own sound — keep the preview quieter under it.
+        volume: widget.isVideo ? 0.6 : 1.0,
       );
-      await _preview.setLoopMode(LoopMode.one);
-      // A video story has its own sound — keep the preview quiet-ish under it.
-      await _preview.setVolume(widget.isVideo ? 0.6 : 1.0);
-      await _preview.play();
     } catch (_) {}
   }
 
   Future<void> _stopPreview() async {
-    try {
-      await _preview.stop();
-    } catch (_) {}
+    await MusicPreview.i.stop();
   }
 
   @override
@@ -1568,7 +1554,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
 
   @override
   void dispose() {
-    _preview.dispose(); // stop sound the moment the editor closes
+    MusicPreview.i.stop(); // silence the moment the editor closes
     _vid?.dispose();
     _textCtrl.dispose();
     super.dispose();

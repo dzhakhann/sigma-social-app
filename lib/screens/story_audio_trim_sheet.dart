@@ -1,10 +1,9 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import '../l10n/app_strings.dart';
+import '../services/music_preview.dart';
 import '../theme/brutal_theme.dart';
 
 /// Telegram-style audio trimmer (Пункт 4): the selection WINDOW sits right on
@@ -44,7 +43,6 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
   // Rhythm doesn't always report a duration — assume 3 min so the UI works.
   late final int _total = widget.totalSec > 0 ? widget.totalSec : 180;
 
-  final AudioPlayer _player = AudioPlayer();
   bool _dragging = false;
 
   double get _maxStart => (_total - _len).clamp(0, _total).toDouble();
@@ -57,29 +55,25 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
 
   @override
   void dispose() {
-    _player.dispose(); // hard stop — no sound leaking out of the sheet
+    // The shared player belongs to the editor flow — the editor restarts its
+    // own preview right after this sheet closes, so just stop here.
+    MusicPreview.i.stop();
     super.dispose();
   }
 
-  /// (Re)plays the currently selected fragment, looped.
+  /// (Re)plays the currently selected fragment, looped — through the ONE
+  /// shared preview player (several players fight under just_audio_background;
+  /// that was the silent-trim bug).
   Future<void> _restartPreview() async {
     final url = widget.audioUrl;
     if (url == null || url.isEmpty) return;
     try {
-      await _player.setAudioSource(
-        ClippingAudioSource(
-          child: AudioSource.uri(
-            url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
-            // just_audio_background is active app-wide: a source WITHOUT a
-            // MediaItem tag throws on load — that was the silent-trim bug.
-            tag: MediaItem(id: 'trim_$url', title: widget.title),
-          ),
-          start: Duration(seconds: _start.round()),
-          end: Duration(seconds: _start.round() + _len),
-        ),
+      await MusicPreview.i.playClip(
+        url,
+        title: widget.title,
+        startSec: _start.round(),
+        lenSec: _len,
       );
-      await _player.setLoopMode(LoopMode.one);
-      await _player.play();
     } catch (_) {}
   }
 

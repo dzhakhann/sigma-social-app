@@ -3,10 +3,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import '../l10n/app_strings.dart';
+import '../services/music_preview.dart';
 import '../theme/brutal_theme.dart';
 import 'music_widgets.dart';
 
@@ -101,7 +100,9 @@ class FavTrackPlayerSheet extends StatefulWidget {
 }
 
 class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
-  final AudioPlayer _player = AudioPlayer();
+  // The ONE shared preview player — several simultaneous players go silent
+  // under just_audio_background; that was the endless-spinner bug.
+  final _player = MusicPreview.i.player;
   bool _ready = false;
   bool _error = false;
 
@@ -114,18 +115,11 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
   Future<void> _init() async {
     setState(() { _error = false; _ready = false; });
     try {
-      // setAudioSource WITH a MediaItem tag: just_audio_background is active
-      // app-wide and rejects untagged sources — that was the silent-player bug.
-      await _player.setAudioSource(AudioSource.uri(
-        Uri.parse((widget.track['url'] ?? '').toString()),
-        tag: MediaItem(
-          id: 'fav_${widget.track['url']}',
-          title: (widget.track['title'] ?? '').toString(),
-          artist: (widget.track['artist'] ?? '').toString(),
-        ),
-      ));
-      await _player.setLoopMode(LoopMode.one);
-      _player.play();
+      await MusicPreview.i.playUrl(
+        (widget.track['url'] ?? '').toString(),
+        title: (widget.track['title'] ?? '').toString(),
+        artist: (widget.track['artist'] ?? '').toString(),
+      );
       if (mounted) setState(() => _ready = true);
     } catch (e) {
       debugPrint('fav track load failed: $e');
@@ -135,7 +129,7 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
 
   @override
   void dispose() {
-    _player.dispose(); // no sound survives the sheet
+    MusicPreview.i.stop(); // no sound survives the sheet
     super.dispose();
   }
 

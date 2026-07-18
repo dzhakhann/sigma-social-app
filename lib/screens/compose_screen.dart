@@ -1,11 +1,10 @@
 import 'dart:convert';
-import 'dart:io' show File, Platform;
+import 'dart:io' show File;
 import 'dart:typed_data' show Uint8List;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart' show RequestType;
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:file_picker/file_picker.dart';
 import '../widgets/music_widgets.dart';
 import 'sigma_gallery_screen.dart';
 import 'story_music_picker_sheet.dart';
@@ -30,8 +29,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
   String? _imageB64;
   String? _gifUrl; // remote GIF (Tenor) — used directly, no re-upload
 
-  /// ONE attached track: Rhythm → {url,title,artist,art}; device file →
-  /// {title} only (never uploaded, so it can't stream for other viewers).
+  /// ONE attached track — Rhythm only: {url, title, artist, art}. Stored as a
+  /// catalog link, costs the server nothing.
   Map? _music;
   bool _posting = false;
 
@@ -64,65 +63,24 @@ class _ComposeScreenState extends State<ComposeScreen> {
     setState(() { _imageB64 = base64Encode(bytes); _gifUrl = null; });
   }
 
-  /// Bug 5: attach music — Rhythm (searchable) or a device file.
+  /// Attach music — Rhythm ONLY: catalog tracks are stored as a link and
+  /// cost the server nothing; device files would need uploading, so they're
+  /// not allowed on posts.
   Future<void> _pickMusic() async {
-    final c = context.k;
-    final source = await showModalBottomSheet<String>(
+    final picked = await showModalBottomSheet<Map>(
       context: context,
-      backgroundColor: c.bg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: Icon(Icons.music_note_rounded, color: c.accent),
-            title: Text(context.t('musicFromRhythm'),
-                style: TextStyle(color: c.ink, fontSize: 15)),
-            onTap: () => Navigator.pop(context, 'rhythm'),
-          ),
-          ListTile(
-            leading: Icon(Icons.audiotrack_rounded, color: c.accent),
-            title: Text(context.t('musicFromDevice'),
-                style: TextStyle(color: c.ink, fontSize: 15)),
-            onTap: () => Navigator.pop(context, 'device'),
-          ),
-        ]),
-      ),
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      isScrollControlled: true,
+      builder: (_) => const MusicPickerSheet(),
     );
-    if (source == null || !mounted) return;
-
-    if (source == 'rhythm') {
-      final picked = await showModalBottomSheet<Map>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black45,
-        isScrollControlled: true,
-        builder: (_) => const MusicPickerSheet(),
-      );
-      if (picked == null || !mounted) return;
-      setState(() => _music = {
-            'url': (picked['audio'] ?? '').toString(),
-            'title': (picked['title'] ?? '').toString(),
-            'artist': (picked['showTitle'] ?? '').toString(),
-            'art': (picked['artwork'] ?? '').toString(),
-          });
-    } else {
-      final res = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg'],
-        allowMultiple: false,
-      );
-      final path = res?.files.single.path;
-      if (path == null || !mounted) return;
-      final name = path
-          .split(Platform.pathSeparator)
-          .last
-          .replaceAll(
-              RegExp(r'\.(mp3|m4a|aac|wav|ogg)$', caseSensitive: false), '');
-      // Device file is NEVER uploaded → only the name travels with the post.
-      setState(() => _music = {'title': name, 'artist': '', 'art': ''});
-    }
+    if (picked == null || !mounted) return;
+    setState(() => _music = {
+          'url': (picked['audio'] ?? '').toString(),
+          'title': (picked['title'] ?? '').toString(),
+          'artist': (picked['showTitle'] ?? '').toString(),
+          'art': (picked['artwork'] ?? '').toString(),
+        });
   }
 
   Future<void> _pickGif() async {
@@ -343,26 +301,35 @@ class _ComposeScreenState extends State<ComposeScreen> {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            _MediaBtn(
-                                icon: Icons.image_rounded,
-                                label: context.t('photoBtn'),
-                                onTap: _pickImage),
-                            const SizedBox(width: 10),
-                            _MediaBtn(
-                                icon: Icons.camera_alt_rounded,
-                                label: context.t('cameraBtn'),
-                                onTap: _takePhoto),
-                            const SizedBox(width: 10),
-                            _MediaBtn(
-                                icon: Icons.gif_box_rounded,
-                                label: 'GIF',
-                                onTap: _pickGif),
-                            const SizedBox(width: 10),
-                            _MediaBtn(
-                                icon: Icons.music_note_rounded,
-                                label: context.t('musicBtn'),
-                                onTap: _pickMusic),
-                            const Spacer(),
+                            // Scrolls sideways so every button stays reachable
+                            // on narrow screens (Музыка used to be cut off).
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(children: [
+                                  _MediaBtn(
+                                      icon: Icons.image_rounded,
+                                      label: context.t('photoBtn'),
+                                      onTap: _pickImage),
+                                  const SizedBox(width: 10),
+                                  _MediaBtn(
+                                      icon: Icons.camera_alt_rounded,
+                                      label: context.t('cameraBtn'),
+                                      onTap: _takePhoto),
+                                  const SizedBox(width: 10),
+                                  _MediaBtn(
+                                      icon: Icons.gif_box_rounded,
+                                      label: 'GIF',
+                                      onTap: _pickGif),
+                                  const SizedBox(width: 10),
+                                  _MediaBtn(
+                                      icon: Icons.music_note_rounded,
+                                      label: context.t('musicBtn'),
+                                      onTap: _pickMusic),
+                                ]),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             EmojiPickerButton(controller: _textCtrl),
                           ],
                         ),
