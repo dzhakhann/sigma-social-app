@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'theme/brutal_theme.dart';
 import 'screens/splash_screen.dart';
@@ -7,6 +8,8 @@ import 'services/deep_links.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Channel between the UI and the story-upload foreground service.
+  FlutterForegroundTask.initCommunicationPort();
   // Load saved language (default = English) before the first frame.
   await loadAppConfig();
   // Enables background audio + lock-screen / notification controls for podcasts.
