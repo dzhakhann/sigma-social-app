@@ -917,12 +917,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _favTrackSection(BrutalColors c) {
     final t = _favTrack;
+    // Bug 4: clear air above AND below the row (owner button too), so it never
+    // crowds the stats card. Empty state adds no phantom spacing for visitors.
     if (t != null) {
-      return FavTrackPill(track: t, onTap: () => _openFavPlayer(t));
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: FavTrackPill(track: t, onTap: () => _openFavPlayer(t)),
+      );
     }
     // No track: owner sees a subtle add button, visitors see nothing.
     if (widget.isOwnProfile) {
-      return FavTrackAddButton(onTap: _pickFavTrack);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: FavTrackAddButton(onTap: _pickFavTrack),
+      );
     }
     return const SizedBox.shrink();
   }
