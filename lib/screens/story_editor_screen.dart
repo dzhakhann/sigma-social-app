@@ -145,6 +145,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   String _audioArtist = '';
   String _audioArtwork = '';
 
+  /// True when the track is a device file: it is NEVER uploaded — the audio is
+  /// burned into the story media at render time instead.
+  bool _audioIsLocal = false;
+
   /// True for the split second we snapshot ONLY the overlay layer (video
   /// stories) — the clip itself is hidden so the PNG stays transparent.
   bool _captureOverlaysOnly = false;
@@ -327,8 +331,18 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       if (!mounted || data == null) return;
       final bytes = data.buffer.asUint8List();
 
-      // Photo stays a PHOTO. Music is DATA (Rhythm link + fragment) — the
-      // viewer streams it and animates the sticker live. No audio copies.
+      // Rhythm track → photo stays a PHOTO, music is DATA (viewer streams).
+      // DEVICE track → it must be audible but is never uploaded, so the audio
+      // is burned into a short MP4 here; the sticker still rides as data.
+      if (_audioIsLocal && _audioUrl != null) {
+        final path = await _renderPhotoWithAudio(bytes);
+        if (!mounted) return;
+        if (path != null) {
+          Navigator.pop(context,
+              StoryCapture.video(path, links: _linkData(), music: _musicData()));
+          return;
+        }
+      }
       Navigator.pop(context,
           StoryCapture.photo(bytes, links: _linkData(), music: _musicData()));
       return;
@@ -341,6 +355,29 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     }
   }
 
+  /// Photo + DEVICE audio → short MP4. Only used for local files (they can't
+  /// be streamed by viewers and are never uploaded standalone). The temp file
+  /// is OS-reclaimed; -ss picks the trimmed fragment, -shortest ends the clip.
+  Future<String?> _renderPhotoWithAudio(Uint8List png) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final imgPath = '${dir.path}/story_$stamp.png';
+      await File(imgPath).writeAsBytes(png);
+      final out = '${dir.path}/story_$stamp.mp4';
+      final cmd = '-y -loop 1 -i "$imgPath" '
+          '-ss $_audioStartSec -i "$_audioUrl" '
+          '-t $_audioSeconds -c:v libx264 -preset veryfast -tune stillimage '
+          '-pix_fmt yuv420p -c:a aac -b:a 128k -shortest "$out"';
+      final session = await FFmpegKit.execute(cmd);
+      if (!ReturnCode.isSuccess(await session.getReturnCode())) return null;
+      try { await File(imgPath).delete(); } catch (_) {}
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The story's ONE track, serialised for the viewer: Rhythm link + fragment
   /// + sticker placement. No audio bytes anywhere.
   Map? _musicData() {
@@ -349,7 +386,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     final stickers = _items.where((e) => e.kind == _ItemKind.music).toList();
     final st = stickers.isEmpty ? null : stickers.first;
     return {
-      'url': url,
+      // Local files are burned into the media — no url means "don't stream".
+      if (!_audioIsLocal) 'url': url,
       'title': _audioTitle ?? '',
       'artist': _audioArtist,
       'art': _audioArtwork,
@@ -382,12 +420,16 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   /// to a transparent PNG the size of the clip, composite it over every frame,
   /// and mix in the chosen track. Returns null if nothing had to change.
   Future<String?> _renderVideoWithOverlays() async {
-    // Music/link stickers are data, not pixels — they don't force a render.
+    // Music/link stickers are data, not pixels — they don't force a render…
+    // except a DEVICE track, whose audio has to be burned into the clip.
+    final burnAudio = _audioIsLocal && _audioUrl != null;
     final burnable = _items.any(
         (it) => it.kind != _ItemKind.music && it.kind != _ItemKind.link);
     final hasOverlays = burnable || _strokes.isNotEmpty;
     final filter = _filters[_filterIdx].$3;
-    if (!hasOverlays && filter.isEmpty) return null; // untouched clip
+    if (!hasOverlays && filter.isEmpty && !burnAudio) {
+      return null; // untouched clip
+    }
     try {
       // Hide the video itself so only the overlays land on the PNG.
       setState(() => _captureOverlaysOnly = true);
@@ -406,18 +448,27 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       final out = '${dir.path}/story_$stamp.mp4';
 
       final cmd = StringBuffer('-y -i "${widget.videoPath}" ');
+      if (burnAudio) cmd.write('-ss $_audioStartSec -i "$_audioUrl" ');
       if (hasOverlays) {
         cmd.write('-i "$ovl" ');
         // Filter the base video first, then composite the overlay layer.
+        final ovlIdx = burnAudio ? 2 : 1;
         final baseChain =
             filter.isEmpty ? '[0:v]' : '[0:v]$filter[vbase];[vbase]';
         cmd.write('-filter_complex '
-            '"[1:v]scale=iw:ih[o];$baseChain[o]overlay=(W-w)/2:(H-h)/2" ');
+            '"[$ovlIdx:v]scale=iw:ih[o];$baseChain[o]overlay=(W-w)/2:(H-h)/2" ');
       } else if (filter.isNotEmpty) {
         cmd.write('-vf "$filter" ');
       }
-      cmd.write('-c:v libx264 -preset veryfast -pix_fmt yuv420p '
-          '-c:a copy "$out"');
+      if (burnAudio) {
+        // Device track replaces the clip's own sound; -shortest ends with video.
+        cmd.write('-map ${hasOverlays ? '0:v' : '0:v'} -map 1:a -shortest '
+            '-c:v libx264 -preset veryfast -pix_fmt yuv420p '
+            '-c:a aac -b:a 128k "$out"');
+      } else {
+        cmd.write('-c:v libx264 -preset veryfast -pix_fmt yuv420p '
+            '-c:a copy "$out"');
+      }
 
       final session = await FFmpegKit.execute(cmd.toString());
       if (!ReturnCode.isSuccess(await session.getReturnCode())) return null;
@@ -518,6 +569,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       case _ElementAction.emoji: _showEmojiStrip(); break;
       case _ElementAction.text: _openTextInput(); break;
       case _ElementAction.music: _pickMusic(); break;
+      case _ElementAction.deviceMusic: _pickDeviceAudio(); break;
       case _ElementAction.gif: _addGif(); break;
       case _ElementAction.hashtag:
         _askText(context.t('elHashtag'), Icons.tag_rounded, prefix: '#');
@@ -654,6 +706,40 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     _addBadge('$prefix$v', icon);
   }
 
+  // ── Music from the device (Bug 2): local file, same trimmer & sticker ─────
+  Future<void> _pickDeviceAudio() async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg'],
+      allowMultiple: false,
+    );
+    final path = res?.files.single.path;
+    if (path == null || !mounted) return;
+    final name = path
+        .split(Platform.pathSeparator)
+        .last
+        .replaceAll(RegExp(r'\.(mp3|m4a|aac|wav|ogg)$', caseSensitive: false), '');
+    setState(() {
+      _audioUrl = path;
+      _audioTitle = name;
+      _audioArtist = '';
+      _audioArtwork = '';
+      _audioTotalSec = 0;
+      _audioIsLocal = true;
+      // HARD RULE: one track per story — replaces a Rhythm pick too.
+      _items.removeWhere((it) => it.kind == _ItemKind.music);
+      _items.add(_StoryItem(
+        text: name,
+        kind: _ItemKind.music,
+        pos: const Offset(0.5, 0.22),
+        styleIdx: 1,
+      ));
+    });
+    _vid?.setVolume(0);
+    if (!widget.isVideo) await _askAudioLength();
+    _startPreview();
+  }
+
   // ── Music from "Rhythm" — searchable picker (Пункт 1) ─────────────────────
   Future<void> _pickMusic() async {
     final picked = await showModalBottomSheet<Map>(
@@ -672,6 +758,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       // Rhythm reports track length in seconds — lets the trim sheet show the
       // real timeline instead of guessing.
       _audioTotalSec = int.tryParse((picked['duration'] ?? '').toString()) ?? 0;
+      _audioIsLocal = false;
       // HARD RULE: one track per story — a new pick replaces the old one.
       _items.removeWhere((it) => it.kind == _ItemKind.music);
     });
@@ -1514,7 +1601,7 @@ class _DrawPainter extends CustomPainter {
 //  "Add element" sheet — frosted glass, card grid, spring press feedback.
 // ═══════════════════════════════════════════════════════════════════════════
 enum _ElementAction {
-  location, link, weather, time, emoji, text, music, gif, hashtag, mention,
+  location, link, weather, time, emoji, text, music, deviceMusic, gif, hashtag, mention,
 }
 
 class _ElementsSheet extends StatelessWidget {
@@ -1530,7 +1617,9 @@ class _ElementsSheet extends StatelessWidget {
       (_ElementAction.time, Icons.schedule_rounded, context.t('elTime')),
       (_ElementAction.emoji, Icons.emoji_emotions_rounded, context.t('elEmoji')),
       (_ElementAction.text, Icons.text_fields_rounded, context.t('elText')),
-      (_ElementAction.music, Icons.music_note_rounded, context.t('elMusic')),
+      (_ElementAction.music, Icons.music_note_rounded, context.t('musicFromRhythm')),
+      (_ElementAction.deviceMusic, Icons.audiotrack_rounded,
+          context.t('musicFromDevice')),
       (_ElementAction.gif, Icons.gif_box_rounded, context.t('elGif')),
       (_ElementAction.hashtag, Icons.tag_rounded, context.t('elHashtag')),
       (_ElementAction.mention, Icons.alternate_email_rounded, context.t('elMention')),
