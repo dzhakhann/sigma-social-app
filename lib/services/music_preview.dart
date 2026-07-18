@@ -57,9 +57,24 @@ class MusicPreview {
       await player.setVolume(volume);
       await player.play();
     } catch (e) {
-      debugPrint('music preview clip failed: $e');
-      currentUrl.value = null;
-      rethrow;
+      // Clipping needs a source with a KNOWN duration; some streams don't
+      // report one and the clip load throws. Fall back to the plain track
+      // seeked to the fragment start — looping is lost, but sound is there.
+      debugPrint('music preview clip failed, falling back: $e');
+      try {
+        await player.setAudioSource(AudioSource.uri(
+          url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
+          tag: MediaItem(id: 'preview_$url', title: title),
+        ));
+        await player.setLoopMode(LoopMode.one);
+        await player.setVolume(volume);
+        await player.seek(Duration(seconds: startSec));
+        await player.play();
+      } catch (e2) {
+        debugPrint('music preview fallback failed too: $e2');
+        currentUrl.value = null;
+        rethrow;
+      }
     }
   }
 

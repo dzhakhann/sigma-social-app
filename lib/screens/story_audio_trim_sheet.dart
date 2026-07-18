@@ -44,6 +44,7 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
   late final int _total = widget.totalSec > 0 ? widget.totalSec : 180;
 
   bool _dragging = false;
+  bool _soundFailed = false;
 
   double get _maxStart => (_total - _len).clamp(0, _total).toDouble();
 
@@ -74,7 +75,11 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
         startSec: _start.round(),
         lenSec: _len,
       );
-    } catch (_) {}
+      if (mounted && _soundFailed) setState(() => _soundFailed = false);
+    } catch (_) {
+      // Make the failure VISIBLE instead of silently trimming with no sound.
+      if (mounted) setState(() => _soundFailed = true);
+    }
   }
 
   String _fmt(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
@@ -119,6 +124,25 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
                             fontWeight: FontWeight.w800)),
                   ),
                 ]),
+                if (_soundFailed) ...[
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Icon(Icons.volume_off_rounded,
+                        color: Colors.redAccent, size: 15),
+                    const SizedBox(width: 6),
+                    Text(context.t('trackLoadFailed'),
+                        style: const TextStyle(
+                            color: Colors.redAccent, fontSize: 12.5)),
+                    TextButton(
+                      onPressed: _restartPreview,
+                      child: Text(context.t('retryBtn'),
+                          style: TextStyle(
+                              color: c.accent2,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                ],
                 const SizedBox(height: 18),
                 // ── Waveform + draggable window (the whole interaction) ──
                 LayoutBuilder(builder: (_, box) {

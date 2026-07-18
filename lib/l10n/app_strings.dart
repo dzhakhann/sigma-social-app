@@ -8,6 +8,15 @@ import '../theme/brutal_theme.dart';
 class S {
   static const Map<String, Map<String, String>> _v = {
     'en': {
+      'storyUploading': 'Uploading story…',
+      'storyPublished': 'Story published',
+      'storyUploadFailed': 'Upload failed',
+      'retryBtn': 'Retry',
+      'musicSearchHint': 'Search music',
+      'musicNotFound': 'Nothing found',
+      'vRotate': 'Rotate',
+      'vFlip': 'Flip',
+      'linkName': 'Name',
       'appName': 'Sigmacta',
       'tagline': 'your space',
       // auth
@@ -488,6 +497,15 @@ class S {
       'verifyWait': 'You can apply again in {n} days.',
     },
     'ru': {
+      'storyUploading': 'Загрузка сторис…',
+      'storyPublished': 'Сторис опубликована',
+      'storyUploadFailed': 'Не удалось загрузить',
+      'retryBtn': 'Повторить',
+      'musicSearchHint': 'Поиск музыки',
+      'musicNotFound': 'Ничего не найдено',
+      'vRotate': 'Поворот',
+      'vFlip': 'Отразить',
+      'linkName': 'Название',
       'appName': 'Sigmacta',
       'tagline': 'твоё пространство',
       // auth

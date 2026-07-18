@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
 import '../services/api_service.dart';
+import '../services/music_preview.dart';
 import '../theme/brutal_theme.dart';
 
 /// Music picker with live search (Пункт 1). Debounced 300 ms, searches Rhythm
@@ -167,7 +168,19 @@ class _MusicPickerSheetState extends State<MusicPickerSheet> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: Colors.white54, fontSize: 12)),
-      onTap: () => Navigator.pop(context, t),
+      onTap: () {
+        // Instagram behaviour: the track starts playing the moment you tap it,
+        // BEFORE any trimming — you immediately hear what you picked.
+        final url = (t['audio'] ?? '').toString();
+        if (url.isNotEmpty) {
+          MusicPreview.i.playUrl(
+            url,
+            title: (t['title'] ?? '').toString(),
+            artist: (t['showTitle'] ?? '').toString(),
+          );
+        }
+        Navigator.pop(context, t);
+      },
     );
   }
 }
