@@ -1,5 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 /// Shared music visuals: the animated equalizer, the Instagram-style story
 /// sticker card and a marquee for long titles. One implementation everywhere —
@@ -190,6 +193,128 @@ class _MarqueeState extends State<Marquee>
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// Compact music bar for a POST card (Bug 5): artwork, title/artist, play —
+/// tap toggles playback right in the feed. One static player is shared by all
+/// cards, so starting a track stops the previous one.
+class PostMusicBar extends StatefulWidget {
+  final Map track; // {url?, title, artist, art}
+  const PostMusicBar({Key? key, required this.track}) : super(key: key);
+
+  /// Shared across every card: only one post plays at a time.
+  static final AudioPlayer _player = AudioPlayer();
+  static final ValueNotifier<String?> _playingUrl = ValueNotifier(null);
+
+  @override
+  State<PostMusicBar> createState() => _PostMusicBarState();
+}
+
+class _PostMusicBarState extends State<PostMusicBar> {
+  String get _url => (widget.track['url'] ?? '').toString();
+
+  Future<void> _toggle() async {
+    if (_url.isEmpty) return; // device-only track: nothing to stream
+    HapticFeedback.selectionClick();
+    final p = PostMusicBar._player;
+    if (PostMusicBar._playingUrl.value == _url) {
+      await p.pause();
+      PostMusicBar._playingUrl.value = null;
+      return;
+    }
+    try {
+      PostMusicBar._playingUrl.value = _url;
+      await p.setAudioSource(AudioSource.uri(
+        Uri.parse(_url),
+        // just_audio_background requires the tag on every source.
+        tag: MediaItem(
+          id: 'post_$_url',
+          title: (widget.track['title'] ?? '').toString(),
+          artist: (widget.track['artist'] ?? '').toString(),
+        ),
+      ));
+      await p.setLoopMode(LoopMode.off);
+      await p.play();
+    } catch (_) {
+      PostMusicBar._playingUrl.value = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final art = (widget.track['art'] ?? '').toString();
+    final playable = _url.isNotEmpty;
+    return ValueListenableBuilder<String?>(
+      valueListenable: PostMusicBar._playingUrl,
+      builder: (_, playing, __) {
+        final isPlaying = playing == _url && playable;
+        return GestureDetector(
+          onTap: _toggle,
+          child: Container(
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Row(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Stack(fit: StackFit.expand, children: [
+                    art.isNotEmpty
+                        ? CachedNetworkImage(imageUrl: art, fit: BoxFit.cover)
+                        : Container(
+                            color: const Color(0xFF222327),
+                            child: const Icon(Icons.music_note_rounded,
+                                size: 18, color: Colors.white54)),
+                    if (isPlaying) ...[
+                      Container(color: Colors.black38),
+                      const Center(child: EqualizerBars(scale: 0.55)),
+                    ],
+                  ]),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text((widget.track['title'] ?? '').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700)),
+                    if ((widget.track['artist'] ?? '').toString().isNotEmpty)
+                      Text((widget.track['artist'] ?? '').toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 11.5)),
+                  ],
+                ),
+              ),
+              Icon(
+                !playable
+                    ? Icons.music_off_rounded
+                    : isPlaying
+                        ? Icons.pause_circle_filled_rounded
+                        : Icons.play_circle_fill_rounded,
+                color: playable ? Colors.white : Colors.white24,
+                size: 30,
+              ),
+            ]),
+          ),
+        );
+      },
     );
   }
 }

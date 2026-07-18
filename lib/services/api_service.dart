@@ -123,11 +123,13 @@ class ApiService {
   }
 
   static Future<Map> createPost(String userId, String content,
-      {String? imageUrl}) =>
+      {String? imageUrl, Map? music}) =>
       _post('/posts', {
         'user_id': userId,
         'content': content,
         if (imageUrl != null) 'image_url': imageUrl,
+        // Only a Rhythm catalog reference — audio is never uploaded.
+        if (music != null) 'music': music,
       });
 
   static Future<Map> likePost(String postId, String userId) =>

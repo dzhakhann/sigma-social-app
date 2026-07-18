@@ -1,11 +1,14 @@
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
 import 'dart:typed_data' show Uint8List;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart' show RequestType;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
+import '../widgets/music_widgets.dart';
 import 'sigma_gallery_screen.dart';
+import 'story_music_picker_sheet.dart';
 import '../services/api_service.dart';
 import '../services/events.dart';
 import '../theme/brutal_theme.dart';
@@ -26,6 +29,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final _textCtrl = TextEditingController();
   String? _imageB64;
   String? _gifUrl; // remote GIF (Tenor) — used directly, no re-upload
+
+  /// ONE attached track: Rhythm → {url,title,artist,art}; device file →
+  /// {title} only (never uploaded, so it can't stream for other viewers).
+  Map? _music;
   bool _posting = false;
 
   bool get _canPost =>
@@ -55,6 +62,67 @@ class _ComposeScreenState extends State<ComposeScreen> {
     if (file == null) return;
     final bytes = await file.readAsBytes();
     setState(() { _imageB64 = base64Encode(bytes); _gifUrl = null; });
+  }
+
+  /// Bug 5: attach music — Rhythm (searchable) or a device file.
+  Future<void> _pickMusic() async {
+    final c = context.k;
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: c.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: Icon(Icons.music_note_rounded, color: c.accent),
+            title: Text(context.t('musicFromRhythm'),
+                style: TextStyle(color: c.ink, fontSize: 15)),
+            onTap: () => Navigator.pop(context, 'rhythm'),
+          ),
+          ListTile(
+            leading: Icon(Icons.audiotrack_rounded, color: c.accent),
+            title: Text(context.t('musicFromDevice'),
+                style: TextStyle(color: c.ink, fontSize: 15)),
+            onTap: () => Navigator.pop(context, 'device'),
+          ),
+        ]),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    if (source == 'rhythm') {
+      final picked = await showModalBottomSheet<Map>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black45,
+        isScrollControlled: true,
+        builder: (_) => const MusicPickerSheet(),
+      );
+      if (picked == null || !mounted) return;
+      setState(() => _music = {
+            'url': (picked['audio'] ?? '').toString(),
+            'title': (picked['title'] ?? '').toString(),
+            'artist': (picked['showTitle'] ?? '').toString(),
+            'art': (picked['artwork'] ?? '').toString(),
+          });
+    } else {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg'],
+        allowMultiple: false,
+      );
+      final path = res?.files.single.path;
+      if (path == null || !mounted) return;
+      final name = path
+          .split(Platform.pathSeparator)
+          .last
+          .replaceAll(
+              RegExp(r'\.(mp3|m4a|aac|wav|ogg)$', caseSensitive: false), '');
+      // Device file is NEVER uploaded → only the name travels with the post.
+      setState(() => _music = {'title': name, 'artist': '', 'art': ''});
+    }
   }
 
   Future<void> _pickGif() async {
@@ -87,6 +155,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         widget.user['id'],
         _textCtrl.text.trim(),
         imageUrl: imageUrl,
+        music: _music,
       );
       feedRefresh.value++; // tell Home to reload so the post shows instantly
       if (mounted) Navigator.pop(context, true); // true = posted
@@ -253,6 +322,23 @@ class _ComposeScreenState extends State<ComposeScreen> {
                           ]),
                         ],
 
+                        // ── Attached music preview ────────────────────
+                        if (_music != null) ...[
+                          const SizedBox(height: 12),
+                          Stack(children: [
+                            PostMusicBar(track: _music!),
+                            Positioned(
+                              top: 4, right: -6,
+                              child: IconButton(
+                                icon: const Icon(Icons.close_rounded,
+                                    color: Colors.white54, size: 18),
+                                onPressed: () =>
+                                    setState(() => _music = null),
+                              ),
+                            ),
+                          ]),
+                        ],
+
                         // ── Media buttons row ─────────────────────────
                         const SizedBox(height: 16),
                         Row(
@@ -271,6 +357,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
                                 icon: Icons.gif_box_rounded,
                                 label: 'GIF',
                                 onTap: _pickGif),
+                            const SizedBox(width: 10),
+                            _MediaBtn(
+                                icon: Icons.music_note_rounded,
+                                label: context.t('musicBtn'),
+                                onTap: _pickMusic),
                             const Spacer(),
                             EmojiPickerButton(controller: _textCtrl),
                           ],

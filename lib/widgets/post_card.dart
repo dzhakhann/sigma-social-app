@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'music_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/brutal_theme.dart';
 import 'action_menu.dart';
@@ -80,6 +81,13 @@ class PostCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: Text(content,
                 style: TextStyle(color: c.ink, fontSize: 15, height: 1.45)),
+          ),
+
+        // ── Attached music (Bug 5): tap = play/pause right in the feed ────
+        if (post['music'] is Map)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: PostMusicBar(track: post['music'] as Map),
           ),
 
         // ── Image ─────────────────────────────────────────────────────────
