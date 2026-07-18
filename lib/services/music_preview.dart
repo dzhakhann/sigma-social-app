@@ -23,6 +23,10 @@ class MusicPreview {
   /// URL of whatever is currently loaded (drives play-icons in post bars).
   final ValueNotifier<String?> currentUrl = ValueNotifier(null);
 
+  // What exactly is loaded: -1/-1 = full track, otherwise the clip fragment.
+  int _clipStart = -1;
+  int _clipLen = -1;
+
   void _quietPodcasts() {
     try {
       PodcastAudio.instance.player.pause();
@@ -39,9 +43,21 @@ class MusicPreview {
     double volume = 1.0,
   }) async {
     if (url.isEmpty) return;
+    // Same fragment already playing → nothing to do. Re-preparing a stream
+    // takes seconds on mobile data; skipping it is what makes the flow feel
+    // instant (picker → trimmer → editor without re-loads).
+    if (currentUrl.value == url &&
+        player.playing &&
+        _clipStart == startSec &&
+        _clipLen == lenSec) {
+      await player.setVolume(volume);
+      return;
+    }
     _quietPodcasts();
     try {
       currentUrl.value = url;
+      _clipStart = startSec;
+      _clipLen = lenSec;
       await player.setAudioSource(
         ClippingAudioSource(
           child: AudioSource.uri(
@@ -86,9 +102,17 @@ class MusicPreview {
     bool loop = true,
   }) async {
     if (url.isEmpty) return;
+    // The same full track is already on → just make sure it's playing.
+    if (currentUrl.value == url &&
+        _clipStart == -1 &&
+        player.playing) {
+      return;
+    }
     _quietPodcasts();
     try {
       currentUrl.value = url;
+      _clipStart = -1;
+      _clipLen = -1;
       await player.setAudioSource(AudioSource.uri(
         Uri.parse(url),
         tag: MediaItem(id: 'play_$url', title: title, artist: artist),
@@ -118,6 +142,8 @@ class MusicPreview {
   /// Stops and clears — call when the owning screen/sheet goes away.
   Future<void> stop() async {
     currentUrl.value = null;
+    _clipStart = -1;
+    _clipLen = -1;
     try {
       await player.stop();
     } catch (_) {}

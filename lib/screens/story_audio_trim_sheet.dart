@@ -51,16 +51,17 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
   @override
   void initState() {
     super.initState();
-    _restartPreview();
+    // The picker usually started this track a moment ago — if it's already
+    // sounding, DON'T reload (a stream re-prepare costs seconds on mobile
+    // data). The exact fragment loads on the first drag instead.
+    final alreadyPlaying = MusicPreview.i.currentUrl.value == widget.audioUrl &&
+        MusicPreview.i.player.playing;
+    if (!alreadyPlaying) _restartPreview();
   }
 
-  @override
-  void dispose() {
-    // The shared player belongs to the editor flow — the editor restarts its
-    // own preview right after this sheet closes, so just stop here.
-    MusicPreview.i.stop();
-    super.dispose();
-  }
+  // NOTE: no stop() on dispose — the music keeps flowing into the editor
+  // (Instagram behaviour). Stopping here raced with the editor restarting the
+  // preview and killed the sound after trimming.
 
   /// (Re)plays the currently selected fragment, looped — through the ONE
   /// shared preview player (several players fight under just_audio_background;
