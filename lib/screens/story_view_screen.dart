@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
@@ -74,11 +75,20 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   Map? _music;
 
   Future<void> _startMusic(Map m) async {
+    final url = (m['url'] ?? '').toString();
+    // Local-file tracks are burned into the media at render time — there is
+    // nothing to stream, the sticker alone is enough.
+    if (url.isEmpty) return;
     try {
       final start = (m['start'] as num?)?.toInt() ?? 0;
       final len = ((m['len'] as num?)?.toInt() ?? 15).clamp(3, 60);
       await _track.setAudioSource(ClippingAudioSource(
-        child: AudioSource.uri(Uri.parse((m['url'] ?? '').toString())),
+        child: AudioSource.uri(
+          Uri.parse(url),
+          // Required by just_audio_background — loads fail without a tag.
+          tag: MediaItem(
+              id: 'story_music', title: (m['title'] ?? '').toString()),
+        ),
         start: Duration(seconds: start),
         end: Duration(seconds: start + len),
       ));

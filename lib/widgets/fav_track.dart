@@ -2,7 +2,9 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 import '../l10n/app_strings.dart';
 import '../theme/brutal_theme.dart';
@@ -101,6 +103,7 @@ class FavTrackPlayerSheet extends StatefulWidget {
 class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
   final AudioPlayer _player = AudioPlayer();
   bool _ready = false;
+  bool _error = false;
 
   @override
   void initState() {
@@ -109,12 +112,25 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
   }
 
   Future<void> _init() async {
+    setState(() { _error = false; _ready = false; });
     try {
-      await _player.setUrl((widget.track['url'] ?? '').toString());
+      // setAudioSource WITH a MediaItem tag: just_audio_background is active
+      // app-wide and rejects untagged sources — that was the silent-player bug.
+      await _player.setAudioSource(AudioSource.uri(
+        Uri.parse((widget.track['url'] ?? '').toString()),
+        tag: MediaItem(
+          id: 'fav_${widget.track['url']}',
+          title: (widget.track['title'] ?? '').toString(),
+          artist: (widget.track['artist'] ?? '').toString(),
+        ),
+      ));
       await _player.setLoopMode(LoopMode.one);
-      await _player.play();
+      _player.play();
       if (mounted) setState(() => _ready = true);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('fav track load failed: $e');
+      if (mounted) setState(() => _error = true);
+    }
   }
 
   @override
@@ -253,7 +269,23 @@ class _FavTrackPlayerSheetState extends State<FavTrackPlayerSheet> {
                     );
                   },
                 ),
-                if (!_ready)
+                if (_error)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(children: [
+                      Text(context.t('trackLoadFailed'),
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 13)),
+                      TextButton(
+                        onPressed: _init,
+                        child: Text(context.t('retryBtn'),
+                            style: TextStyle(
+                                color: c.accent2,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ]),
+                  )
+                else if (!_ready)
                   const Padding(
                     padding: EdgeInsets.only(top: 10),
                     child: SizedBox(

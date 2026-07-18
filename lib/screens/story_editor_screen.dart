@@ -6,6 +6,7 @@ import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -226,7 +227,10 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       await _preview.setAudioSource(
         ClippingAudioSource(
           child: AudioSource.uri(
-              url.startsWith('http') ? Uri.parse(url) : Uri.file(url)),
+            url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
+            // Required by just_audio_background — loads fail without a tag.
+            tag: MediaItem(id: 'story_preview', title: _audioTitle ?? ''),
+          ),
           start: start,
           end: end,
         ),

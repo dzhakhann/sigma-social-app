@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 import '../l10n/app_strings.dart';
 import '../theme/brutal_theme.dart';
@@ -68,7 +69,11 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
       await _player.setAudioSource(
         ClippingAudioSource(
           child: AudioSource.uri(
-              url.startsWith('http') ? Uri.parse(url) : Uri.file(url)),
+            url.startsWith('http') ? Uri.parse(url) : Uri.file(url),
+            // just_audio_background is active app-wide: a source WITHOUT a
+            // MediaItem tag throws on load — that was the silent-trim bug.
+            tag: MediaItem(id: 'trim_$url', title: widget.title),
+          ),
           start: Duration(seconds: _start.round()),
           end: Duration(seconds: _start.round() + _len),
         ),

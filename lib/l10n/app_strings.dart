@@ -441,6 +441,9 @@ class S {
       'newsHistEmpty': 'Stories you read will appear here',
       'newsRefresh': 'Refresh',
       'newsUndo': 'Undo',
+      'favTrackAdd': 'Add favorite track', 'favTrackChange': 'Change',
+      'favTrackRemove': 'Remove', 'trackLoadFailed': "Couldn't load the track",
+      'musicFromRhythm': 'Music from Rhythm', 'musicFromDevice': 'Music from device',
       // in-app gallery
       'galleryTitle': 'Gallery',
       'galleryEmpty': 'No media on this device',
@@ -915,6 +918,9 @@ class S {
       'newsCaughtUpSub': 'Новые истории появятся завтра.',
       'newsRefresh': 'Обновить',
       'newsUndo': 'Вернуть',
+      'favTrackAdd': 'Добавить любимый трек', 'favTrackChange': 'Изменить',
+      'favTrackRemove': 'Убрать', 'trackLoadFailed': 'Не удалось загрузить трек',
+      'musicFromRhythm': 'Музыка из Ритма', 'musicFromDevice': 'Музыка из телефона',
       // своя галерея
       'galleryTitle': 'Галерея',
       'galleryEmpty': 'На устройстве нет медиа',
