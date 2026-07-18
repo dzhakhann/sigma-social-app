@@ -87,6 +87,51 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
   Timer? _recTimer;
   Duration _recElapsed = Duration.zero;
 
+  // ── Zoom (pinch + drag-up while recording) ──
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _zoom = 1.0;
+  double _baseZoom = 1.0;
+  bool _showZoom = false;
+  Timer? _zoomHideTimer;
+
+  // ── Tap-to-focus ──
+  Offset? _focusPoint; // in preview-widget coordinates
+  Timer? _focusHideTimer;
+  double _zoomDragAnchor = 0; // shutter drag-to-zoom
+  double _zoomDragBase = 1.0;
+
+  Future<void> _applyZoom(double z) async {
+    final clamped = z.clamp(_minZoom, _maxZoom);
+    if ((clamped - _zoom).abs() < 0.01) return;
+    _zoom = clamped;
+    try { await _ctrl?.setZoomLevel(_zoom); } catch (_) {}
+    if (mounted) {
+      setState(() => _showZoom = true);
+      _zoomHideTimer?.cancel();
+      _zoomHideTimer = Timer(const Duration(seconds: 2),
+          () { if (mounted) setState(() => _showZoom = false); });
+    }
+  }
+
+  Future<void> _focusAt(Offset local, Size box) async {
+    final ctrl = _ctrl;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    // Camera plugin wants a 0..1 point relative to the preview.
+    final x = (local.dx / box.width).clamp(0.0, 1.0);
+    final y = (local.dy / box.height).clamp(0.0, 1.0);
+    try {
+      await ctrl.setFocusPoint(Offset(x, y));
+      await ctrl.setExposurePoint(Offset(x, y));
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _focusPoint = local);
+      _focusHideTimer?.cancel();
+      _focusHideTimer = Timer(const Duration(milliseconds: 1100),
+          () { if (mounted) setState(() => _focusPoint = null); });
+    }
+  }
+
 
   Future<void> _applyFlashMode(CameraController ctrl) async {
     if (!_flash) {
@@ -127,7 +172,9 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
     await old?.dispose();
     final ctrl = CameraController(
       _cameras[idx],
-      ResolutionPreset.high,
+      // Best quality the device offers (targets up to 1080p); the story is
+      // re-compressed on publish so the file stays light for others.
+      ResolutionPreset.veryHigh,
       // Audio on from the start: hold-to-record needs a sound track, and
       // re-creating the controller at the moment you press would lose the first
       // second of the clip.
@@ -143,6 +190,12 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
       } catch (_) {}
       _camIdx = idx;
       await _applyFlashMode(ctrl);
+      // Zoom range for pinch + the drag-to-zoom gesture.
+      try {
+        _minZoom = await ctrl.getMinZoomLevel();
+        _maxZoom = await ctrl.getMaxZoomLevel();
+      } catch (_) { _minZoom = 1.0; _maxZoom = 1.0; }
+      _zoom = 1.0;
       if (mounted) {
         setState(() {
           _ctrl = ctrl;
@@ -299,21 +352,84 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(children: [
-        // ── Preview ────────────────────────────────────────────────────
+        // ── Preview + gestures (pinch zoom · tap focus · double-tap flip) ─
         Positioned.fill(
           child: ctrl != null && ctrl.value.isInitialized
-              ? FittedBox(
-                  fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    width: ctrl.value.previewSize?.height ?? 1080,
-                    height: ctrl.value.previewSize?.width ?? 1920,
-                    child: CameraPreview(ctrl),
-                  ),
-                )
+              ? LayoutBuilder(builder: (_, box) {
+                  final size = Size(box.maxWidth, box.maxHeight);
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onScaleStart: (_) => _baseZoom = _zoom,
+                    onScaleUpdate: (d) {
+                      if (d.scale != 1.0) _applyZoom(_baseZoom * d.scale);
+                    },
+                    onTapUp: (d) => _focusAt(d.localPosition, size),
+                    onDoubleTap: _flip,
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: ctrl.value.previewSize?.height ?? 1080,
+                        height: ctrl.value.previewSize?.width ?? 1920,
+                        child: CameraPreview(ctrl),
+                      ),
+                    ),
+                  );
+                })
               : const Center(
                   child: CircularProgressIndicator(color: Colors.white)),
         ),
+
+        // ── Focus ring where you tapped ────────────────────────────────
+        if (_focusPoint != null)
+          Positioned(
+            left: _focusPoint!.dx - 34,
+            top: _focusPoint!.dy - 34,
+            child: IgnorePointer(
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey(_focusPoint),
+                tween: Tween(begin: 1.35, end: 1.0),
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                builder: (_, v, __) => Transform.scale(
+                  scale: v,
+                  child: Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.amberAccent, width: 1.8),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // ── Zoom pill (e.g. 2.3×) while zooming ────────────────────────
+        if (_showZoom && _maxZoom > 1.01)
+          Positioned(
+            bottom: MediaQuery.of(context).padding.bottom + 130,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('${_zoom.toStringAsFixed(1)}×',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
+          ),
 
         // ── Virtual front flash: white screen during the exposure ──────
         if (_screenFlash)
@@ -395,12 +511,23 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
                       size: 48),
                 ),
               ),
-              // Shutter: tap = photo, press-and-hold = video (Instagram).
+              // Shutter: tap = photo, press-and-hold = video. While holding,
+              // drag UP to zoom in / DOWN to zoom out (Instagram).
               GestureDetector(
                 onTap: _shoot,
-                onLongPressStart: (_) => _startRecording(),
+                onLongPressStart: (d) {
+                  _zoomDragAnchor = d.globalPosition.dy;
+                  _zoomDragBase = _zoom;
+                  _startRecording();
+                },
+                onLongPressMoveUpdate: (d) {
+                  if (!_recording || _maxZoom <= 1.01) return;
+                  // ~250px of upward drag spans the whole zoom range.
+                  final dy = _zoomDragAnchor - d.globalPosition.dy;
+                  _applyZoom(_zoomDragBase +
+                      (dy / 250) * (_maxZoom - _minZoom));
+                },
                 onLongPressEnd: (_) => _stopRecording(),
-                // Releasing after dragging off the button must still stop.
                 onLongPressCancel: () { if (_recording) _stopRecording(); },
                 child: SizedBox(
                   width: 92,
@@ -481,6 +608,8 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
   @override
   void dispose() {
     _recTimer?.cancel();
+    _zoomHideTimer?.cancel();
+    _focusHideTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _ctrl?.dispose();
     super.dispose();

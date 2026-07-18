@@ -24,6 +24,10 @@ class AudioTrimSheet extends StatefulWidget {
   /// Track source (http url or local file path) — played as a live preview.
   final String? audioUrl;
 
+  /// Upper bound on the fragment length. For a video story this is the video's
+  /// own length (the music can't outlast the clip); 60 for photo stories.
+  final int maxLen;
+
   const AudioTrimSheet({
     Key? key,
     required this.title,
@@ -31,6 +35,7 @@ class AudioTrimSheet extends StatefulWidget {
     required this.startSec,
     required this.lenSec,
     this.audioUrl,
+    this.maxLen = 60,
   }) : super(key: key);
 
   @override
@@ -266,7 +271,8 @@ class _AudioTrimSheetState extends State<AudioTrimSheet> {
                   spacing: 8,
                   alignment: WrapAlignment.center,
                   children: [
-                    for (final s in [5, 10, 15, 30, 60])
+                    for (final s in const [5, 10, 15, 20, 30, 45, 60]
+                        .where((v) => v <= widget.maxLen))
                       ChoiceChip(
                         label: Text('$s ${context.t('secShort')}'),
                         selected: _len == s,

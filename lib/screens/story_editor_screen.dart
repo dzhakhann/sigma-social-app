@@ -739,7 +739,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       ));
     });
     _vid?.setVolume(0);
-    if (!widget.isVideo) await _askAudioLength();
+    await _askAudioLength();
     _startPreview();
   }
 
@@ -775,13 +775,21 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
           pos: const Offset(0.5, 0.22),
           styleIdx: 1, // white Instagram-style card by default
         )));
-    if (!widget.isVideo) await _askAudioLength();
+    await _askAudioLength();
     _startPreview();
   }
 
   /// Audio editor: pick WHICH part of the track plays and for how long.
   /// (Only for photo stories — a video keeps its own length.)
+  int get _videoLenSec {
+    final d = _vid?.value.duration.inSeconds ?? 0;
+    return d <= 0 ? 0 : d.clamp(1, 60);
+  }
+
   Future<void> _askAudioLength() async {
+    // For a video story the music can't outlast the clip — cap the length.
+    final maxLen = widget.isVideo && _videoLenSec > 0 ? _videoLenSec : 60;
+    final initLen = _audioSeconds.clamp(5, maxLen);
     final res = await showModalBottomSheet<(int start, int len)>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -791,8 +799,9 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         title: _audioTitle ?? '',
         totalSec: _audioTotalSec,
         startSec: _audioStartSec,
-        lenSec: _audioSeconds,
+        lenSec: initLen,
         audioUrl: _audioUrl,
+        maxLen: maxLen,
       ),
     );
     if (res != null && mounted) {
