@@ -101,6 +101,43 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
   double _zoomDragAnchor = 0; // shutter drag-to-zoom
   double _zoomDragBase = 1.0;
 
+  // ── Exposure (slider next to the focus ring) ──
+  double _minExp = 0, _maxExp = 0, _exp = 0;
+  bool _showExp = false;
+  Timer? _expHideTimer;
+
+  // ── AE/AF lock ──
+  bool _aeAfLocked = false;
+
+  Future<void> _setExposure(double v) async {
+    final clamped = v.clamp(_minExp, _maxExp);
+    _exp = clamped;
+    try { await _ctrl?.setExposureOffset(_exp); } catch (_) {}
+    if (mounted) {
+      setState(() => _showExp = true);
+      _expHideTimer?.cancel();
+      _expHideTimer = Timer(const Duration(seconds: 3),
+          () { if (mounted) setState(() => _showExp = false); });
+    }
+  }
+
+  Future<void> _toggleAeAfLock(Offset local, Size box) async {
+    final ctrl = _ctrl;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    HapticFeedback.mediumImpact();
+    final lock = !_aeAfLocked;
+    try {
+      // Lock/unlock focus + exposure at the touched point.
+      final x = (local.dx / box.width).clamp(0.0, 1.0);
+      final y = (local.dy / box.height).clamp(0.0, 1.0);
+      await ctrl.setFocusPoint(Offset(x, y));
+      await ctrl.setExposurePoint(Offset(x, y));
+      await ctrl.setFocusMode(lock ? FocusMode.locked : FocusMode.auto);
+      await ctrl.setExposureMode(lock ? ExposureMode.locked : ExposureMode.auto);
+    } catch (_) {}
+    if (mounted) setState(() { _aeAfLocked = lock; _focusPoint = local; });
+  }
+
   Future<void> _applyZoom(double z) async {
     final clamped = z.clamp(_minZoom, _maxZoom);
     if ((clamped - _zoom).abs() < 0.01) return;
@@ -125,9 +162,16 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
       await ctrl.setExposurePoint(Offset(x, y));
     } catch (_) {}
     if (mounted) {
-      setState(() => _focusPoint = local);
+      // Tapping to focus also re-enables auto AE/AF and shows the exposure
+      // slider (drag it up/down for brighter/darker).
+      _aeAfLocked = false;
+      setState(() { _focusPoint = local; _showExp = true; });
+      try {
+        await ctrl.setFocusMode(FocusMode.auto);
+        await ctrl.setExposureMode(ExposureMode.auto);
+      } catch (_) {}
       _focusHideTimer?.cancel();
-      _focusHideTimer = Timer(const Duration(milliseconds: 1100),
+      _focusHideTimer = Timer(const Duration(seconds: 4),
           () { if (mounted) setState(() => _focusPoint = null); });
     }
   }
@@ -195,7 +239,13 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
         _minZoom = await ctrl.getMinZoomLevel();
         _maxZoom = await ctrl.getMaxZoomLevel();
       } catch (_) { _minZoom = 1.0; _maxZoom = 1.0; }
+      try {
+        _minExp = await ctrl.getMinExposureOffset();
+        _maxExp = await ctrl.getMaxExposureOffset();
+      } catch (_) { _minExp = 0; _maxExp = 0; }
       _zoom = 1.0;
+      _exp = 0;
+      _aeAfLocked = false;
       if (mounted) {
         setState(() {
           _ctrl = ctrl;
@@ -361,9 +411,21 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
                     behavior: HitTestBehavior.opaque,
                     onScaleStart: (_) => _baseZoom = _zoom,
                     onScaleUpdate: (d) {
-                      if (d.scale != 1.0) _applyZoom(_baseZoom * d.scale);
+                      if (d.pointerCount >= 2 && d.scale != 1.0) {
+                        _applyZoom(_baseZoom * d.scale);
+                      }
+                    },
+                    onScaleEnd: (d) {
+                      // Fast horizontal fling to the right closes the camera.
+                      final vx = d.velocity.pixelsPerSecond.dx;
+                      final vy = d.velocity.pixelsPerSecond.dy;
+                      if (vx > 800 && vx.abs() > vy.abs() * 1.5) {
+                        Navigator.pop(context);
+                      }
                     },
                     onTapUp: (d) => _focusAt(d.localPosition, size),
+                    onLongPressStart: (d) =>
+                        _toggleAeAfLock(d.localPosition, size),
                     onDoubleTap: _flip,
                     child: FittedBox(
                       fit: BoxFit.cover,
@@ -399,6 +461,104 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.amberAccent, width: 1.8),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // ── AE/AF LOCK badge ───────────────────────────────────────────
+        if (_aeAfLocked)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 58,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('AE/AF LOCK',
+                      style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5)),
+                ),
+              ),
+            ),
+          ),
+
+        // ── Exposure slider (sun) by the focus ring ────────────────────
+        if (_showExp && _maxExp > _minExp && _focusPoint != null)
+          Positioned(
+            left: (_focusPoint!.dx + 44)
+                .clamp(0.0, MediaQuery.of(context).size.width - 44),
+            top: _focusPoint!.dy - 80,
+            child: SizedBox(
+              width: 40,
+              height: 160,
+              child: Column(children: [
+                const Icon(Icons.wb_sunny_rounded,
+                    color: Colors.amberAccent, size: 18),
+                Expanded(
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 2,
+                        thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 7),
+                        overlayShape: SliderComponentShape.noOverlay,
+                        activeTrackColor: Colors.amberAccent,
+                        inactiveTrackColor: Colors.white38,
+                        thumbColor: Colors.white,
+                      ),
+                      child: Slider(
+                        value: _exp.clamp(_minExp, _maxExp),
+                        min: _minExp,
+                        max: _maxExp,
+                        onChanged: _setExposure,
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+
+        // ── Vertical zoom slider on the right ──────────────────────────
+        if (_maxZoom > 1.05 && !_recording)
+          Positioned(
+            right: 6,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: SizedBox(
+                height: 190,
+                width: 40,
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 3,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      overlayShape: SliderComponentShape.noOverlay,
+                      activeTrackColor: Colors.white,
+                      inactiveTrackColor: Colors.white30,
+                      thumbColor: Colors.white,
+                    ),
+                    child: Slider(
+                      value: _zoom.clamp(_minZoom, _maxZoom),
+                      min: _minZoom,
+                      max: _maxZoom,
+                      onChanged: _applyZoom,
                     ),
                   ),
                 ),
@@ -610,6 +770,7 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
     _recTimer?.cancel();
     _zoomHideTimer?.cancel();
     _focusHideTimer?.cancel();
+    _expHideTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _ctrl?.dispose();
     super.dispose();

@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as imglib;
 import 'package:flutter/material.dart';
@@ -13,11 +12,11 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../l10n/app_strings.dart';
-import '../services/api_service.dart';
 import '../services/music_preview.dart';
 import '../services/weather_service.dart';
 import '../theme/brutal_theme.dart';
 import '../widgets/music_widgets.dart';
+import 'device_music_sheet.dart';
 import 'gif_picker_screen.dart';
 import 'story_audio_trim_sheet.dart';
 import 'story_camera_screen.dart';
@@ -142,6 +141,13 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   _StoryItem? _editTarget; // overlay being re-edited
   double _baseScale = 1.0;
   double _baseRotation = 0;
+
+  // Media canvas transform (photo/video moves/scales/rotates as a layer).
+  Offset _mediaOffset = Offset.zero;
+  double _mediaScale = 1.0;
+  double _mediaRotation = 0;
+  double _mediaBaseScale = 1.0;
+  double _mediaBaseRot = 0;
 
   /// Music/audio laid over the photo. When set, publishing renders the picture
   /// + this track into a short MP4 (a still image can't carry sound), so it
@@ -711,23 +717,23 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
 
   // ── Music from the device (Bug 2): local file, same trimmer & sticker ─────
   Future<void> _pickDeviceAudio() async {
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg'],
-      allowMultiple: false,
+    // Browse device audio with search (spec: «Музыка из устройства»).
+    final picked = await showModalBottomSheet<Map>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      isScrollControlled: true,
+      builder: (_) => const DeviceMusicSheet(),
     );
-    final path = res?.files.single.path;
-    if (path == null || !mounted) return;
-    final name = path
-        .split(Platform.pathSeparator)
-        .last
-        .replaceAll(RegExp(r'\.(mp3|m4a|aac|wav|ogg)$', caseSensitive: false), '');
+    final path = (picked?['path'] ?? '').toString();
+    if (path.isEmpty || !mounted) return;
+    final name = (picked!['title'] ?? 'Audio').toString();
     setState(() {
       _audioUrl = path;
       _audioTitle = name;
       _audioArtist = '';
       _audioArtwork = '';
-      _audioTotalSec = 0;
+      _audioTotalSec = ((picked['dur'] as num?)?.toInt() ?? 0);
       _audioIsLocal = true;
       // HARD RULE: one track per story — replaces a Rhythm pick too.
       _items.removeWhere((it) => it.kind == _ItemKind.music);
@@ -863,40 +869,55 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       if (v == null || !v.value.isInitialized) {
         return const Center(child: CircularProgressIndicator(color: Colors.white));
       }
-      return FittedBox(
-        fit: BoxFit.cover,
-        clipBehavior: Clip.hardEdge,
-        child: SizedBox(
-          width: v.value.size.width,
-          height: v.value.size.height,
-          child: VideoPlayer(v),
+      return _movableMedia(
+        size,
+        FittedBox(
+          fit: BoxFit.cover,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+            width: v.value.size.width,
+            height: v.value.size.height,
+            child: VideoPlayer(v),
+          ),
         ),
       );
     }
 
-    final aspect = _imgAspect;
-    if (aspect == null) {
-      return Image.memory(widget.imageBytes!, fit: BoxFit.cover);
-    }
-    final screenAspect = size.width / size.height;
-    double childW, childH;
-    if (aspect >= screenAspect) {
-      childH = size.height;
-      childW = size.height * aspect;
-    } else {
-      childW = size.width;
-      childH = size.width / aspect;
-    }
-    return InteractiveViewer(
-      constrained: false,
-      minScale: 0.4,
-      maxScale: 5,
-      boundaryMargin: EdgeInsets.symmetric(
-          horizontal: size.width, vertical: size.height),
-      child: SizedBox(
-        width: childW,
-        height: childH,
-        child: Image.memory(widget.imageBytes!, fit: BoxFit.fill),
+    return _movableMedia(
+        size, Image.memory(widget.imageBytes!, fit: BoxFit.cover));
+  }
+
+  /// The photo/video as a free CANVAS layer: pan (1 finger), pinch-scale and
+  /// rotate (2 fingers) all at once, double-tap to reset. Min ~25%, max 500%.
+  /// The transform is captured into the published media, so it's WYSIWYG.
+  Widget _movableMedia(Size size, Widget media) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onScaleStart: (_) {
+        _mediaBaseScale = _mediaScale;
+        _mediaBaseRot = _mediaRotation;
+      },
+      onScaleUpdate: (d) => setState(() {
+        _mediaScale = (_mediaBaseScale * d.scale).clamp(0.25, 5.0);
+        _mediaRotation = _mediaBaseRot + d.rotation;
+        _mediaOffset += d.focalPointDelta;
+      }),
+      onDoubleTap: () => setState(() {
+        _mediaScale = 1.0;
+        _mediaRotation = 0;
+        _mediaOffset = Offset.zero;
+      }),
+      child: Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..translate(_mediaOffset.dx, _mediaOffset.dy)
+          ..rotateZ(_mediaRotation)
+          ..scale(_mediaScale),
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: media,
+        ),
       ),
     );
   }
@@ -927,16 +948,17 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                 .clamp(0.02, 0.98),
           );
         }),
-        // Tap a rich widget (music / link) to cycle its style, Instagram-style.
-        onTap: it.isRich
-            ? () {
-                HapticFeedback.selectionClick();
-                setState(() => it.styleIdx =
-                    (it.styleIdx + 1) % (it.kind == _ItemKind.music ? 4 : 3));
-              }
-            : (it.isEmoji || it.isImage || it.isBadge)
-                ? null
-                : () => _openTextInput(edit: it),
+        // Tap: music opens its full re-editor; link cycles style; text edits.
+        onTap: it.kind == _ItemKind.music
+            ? () => _editMusicSticker(it)
+            : it.kind == _ItemKind.link
+                ? () {
+                    HapticFeedback.selectionClick();
+                    setState(() => it.styleIdx = (it.styleIdx + 1) % 3);
+                  }
+                : (it.isEmoji || it.isImage || it.isBadge)
+                    ? null
+                    : () => _openTextInput(edit: it),
         onLongPress: () => setState(() => _items.remove(it)),
         child: SizedBox(
           width: 300,
@@ -1185,10 +1207,76 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     final s = it.scale;
     final title = it.text;
     final artist = it.artist ?? '';
+    final col = _colors[it.colorIdx]; // tint for text-based styles
     switch (it.styleIdx) {
       case 1: // Instagram-style white card (shared widget)
         return MusicStickerCard(
             title: title, artist: artist, artUrl: it.artwork ?? '', scale: s);
+      case 4: // cover only
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(14 * s),
+          child: SizedBox(
+            width: 74 * s,
+            height: 74 * s,
+            child: Stack(fit: StackFit.expand, children: [
+              (it.artwork ?? '').isNotEmpty
+                  ? CachedNetworkImage(imageUrl: it.artwork!, fit: BoxFit.cover)
+                  : Container(color: const Color(0xFF222327)),
+              Container(color: Colors.black26),
+              Center(child: EqualizerBars(scale: 1.1 * s)),
+            ]),
+          ),
+        );
+      case 5: // big card: cover on top, title + artist below
+        return Container(
+          width: 150 * s,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16 * s),
+            boxShadow: [BoxShadow(blurRadius: 16 * s, color: Colors.black26)],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              height: 150 * s,
+              width: 150 * s,
+              child: Stack(fit: StackFit.expand, children: [
+                (it.artwork ?? '').isNotEmpty
+                    ? CachedNetworkImage(imageUrl: it.artwork!, fit: BoxFit.cover)
+                    : Container(color: const Color(0xFF222327)),
+                Container(color: Colors.black26),
+                Center(child: EqualizerBars(scale: 1.4 * s)),
+              ]),
+            ),
+            Padding(
+              padding: EdgeInsets.all(9 * s),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: const Color(0xFF101012),
+                        fontSize: 13.5 * s,
+                        fontWeight: FontWeight.w800)),
+                if (artist.isNotEmpty)
+                  Text(artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: const Color(0xFF7A7C85), fontSize: 11.5 * s)),
+              ]),
+            ),
+          ]),
+        );
+      case 6: // minimal text (colour-tinted)
+        return Text('♪ $title',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: col,
+                fontSize: 17 * s,
+                fontWeight: FontWeight.w800,
+                shadows: const [Shadow(blurRadius: 8, color: Colors.black54)]));
       case 2: // mini player
         return Container(
           padding: EdgeInsets.symmetric(horizontal: 12 * s, vertical: 9 * s),
@@ -1288,6 +1376,157 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
           ),
         );
     }
+  }
+
+  /// Re-editor for the music sticker (Instagram: tap the sticker to change
+  /// style, colour, the trimmed part, or swap the song).
+  Future<void> _editMusicSticker(_StoryItem it) async {
+    HapticFeedback.selectionClick();
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+            child: Container(
+              color: const Color(0xFF121316).withOpacity(0.9),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 14),
+                    // Style row — 7 variants.
+                    SizedBox(
+                      height: 40,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          for (var i = 0; i < 7; i++)
+                            GestureDetector(
+                              onTap: () {
+                                setState(() => it.styleIdx = i);
+                                setSheet(() {});
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: it.styleIdx == i
+                                      ? Colors.white
+                                      : Colors.white12,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text('${i + 1}',
+                                    style: TextStyle(
+                                        color: it.styleIdx == i
+                                            ? Colors.black
+                                            : Colors.white,
+                                        fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Colour row (applies to the text-based styles).
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < _colors.length; i++)
+                          GestureDetector(
+                            onTap: () {
+                              setState(() => it.colorIdx = i);
+                              setSheet(() {});
+                            },
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              margin:
+                                  const EdgeInsets.symmetric(horizontal: 4),
+                              decoration: BoxDecoration(
+                                color: _colors[i],
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                    color: it.colorIdx == i
+                                        ? Colors.white
+                                        : Colors.white24,
+                                    width: it.colorIdx == i ? 2.5 : 1),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _askAudioLength(); // edit the trimmed part
+                          },
+                          icon: const Icon(Icons.content_cut_rounded,
+                              size: 18, color: Colors.white),
+                          label: Text(context.t('videoEditTitle'),
+                              style: const TextStyle(color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                              side:
+                                  const BorderSide(color: Colors.white24)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _pickMusic(); // swap the song
+                          },
+                          icon: const Icon(Icons.swap_horiz_rounded,
+                              size: 18, color: Colors.white),
+                          label: Text(context.t('favTrackChange'),
+                              style: const TextStyle(color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                              side:
+                                  const BorderSide(color: Colors.white24)),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _items.remove(it);
+                          _audioUrl = null;
+                          _audioTitle = null;
+                          _vid?.setVolume(1);
+                        });
+                        _stopPreview();
+                      },
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          size: 18, color: Colors.redAccent),
+                      label: Text(context.t('favTrackRemove'),
+                          style: const TextStyle(color: Colors.redAccent)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Link card — tap cycles white → black → glass.
