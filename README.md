@@ -11,16 +11,21 @@
 ## 📸 Скриншоты
 
 <p align="center">
-  <img src="screenshots/feed.jpg" width="30%" alt="Лента"/>
-  <img src="screenshots/profile.jpg" width="30%" alt="Профиль"/>
-  <img src="screenshots/chat.jpg" width="30%" alt="Чат"/>
+  <img src="screenshots/profille.jpg" width="30%" alt="Профиль с анимированным фоном"/>
+  <img src="screenshots/chat.jpg" width="30%" alt="Sigmagram — чаты"/>
+  <img src="screenshots/ai.jpg" width="30%" alt="ИИ-коуч"/>
 </p>
 <p align="center">
-  <img src="screenshots/home.jpg" width="30%" alt="Главная"/>
-  <img src="screenshots/recommendations.jpg" width="30%" alt="Рекомендации"/>
+  <img src="screenshots/rythms.jpg" width="30%" alt="Rhythm — подкасты"/>
+  <img src="screenshots/sigmafit.jpg" width="30%" alt="SigmaFit"/>
+  <img src="screenshots/gazeta.jpg" width="30%" alt="Газета"/>
+</p>
+<p align="center">
+  <img src="screenshots/pro.jpg" width="30%" alt="Sigmacta Pro"/>
+  <img src="screenshots/discover.jpg" width="30%" alt="Discover и Sigma Nearby"/>
 </p>
 
-<p align="center"><i>Лента · Профиль · Чат · Главная · Рекомендации</i></p>
+<p align="center"><i>Профиль · Sigmagram · ИИ-коуч · Rhythm · SigmaFit · Газета · Pro · Discover / Nearby</i></p>
 
 ---
 
