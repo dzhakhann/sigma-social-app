@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/pro_badge.dart';
+import '../widgets/verified_badge.dart';
 import '../l10n/app_strings.dart';
 import 'chat_detail_screen.dart';
 
@@ -55,9 +57,14 @@ class _SelectUserScreenState extends State<SelectUserScreen> {
                                 backgroundImage: CachedNetworkImageProvider(
                                     u['avatar_url']))
                             : CircleAvatar(
-                                backgroundColor: c.accent,
+                                backgroundColor: c.accentFill,
                                 child: Icon(Icons.person, color: c.ink)),
-                        title: Text(u['username'] ?? 'User'),
+                        title: VerifiedName(
+                          name: (u['username'] ?? 'User').toString(),
+                          verified: u['is_verified'] == true,
+                          isPro: u['is_pro'] == true,
+                          proBadgeGif: u['pro_badge_gif']?.toString(),
+                        ),
                         subtitle: Text(u['email'] ?? '',
                             style: TextStyle(color: c.inkSoft)),
                         onTap: () => Navigator.pushReplacement(

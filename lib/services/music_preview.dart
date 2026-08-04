@@ -21,13 +21,28 @@ import 'podcast_audio.dart';
 ///    URL or local file.
 class MusicPreview {
   MusicPreview._() {
+    // Default Android audio focus is exclusive (AUDIOFOCUS_GAIN) — starting
+    // this preview was silently pausing whatever video was playing behind it
+    // (story editor video + music sticker: picture froze, only the track
+    // played) because the video player lost focus and auto-paused. This
+    // preview never needs exclusive focus — it's meant to layer under video.
+    player.setAudioContext(ap.AudioContext(
+      android:
+          const ap.AudioContextAndroid(audioFocus: ap.AndroidAudioFocus.none),
+    ));
     player.onPlayerStateChanged.listen((s) {
       isPlaying.value = s == ap.PlayerState.playing;
     });
     _posSub = player.onPositionChanged.listen((pos) {
-      // Manual fragment loop: reaching the window end rewinds to its start.
-      if (_clipLen > 0 &&
-          pos.inMilliseconds >= (_clipStart + _clipLen) * 1000) {
+      if (_clipLen <= 0) return;
+      final startMs = _clipStart * 1000;
+      final endMs = (_clipStart + _clipLen) * 1000;
+      // Manual fragment loop. Two cases:
+      //  • reached the window end   → rewind to the window start;
+      //  • playing BEFORE the window → the initial seek was dropped by a
+      //    not-yet-buffered stream, so snap forward. This is what fixes the
+      //    "whole track plays once, then loops" bug on the trimmed clip.
+      if (pos.inMilliseconds >= endMs || pos.inMilliseconds < startMs - 400) {
         player.seek(Duration(seconds: _clipStart));
       }
     });
@@ -74,6 +89,21 @@ class MusicPreview {
       await player.setVolume(volume);
       return;
     }
+    // Same URL already loading/playing (e.g. the music picker's tap-to-preview
+    // just called playUrl on it, or the trim sheet is being dragged) but with
+    // a different window — just retarget the loop, don't stop()+setSource()
+    // again. That full reload re-buffers the stream from zero and is what
+    // made picking a track feel slow (it was happening on EVERY trim drag).
+    if (currentUrl.value == url) {
+      _clipStart = startSec;
+      _clipLen = lenSec;
+      await player.setVolume(volume);
+      try {
+        await player.seek(Duration(seconds: startSec));
+      } catch (_) {}
+      if (!isPlaying.value) await player.resume();
+      return;
+    }
     _quietPodcasts();
     try {
       currentUrl.value = url;
@@ -81,11 +111,18 @@ class MusicPreview {
       _clipLen = lenSec;
       await player.stop();
       await player.setReleaseMode(ap.ReleaseMode.loop);
-      await player.play(
-        _source(url),
-        volume: volume,
-        position: Duration(seconds: startSec),
-      );
+      await player.setVolume(volume);
+      // Prepare the stream FIRST, then seek, then play. Passing `position:`
+      // straight to play() seeks before the stream is ready and silently
+      // failed on some tracks (the "no sound in trim" bug). The position
+      // listener also self-corrects if this seek is dropped.
+      await player.setSource(_source(url));
+      if (startSec > 0) {
+        try {
+          await player.seek(Duration(seconds: startSec));
+        } catch (_) {}
+      }
+      await player.resume();
     } catch (e) {
       debugPrint('music preview clip failed: $e');
       currentUrl.value = null;

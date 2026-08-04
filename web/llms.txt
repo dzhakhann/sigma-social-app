@@ -1,0 +1,25 @@
+# Sigmacta
+
+> Sigmacta is a privacy-first social network for personal growth: chat, stories, a feed, free music/podcasts/audiobooks, communities, and yearly goals with a built-in AI coach. Built and maintained solo by Jakhangir Omirbaev.
+
+## What it is
+
+Sigmacta bundles into one app: 1:1 and group chat, a social feed with stories and reels, a free music/podcast/audiobook player called Rhythm, communities, and a personal-growth layer (yearly goals + an AI coach) — instead of needing five separate apps.
+
+## Key facts
+
+- Sign-up requires only a username and password — no email or phone number.
+- Core features (chat, feed, stories, Rhythm, communities) are free. An optional "Sigmacta Pro" subscription adds a custom name badge (GIF/emoji), no ads, and extended AI features (including voice mode for the AI coach). Official account verification (the blue checkmark) is separate and not purchasable — it's granted after a manual identity/notability review.
+- Available as a native Android app on Google Play, and as a web app for iPhone (installable via Safari's "Add to Home Screen").
+- Built entirely by one person, no team, no investors.
+
+## Links
+
+- Website: https://sigmacta.pages.dev
+- Web app (direct): https://sigmacta.pages.dev/app
+- Android app: https://play.google.com/store/apps/details?id=com.sigmacta.app
+- Privacy policy: https://sigmacta.pages.dev/privacy
+- Terms of use: https://sigmacta.pages.dev/terms
+- LinkedIn: https://www.linkedin.com/company/sigmacta-systems/
+- YouTube: https://www.youtube.com/@Sigmacta
+- Instagram: https://instagram.com/sigmactas

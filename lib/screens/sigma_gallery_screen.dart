@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
@@ -54,12 +56,45 @@ class _SigmaGalleryScreenState extends State<SigmaGalleryScreen> {
   @override
   void initState() {
     super.initState();
+    // photo_manager has no web implementation at all — MediaStore doesn't
+    // exist in a browser. The browser's own file picker is the only thing
+    // that can stand in for it, and only for images (video still needs
+    // ffmpeg for trimming/compression, which is equally native-only).
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _pickWeb());
+      return;
+    }
     _scroll.addListener(() {
       if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 600) {
         _loadMore();
       }
     });
     _init();
+  }
+
+  /// Web stand-in for the native picker: hands the same `List<Uint8List>`
+  /// shape back through Navigator.pop that callers already branch on for
+  /// `List<File>` — a browser Blob can't be read through dart:io File, so
+  /// bytes are read here instead of leaving that to the caller.
+  Future<void> _pickWeb() async {
+    if (widget.type != RequestType.image) return; // see _webBody
+    try {
+      final picker = ImagePicker();
+      final files = widget.maxSelection > 1
+          ? await picker.pickMultiImage(limit: widget.maxSelection)
+          : await () async {
+              final f = await picker.pickImage(source: ImageSource.gallery);
+              return f == null ? <XFile>[] : <XFile>[f];
+            }();
+      if (files.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+      final bytes = await Future.wait(files.map((f) => f.readAsBytes()));
+      if (mounted) Navigator.pop(context, bytes);
+    } catch (_) {
+      if (mounted) Navigator.pop(context);
+    }
   }
 
   @override
@@ -202,6 +237,7 @@ class _SigmaGalleryScreenState extends State<SigmaGalleryScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.k;
+    if (kIsWeb) return _webBody(c);
     final multi = widget.maxSelection > 1;
     return Scaffold(
       backgroundColor: c.bg,
@@ -212,6 +248,37 @@ class _SigmaGalleryScreenState extends State<SigmaGalleryScreen> {
           if (multi) _bottomBar(c),
         ]),
       ),
+    );
+  }
+
+  /// While the browser's own file dialog is open there's nothing meaningful
+  /// to show behind it; for video, there's no picker to open at all — the
+  /// screen just states that plainly instead of spinning forever.
+  Widget _webBody(BrutalColors c) {
+    if (widget.type != RequestType.image) {
+      return Scaffold(
+        backgroundColor: c.bg,
+        appBar: AppBar(
+          backgroundColor: c.bg,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back_rounded, color: c.ink),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(30),
+            child: Text(context.t('galleryWebVideoUnavailable'),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: c.bg,
+      body: Center(child: CircularProgressIndicator(color: c.accent)),
     );
   }
 
@@ -368,7 +435,7 @@ class _SigmaGalleryScreenState extends State<SigmaGalleryScreen> {
           const Spacer(),
           FilledButton(
             onPressed: _picked.isEmpty ? null : _done,
-            style: FilledButton.styleFrom(backgroundColor: c.accent),
+            style: FilledButton.styleFrom(backgroundColor: c.accentFill),
             child: Text(
               _picked.isEmpty
                   ? context.t('next')
@@ -391,7 +458,7 @@ class _SigmaGalleryScreenState extends State<SigmaGalleryScreen> {
             const SizedBox(height: 14),
             FilledButton(
               onPressed: PhotoManager.openSetting,
-              style: FilledButton.styleFrom(backgroundColor: c.accent),
+              style: FilledButton.styleFrom(backgroundColor: c.accentFill),
               child: Text(context.t('openSettings')),
             ),
           ]),

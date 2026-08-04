@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-API-26 fallback. minSdk is 24, and <adaptive-icon> only exists from 26,
+  so API 24-25 would find no resource behind @mipmap/ic_launcher_girl and show a
+  blank launcher icon. A layer-list gives those devices the same look.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:drawable="@color/ic_launcher_bg_girl"/>
+  <item android:drawable="@drawable/ic_sigma_glyph"/>
+</layer-list>

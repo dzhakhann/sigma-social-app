@@ -8,12 +8,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart' show RequestType;
 import 'sigma_gallery_screen.dart';
 import 'story_video_editor_screen.dart';
+import 'story_video_trim_web_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/story_publisher.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/pro_badge.dart';
+import '../widgets/verified_badge.dart';
 import '../l10n/app_strings.dart';
 import 'comments_screen.dart';
 import 'profile_screen.dart';
@@ -32,6 +35,12 @@ import 'login_screen.dart';
 import 'search_screen.dart';
 import 'goals_screen.dart';
 import 'year_review_screen.dart';
+import 'sigma_fit_screen.dart';
+import 'workout_player_screen.dart';
+import 'ai_chat_screen.dart';
+import '../services/pro_state.dart';
+import '../widgets/pro_upsell_sheet.dart';
+import '../data/exercises_data.dart';
 import '../services/session.dart';
 import '../widgets/link_preview.dart';
 import '../widgets/shimmer.dart';
@@ -46,6 +55,14 @@ class HomeScreen extends StatefulWidget {
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
+
+/// The handful of routines surfaced on the home strip: no equipment, so any
+/// of them can be started where the user is standing. Computed once, not per
+/// build — the catalogue is a compile-time constant.
+final List<FitRoutine> _homeFitPicks = kFitRoutines
+    .where((r) => r.equipment == FitEquipment.none)
+    .take(6)
+    .toList();
 
 class _HomeScreenState extends State<HomeScreen> {
   List _stories = [];
@@ -253,14 +270,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _addStory({ImageSource? source}) async {
     Uint8List? bytes;
     String? videoPath;
+    Uint8List? videoBytes;
 
     if (kIsWeb) {
-      // Web has no in-app camera or MediaStore — fall back to the file picker.
+      // Web has no in-app camera or MediaStore — the browser's own file
+      // picker stands in, offering photo OR video in one dialog.
       final picker = ImagePicker();
-      final img = await picker.pickImage(
-          source: ImageSource.gallery, maxWidth: 1080, imageQuality: 85);
+      final img = await picker.pickMedia();
       if (img == null) return;
-      bytes = await img.readAsBytes();
+      // A blob: URL has no file extension for isVideoStory to check — the
+      // browser-reported MIME type is the reliable signal here instead.
+      if ((img.mimeType ?? '').startsWith('video/')) {
+        videoBytes = await img.readAsBytes();
+      } else {
+        bytes = await img.readAsBytes();
+      }
     } else if (source == ImageSource.gallery) {
       // Sigmacta's own gallery — photos AND videos, like Telegram Stories.
       final picked = await Navigator.push<dynamic>(
@@ -301,6 +325,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!mounted) return;
 
+    // ── Web video story: trim → publish. No overlay/music editor step yet —
+    // that would mean porting StoryEditorScreen's canvas-capture + ffmpeg
+    // muxing onto ffmpeg.wasm as well, which is real further work; trimming
+    // and posting a video story is what ships now instead of nothing. ──────
+    if (videoBytes != null) {
+      final trimmed = await Navigator.push<Uint8List>(
+        context,
+        MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => StoryVideoTrimWebScreen(bytes: videoBytes!)),
+      );
+      if (trimmed == null || !mounted) return;
+      StoryPublisher.instance.publishVideoBytes(
+        widget.user['id'].toString(),
+        trimmed,
+        doneText: context.t('storyPublished'),
+        failText: context.t('storyUploadFailed'),
+      );
+      return;
+    }
+
     // ── Video story: trim → editor (overlays, music) → publish ─────────────
     if (videoPath != null) {
       final trimmed = await Navigator.push<String>(
@@ -324,6 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
         edited.videoPath ?? trimmed,
         links: edited.links,
         music: edited.music,
+        gifs: edited.gifs,
         uploadingText: context.t('storyUploading'),
         doneText: context.t('storyPublished'),
         failText: context.t('storyUploadFailed'),
@@ -348,6 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
         edited.videoPath!,
         links: edited.links,
         music: edited.music,
+        gifs: edited.gifs,
         uploadingText: context.t('storyUploading'),
         doneText: context.t('storyPublished'),
         failText: context.t('storyUploadFailed'),
@@ -358,7 +405,8 @@ class _HomeScreenState extends State<HomeScreen> {
       widget.user['id'].toString(),
       edited.photo!,
       links: edited.links,
-        music: edited.music,
+      music: edited.music,
+      gifs: edited.gifs,
       uploadingText: context.t('storyUploading'),
       doneText: context.t('storyPublished'),
       failText: context.t('storyUploadFailed'),
@@ -398,50 +446,64 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // This card had no way in to the actual AI chat at all — /api/ai/chat, the
+  // full chat screen and its voice mode all existed already, just with
+  // nothing on any screen ever navigating to it. Tapping the card (anywhere
+  // but the refresh icon, which keeps its own job) is the fix.
   Widget _aiCard(BrutalColors c) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [
-          c.accent.withOpacity(0.20),
-          c.accent3.withOpacity(0.10),
-        ]),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: c.accent.withOpacity(0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.auto_awesome_rounded, color: c.accent, size: 20),
-            const SizedBox(width: 8),
-            Text(context.t('aiTip'),
-                style: TextStyle(
-                    color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
-            const Spacer(),
-            GestureDetector(
-              onTap: _aiLoading ? null : () => _loadAi(force: true),
-              child: Icon(Icons.refresh_rounded, color: c.inkSoft, size: 20),
-            ),
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(
+          builder: (_) => AiChatScreen(user: widget.user))),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [
+            c.accent.withOpacity(0.20),
+            c.accent3.withOpacity(0.10),
           ]),
-          const SizedBox(height: 10),
-          if (_aiLoading)
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: c.accent.withOpacity(0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(children: [
-              SizedBox(
-                  width: 16, height: 16,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: c.accent)),
+              Icon(Icons.auto_awesome_rounded, color: c.accent, size: 20),
+              const SizedBox(width: 8),
+              Text(context.t('aiTip'),
+                  style: TextStyle(
+                      color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _aiLoading ? null : () => _loadAi(force: true),
+                child: Icon(Icons.refresh_rounded, color: c.inkSoft, size: 20),
+              ),
               const SizedBox(width: 10),
-              Text(context.t('aiThinking'),
-                  style: TextStyle(color: c.inkSoft, fontSize: 13)),
-            ])
-          else
-            Text(
-              _ai.isEmpty ? context.t('aiEmpty') : _ai,
-              style: TextStyle(color: c.ink, height: 1.45, fontSize: 14),
-            ),
-        ],
+              Icon(Icons.chevron_right_rounded, color: c.inkSoft, size: 20),
+            ]),
+            const SizedBox(height: 10),
+            if (_aiLoading)
+              Row(children: [
+                SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: c.accent)),
+                const SizedBox(width: 10),
+                Text(context.t('aiThinking'),
+                    style: TextStyle(color: c.inkSoft, fontSize: 13)),
+              ])
+            else
+              Text(
+                _ai.isEmpty ? context.t('aiEmpty') : _ai,
+                style: TextStyle(color: c.ink, height: 1.45, fontSize: 14),
+              ),
+            const SizedBox(height: 10),
+            Text(context.t('aiAskHint'),
+                style: TextStyle(
+                    color: c.accent, fontWeight: FontWeight.w700, fontSize: 13)),
+          ],
+        ),
       ),
     );
   }
@@ -650,8 +712,9 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(child: _weekForYouCard(c)),
               SliverToBoxAdapter(child: _achievementCard(c)),
               SliverToBoxAdapter(child: _challengeCard(c)),
-              // «Газета» — the very last section on the home screen.
+              // «Газета» — was the very last section; SigmaFit now follows it.
               SliverToBoxAdapter(child: _newsCard(c)),
+              SliverToBoxAdapter(child: _sigmaFitCard(c)),
               const SliverToBoxAdapter(child: SizedBox(height: 90)),
             ],
           ),
@@ -687,6 +750,108 @@ class _HomeScreenState extends State<HomeScreen> {
           ]),
         ),
         SizedBox(height: h, child: const NewsDeck()),
+      ]),
+    );
+  }
+
+  // ─── 💪 SigmaFit — bundled exercise circuits, zero server/CDN cost. ───────
+  // Subscription-gated: browsing and starting a routine both require Pro.
+  void _sigmaFitUpsell() {
+    showProUpsell(context,
+        user: widget.user,
+        icon: Icons.fitness_center_rounded,
+        body: context.t('sigmaFitProOnly'));
+  }
+
+  void _openSigmaFit() {
+    if (!ProState.isPro.value) return _sigmaFitUpsell();
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => const SigmaFitScreen()));
+  }
+
+  void _openWorkout(FitRoutine r) {
+    if (!ProState.isPro.value) return _sigmaFitUpsell();
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => WorkoutPlayerScreen(routine: r)));
+  }
+
+  Widget _sigmaFitCard(BrutalColors c) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 16, 10),
+          child: Row(children: [
+            const Text('💪', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Text(context.t('sigmaFitTitle'),
+                style: TextStyle(color: c.ink, fontWeight: FontWeight.w800, fontSize: 19)),
+            const SizedBox(width: 6),
+            ValueListenableBuilder<bool>(
+              valueListenable: ProState.isPro,
+              builder: (_, isPro, __) => isPro
+                  ? const SizedBox.shrink()
+                  : Icon(Icons.lock_rounded, size: 15, color: c.accent3),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _openSigmaFit,
+              child: Icon(Icons.chevron_right_rounded, color: c.inkSoft, size: 22),
+            ),
+          ]),
+        ),
+        SizedBox(
+          height: 132,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            // A teaser, not the catalogue: the full list (33 routines) lives
+            // behind the header tap, and scrolling all of it sideways here
+            // would be unusable. Equipment-free only, so every card is
+            // startable on the spot.
+            itemCount: _homeFitPicks.length,
+            itemBuilder: (_, i) {
+              final r = _homeFitPicks[i];
+              return GestureDetector(
+                onTap: () => _openWorkout(r),
+                child: Container(
+                  width: 150,
+                  margin: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                        colors: [c.accent.withOpacity(0.20), c.accent3.withOpacity(0.10)],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: c.accent.withOpacity(0.2)),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Icon(r.icon, color: c.accent, size: 26),
+                      const Spacer(),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: ProState.isPro,
+                        builder: (_, isPro, __) => isPro
+                            ? const SizedBox.shrink()
+                            : Icon(Icons.lock_rounded,
+                                size: 15, color: c.accent3),
+                      ),
+                    ]),
+                    const Spacer(),
+                    Text(context.t(r.titleKey),
+                        style: TextStyle(color: c.ink, fontWeight: FontWeight.w800, fontSize: 14)),
+                    const SizedBox(height: 3),
+                    Text(
+                        context.t('fitRoutineSubtitle')
+                            .replaceAll('{n}', '${r.exercises.length}')
+                            .replaceAll('{min}', '${r.estimatedMinutes}'),
+                        style: TextStyle(color: c.inkSoft, fontSize: 11)),
+                  ]),
+                ),
+              );
+            },
+          ),
+        ),
       ]),
     );
   }
@@ -1747,7 +1912,7 @@ class _ThreadsPost extends StatelessWidget {
     final raw = post['created_at'];
     if (raw == null) return '';
     try {
-      return timeago.format(DateTime.parse(raw.toString()).toLocal(),
+      return timeago.format(ApiService.parseServerTime(raw.toString()),
           locale: 'en_short');
     } catch (_) { return ''; }
   }
@@ -1834,7 +1999,17 @@ class _ThreadsPost extends StatelessWidget {
                       const SizedBox(width: 4),
                       const Padding(
                         padding: EdgeInsets.only(top: 2),
-                        child: Icon(Icons.verified_rounded, size: 14),
+                        child: VerifiedBadge(),
+                      ),
+                    ],
+                    if (post['is_pro'] == true) ...[
+                      const SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: ProBadge(
+                            isPro: true,
+                            gifUrl: post['pro_badge_gif']?.toString(),
+                            height: 18),
                       ),
                     ],
                     const Spacer(),
@@ -1864,7 +2039,13 @@ class _ThreadsPost extends StatelessWidget {
 
                 // Link preview (Telegram-style unfurl)
                 if (image == null && firstUrl(content) != null)
-                  LinkPreviewCard(url: firstUrl(content)!),
+                  GestureDetector(
+                    onTap: () {
+                      var u = firstUrl(content)!;
+                      launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+                    },
+                    child: LinkPreviewCard(url: firstUrl(content)!),
+                  ),
 
                 // Image
                 if (image != null) ...[

@@ -19,8 +19,17 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="description" content="Sigmacta — your year, wrapped.">
+  <meta name="description" content="Sigmacta — a social app with chat, stories, music and communities.">
   <meta name="theme-color" content="#0F1015">
+
+  <!-- Google infers the "site name" shown next to the favicon in search
+       results from signals like these — without them it was falling back to
+       the pages.dev host's own platform name ("Cloudflare") instead of ours. -->
+  <meta property="og:site_name" content="Sigmacta">
+  <meta property="og:title" content="Sigmacta">
+  <meta property="og:description" content="Sigmacta — a social app with chat, stories, music and communities.">
+  <meta property="og:url" content="https://sigmacta.pages.dev/">
+  <meta property="og:type" content="website">
 
   <!-- iOS: behave like an installed app when added to Home Screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -35,27 +44,1270 @@
   <title>Sigmacta</title>
   <link rel="manifest" href="manifest.json">
 
+  <!-- Structured data — helps both classic search engines and AI assistants
+       (ChatGPT/Perplexity/etc. when they browse) understand what Sigmacta
+       actually is, rather than inferring it from prose alone. The WebSite
+       block specifically is what tells Google the site's own name is
+       "Sigmacta" — without it, a bare pages.dev subdomain can fall back to
+       showing the hosting platform's name instead of the actual site. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Sigmacta",
+    "url": "https://sigmacta.pages.dev/"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Sigmacta",
+    "alternateName": "Sigmacta: Goals & Growth",
+    "applicationCategory": "SocialNetworkingApplication",
+    "operatingSystem": "Android, Web",
+    "description": "Sigmacta is a privacy-first social network combining chat, stories, a feed, free music/podcasts/audiobooks (Rhythm), communities, and personal growth tools — yearly goals with an AI coach. Sign up with just a username and password, no email or phone required.",
+    "url": "https://sigmacta.pages.dev",
+    "downloadUrl": "https://play.google.com/store/apps/details?id=com.sigmacta.app",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Jakhangir Omirbaev" },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Sigmacta Systems",
+      "url": "https://sigmacta.pages.dev",
+      "sameAs": [
+        "https://www.linkedin.com/company/sigmacta-systems/",
+        "https://www.youtube.com/@Sigmacta",
+        "https://instagram.com/sigmactas"
+      ]
+    }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is Sigmacta free?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — chat, feed, stories, music, podcasts, audiobooks and communities are all free. There's an optional Sigma Pro subscription with extra perks." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need an email or phone number to sign up?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No — signing up takes 10 seconds: just a username and password. Nothing personal required." }
+      },
+      {
+        "@type": "Question",
+        "name": "What platforms does Sigmacta run on?",
+        "acceptedAnswer": { "@type": "Answer", "text": "There's an Android app on Google Play. For iPhone, the web version already works today — add it to your Home Screen and it behaves like a real app." }
+      },
+      {
+        "@type": "Question",
+        "name": "When is the App Store version coming?",
+        "acceptedAnswer": { "@type": "Answer", "text": "It's already in development. Meanwhile, the web version already gives iPhone users the full experience, no shortcuts." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I suggest a feature or report a bug?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes — message any of the social links below. Every message is read personally, it's a one-person team." }
+      }
+    ]
+  }
+  </script>
+  <!-- Display font for the landing page only (armur.co-style oversized
+       headlines) — Fontshare's Clash Display is free for commercial use, no
+       license needed. Only loaded here, never inside the Flutter app itself. -->
+  <link rel="preconnect" href="https://api.fontshare.com">
+  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&display=swap" rel="stylesheet">
+
   <script>
     // The value below is injected by flutter build, do not touch.
     const serviceWorkerVersion = null;
   </script>
   <!-- This script adds the flutter initialization JS code -->
   <script src="flutter.js" defer></script>
+  <!-- ffmpeg.wasm bridge — defines window.sigmaFFmpegRun, lazily loads the
+       ~31 MB wasm core on first actual use. See ffmpeg_bridge.js. -->
+  <script src="ffmpeg_bridge.js" defer></script>
 </head>
 <body>
+  <!--
+    Landing gate — the ONLY thing Android, desktop, and search engines ever see.
+    ==========================================================================
+    The web app is iPhone-only, full stop: Android has (closed-testing) Google
+    Play and, once verified, App Links open it directly without ever touching a
+    browser; desktop has no distribution story at all yet. So for everyone
+    except iOS Safari, this card — logo, tagline, features, a Google Play link —
+    IS the site, and main.dart.js is never even downloaded (see bootFlutter()
+    below, only ever called for iOS).
+
+    Deliberately plain HTML/CSS rather than part of the Flutter app: it has to be
+    on screen INSTANTLY, before anything else downloads over mobile data. Doing
+    it inside Flutter would mean showing a blank page first — exactly the moment
+    a visitor decides the link is broken.
+
+    For iOS, the deep link is preserved: nothing here navigates away, so
+    continuing to the web version keeps the same URL and the app routes it
+    normally.
+  -->
+  <div id="landing-gate" hidden>
+    <div class="g-bg" aria-hidden="true">
+      <span class="g-orb g-orb1"></span><span class="g-orb g-orb2"></span><span class="g-orb g-orb3"></span>
+    </div>
+    <canvas id="g-rain" class="g-rain" aria-hidden="true"></canvas>
+    <!-- Live scroll-progress readout, armur.co-style — so the page reads as
+         a designed product rather than a plain scroll of sections. -->
+    <div class="g-chrome g-chrome-right" aria-hidden="true"><span id="g-scroll-pct">0%</span></div>
+
+    <!-- Real site navigation: brand + hamburger opening a menu with anchor
+         links to the sections below, external Privacy/Terms links, and a
+         manual language switch (site otherwise auto-detects from the
+         browser, which a visitor can't always change themselves). -->
+    <header class="g-nav">
+      <span class="g-nav-brand">&Sigma; Sigmacta</span>
+      <button class="g-nav-burger" id="g-nav-burger" type="button" aria-label="Menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </header>
+    <nav class="g-nav-menu" id="g-nav-menu">
+      <a href="#g-about-section" class="g-nav-link" data-scroll id="g-nav-l1"></a>
+      <a href="#g-showcase-section" class="g-nav-link" data-scroll id="g-nav-l2"></a>
+      <a href="#g-faq-section" class="g-nav-link" data-scroll id="g-nav-l3"></a>
+      <a href="https://sigmacta.pages.dev/privacy" target="_blank" rel="noopener" class="g-nav-link" id="g-nav-l4"></a>
+      <a href="https://sigmacta.pages.dev/terms" target="_blank" rel="noopener" class="g-nav-link" id="g-nav-l5"></a>
+      <div class="g-nav-langs">
+        <button class="g-nav-lang-btn" id="g-lang-ru" type="button">RU</button>
+        <button class="g-nav-lang-btn" id="g-lang-en" type="button">EN</button>
+      </div>
+    </nav>
+
+    <section class="g-hero g-reveal">
+      <div class="g-logo"><span class="g-logo-face">&Sigma;</span></div>
+      <h1>Sigmacta</h1>
+      <p id="g-tag" class="g-tag"></p>
+      <div class="g-features">
+        <div class="g-feat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H7l-3 3V4z"/></svg><span id="g-f1"></span></div>
+        <div class="g-feat"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span id="g-f2"></span></div>
+        <div class="g-feat"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span id="g-f3"></span></div>
+        <div class="g-feat"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M13.5 14.2c2.9.3 5 2.7 5 5.8" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span id="g-f4"></span></div>
+      </div>
+      <!-- Jumps straight to the Android/iPhone download cards at the bottom
+           — visitors shouldn't have to scroll through the whole page just
+           to find the actual "get the app" buttons. -->
+      <button class="g-hero-dl" id="g-hero-dl" type="button">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span id="g-hero-dl-label"></span>
+      </button>
+      <svg class="g-scrolldown" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </section>
+
+    <section id="g-about-section" class="g-about g-reveal">
+      <span class="g-eyebrow" id="g-eyebrow-about"></span>
+      <h2 id="g-about-title"></h2>
+      <p id="g-about-body"></p>
+      <ul class="g-do">
+        <li id="g-do1"></li>
+        <li id="g-do2"></li>
+        <li id="g-do3"></li>
+        <li id="g-do4"></li>
+        <li id="g-do5"></li>
+        <li id="g-do6"></li>
+      </ul>
+    </section>
+
+    <section class="g-video g-reveal">
+      <h2 id="g-video-title"></h2>
+      <div class="g-video-frame">
+        <iframe src="https://www.youtube.com/embed/_F_Bs_isZwI"
+                title="Sigmacta" loading="lazy" allowfullscreen
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+      </div>
+    </section>
+
+    <section class="g-founder g-reveal">
+      <div class="g-founder-badge" aria-hidden="true">👤</div>
+      <span class="g-eyebrow" id="g-eyebrow-founder"></span>
+      <h2 id="g-founder-title"></h2>
+      <p id="g-founder-body"></p>
+      <div class="g-stats">
+        <div class="g-stat g-tilt-sm"><span class="g-stat-num" data-count="10" data-suffix="+">0</span><span class="g-stat-label" id="g-stat1"></span></div>
+        <div class="g-stat g-tilt-sm"><span class="g-stat-num" data-count="2">0</span><span class="g-stat-label" id="g-stat2"></span></div>
+        <div class="g-stat g-tilt-sm"><span class="g-stat-num" data-count="100" data-suffix="%">0</span><span class="g-stat-label" id="g-stat3"></span></div>
+        <div class="g-stat g-tilt-sm"><span class="g-stat-num" data-static="24/7">24/7</span><span class="g-stat-label" id="g-stat4"></span></div>
+      </div>
+    </section>
+
+    <!-- Feature spotlights — a horizontal swipeable carousel (scroll-snap,
+         no library) instead of a stacked column: on a phone, alternating
+         left/right text-image rows still collapse into one long identical
+         list, so this is a genuinely different shape rather than the same
+         list with a different paint job. Cards alternate a slight rotation
+         so they read as a loose deck rather than a rigid grid. -->
+    <section id="g-showcase-section" class="g-showcase g-reveal">
+      <span class="g-eyebrow" id="g-eyebrow-showcase"></span>
+      <h2 id="g-showcase-title"></h2>
+      <div class="g-carousel" id="g-carousel">
+        <article class="g-card">
+          <span class="g-card-n">01</span>
+          <div class="g-card-shot"><img src="marketing/s1.png" alt="Sigmacta sign-in — privacy-first, no email or phone required" loading="eager"></div>
+          <h3 id="g-ft1"></h3><p id="g-fb1"></p>
+        </article>
+        <article class="g-card">
+          <span class="g-card-n">02</span>
+          <div class="g-card-shot"><img src="marketing/s2.png" alt="Sigmacta yearly goals and AI coach" loading="lazy"></div>
+          <h3 id="g-ft2"></h3><p id="g-fb2"></p>
+        </article>
+        <article class="g-card">
+          <span class="g-card-n">03</span>
+          <div class="g-card-shot"><img src="marketing/s3.png" alt="Rhythm — free music in Sigmacta" loading="lazy"></div>
+          <h3 id="g-ft3"></h3><p id="g-fb3"></p>
+        </article>
+        <article class="g-card">
+          <span class="g-card-n">04</span>
+          <div class="g-card-shot"><img src="marketing/s4.png" alt="Podcasts from everywhere in Sigmacta" loading="lazy"></div>
+          <h3 id="g-ft4"></h3><p id="g-fb4"></p>
+        </article>
+        <article class="g-card">
+          <span class="g-card-n">05</span>
+          <div class="g-card-shot"><img src="marketing/s5.png" alt="Audiobooks in Sigmacta" loading="lazy"></div>
+          <h3 id="g-ft5"></h3><p id="g-fb5"></p>
+        </article>
+        <article class="g-card">
+          <span class="g-card-n">06</span>
+          <div class="g-card-shot"><img src="marketing/s6.png" alt="Sigmacta growth profile — activity stats and goals" loading="lazy"></div>
+          <h3 id="g-ft6"></h3><p id="g-fb6"></p>
+        </article>
+      </div>
+      <div class="g-carousel-dots" id="g-carousel-dots"></div>
+      <div class="g-swipe-hint" id="g-swipe-hint">
+        <span id="g-swipe-hint-label"></span>
+        <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </section>
+
+    <section class="g-why g-reveal">
+      <span class="g-eyebrow" id="g-eyebrow-why"></span>
+      <h2 id="g-why-title"></h2>
+      <div class="g-why-grid">
+        <div class="g-why-item g-tilt-sm"><span class="g-why-ic">🔒</span><span id="g-why1"></span></div>
+        <div class="g-why-item g-tilt-sm"><span class="g-why-ic">🎵</span><span id="g-why2"></span></div>
+        <div class="g-why-item g-tilt-sm"><span class="g-why-ic">📈</span><span id="g-why3"></span></div>
+        <div class="g-why-item g-tilt-sm"><span class="g-why-ic">🧩</span><span id="g-why4"></span></div>
+      </div>
+    </section>
+
+    <section id="g-faq-section" class="g-faq g-reveal">
+      <span class="g-eyebrow" id="g-eyebrow-faq"></span>
+      <h2 id="g-faq-title"></h2>
+      <div class="g-faq-list">
+        <details class="g-faq-item"><summary id="g-faq-q1"></summary><p id="g-faq-a1"></p></details>
+        <details class="g-faq-item"><summary id="g-faq-q2"></summary><p id="g-faq-a2"></p></details>
+        <details class="g-faq-item"><summary id="g-faq-q3"></summary><p id="g-faq-a3"></p></details>
+        <details class="g-faq-item"><summary id="g-faq-q4"></summary><p id="g-faq-a4"></p></details>
+        <details class="g-faq-item"><summary id="g-faq-q5"></summary><p id="g-faq-a5"></p></details>
+      </div>
+    </section>
+
+    <section class="g-roadmap g-reveal">
+      <span class="g-eyebrow" id="g-eyebrow-roadmap"></span>
+      <h2 id="g-roadmap-title"></h2>
+      <p id="g-roadmap-intro"></p>
+      <ul class="g-roadmap-list">
+        <li id="g-rm1"></li>
+        <li id="g-rm2"></li>
+        <li id="g-rm3"></li>
+        <li id="g-rm4"></li>
+      </ul>
+    </section>
+
+    <section class="g-social g-reveal">
+      <h2 id="g-social-title"></h2>
+      <div class="g-social-row">
+        <a class="g-soc" href="https://www.linkedin.com/company/sigmacta-systems/" target="_blank" rel="noopener" aria-label="LinkedIn">
+          <svg viewBox="0 0 24 24"><path d="M4.98 3.5A2.5 2.5 0 100 6a2.5 2.5 0 004.98-.02zM.5 8.5h9V23h-9V8.5zM14.5 8.5h8.6v2.05h.12c1.2-2.1 4.14-2.05 4.14-2.05C33 8.5 33 13.6 33 13.6V23h-9v-8.2c0-2-.72-3.35-2.5-3.35-1.36 0-2.17.92-2.53 1.8-.13.32-.16.77-.16 1.22V23h-4.31V8.5z" transform="translate(-4)"/></svg>
+        </a>
+        <a class="g-soc" href="https://www.youtube.com/@Sigmacta" target="_blank" rel="noopener" aria-label="YouTube">
+          <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 00-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 00.5 6.2 31 31 0 000 12a31 31 0 00.5 5.8 3 3 0 002.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 002.1-2.1A31 31 0 0024 12a31 31 0 00-.5-5.8zM9.6 15.6V8.4l6.4 3.6-6.4 3.6z"/></svg>
+        </a>
+        <a class="g-soc" href="https://x.com/sigmactas" target="_blank" rel="noopener" aria-label="X (Twitter)">
+          <svg viewBox="0 0 24 24"><path d="M18.9 2.4h3.3l-7.2 8.2 8.5 11H16l-5.4-7-6.1 7H1.2l7.7-8.8L.8 2.4h6.9l4.9 6.4 6.3-6.4zm-1.2 17.2h1.8L6.3 4.3H4.4l13.3 15.3z"/></svg>
+        </a>
+        <a class="g-soc" href="https://instagram.com/sigmactas" target="_blank" rel="noopener" aria-label="Instagram">
+          <svg viewBox="0 0 24 24"><path d="M12 2.2c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 01-1.38-.9 3.7 3.7 0 01-.9-1.38c-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07c-1.28.06-2.15.26-2.91.56-.79.31-1.46.72-2.13 1.38A5.8 5.8 0 00.63 4.14c-.3.76-.5 1.63-.56 2.91C.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.28.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.66.66 1.34 1.07 2.13 1.38.76.3 1.63.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.28-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.66 1.07-1.34 1.38-2.13.3-.76.5-1.63.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.28-.26-2.15-.56-2.91a5.8 5.8 0 00-1.38-2.13A5.8 5.8 0 0019.86.63c-.76-.3-1.63-.5-2.91-.56C15.67.01 15.26 0 12 0zm0 5.84A6.16 6.16 0 105.84 12 6.16 6.16 0 0012 5.84zm0 10.16A4 4 0 1116 12a4 4 0 01-4 4zm6.4-10.4a1.44 1.44 0 11-1.44-1.44 1.44 1.44 0 011.44 1.44z"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <!-- Both platform paths are always shown, to everyone, regardless of what
+         device is loading the page — a desktop visitor researching the app
+         needs to see the iPhone instructions just as much as an Android one
+         needs the Play Store button. Only the button that actually DOES
+         something (Play Store link; "use web version" on real iOS) is
+         platform-gated — the steps/copy are pure information for everyone. -->
+    <section id="g-cta-section" class="g-cta g-reveal">
+      <h2 id="g-cta-title"></h2>
+      <div class="g-paths">
+        <div class="g-path">
+          <div class="g-path-head"><span class="g-path-ic">▶</span><h3>Android</h3></div>
+          <p id="g-path-android-body"></p>
+          <a id="g-play" class="g-btn g-primary" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" class="g-play-ic"><path d="M4 3.5c-.3.3-.5.7-.5 1.2v14.6c0 .5.2.9.5 1.2l8.6-8.5L4 3.5z"/><path d="M15.9 12l2.7-1.5c.8-.5.8-1.6 0-2.1L15.9 7 13 9.9l2.9 2.1z" opacity=".7"/><path d="M4 3.5l9 5.4 2.9-2.9-9.9-5.6c-.7-.4-1.5-.3-2 .3z" opacity=".85"/><path d="M4 20.5l9.9-5.6-2.9-2.9-9 5.4c.5.6 1.3.7 2 .3z" opacity=".85"/></svg>
+            <span id="g-play-label"></span>
+          </a>
+        </div>
+        <div class="g-path">
+          <div class="g-path-head"><span class="g-path-ic">🍎</span><h3>iPhone</h3></div>
+          <p id="g-path-ios-body"></p>
+          <!-- Always-visible link to the dedicated app URL (sigmacta.pages.dev/app,
+               no marketing gate — see web/app/index.html) so visitors have a direct
+               way in, not just the numbered instructions below. Real navigation
+               (not the inline bootFlutter() trick the old gated button used) — on
+               iOS Safari this lands them on the actual app, ready to add to their
+               Home Screen from there. -->
+          <a id="g-app-link" class="g-btn g-primary" href="/app"><span id="g-app-link-label"></span></a>
+          <!-- Looped CSS-only mockup of the real iOS flow: Safari page ->
+               tap Share -> sheet slides up with "Add to Home Screen"
+               highlighted -> icon lands on the home screen. No screen
+               recording involved — safer (no third-party app/branding to
+               accidentally show) and far lighter than a GIF. -->
+          <div class="g-ios-mock" aria-hidden="true">
+            <div class="g-ios-frame">
+              <div class="g-ios-notch"></div>
+              <div class="g-ios-screen">
+                <div class="g-ios-page">
+                  <div class="g-ios-bar"><span class="g-ios-url">sigmacta.pages.dev</span></div>
+                  <div class="g-ios-body"><span class="g-ios-logo">&Sigma;</span></div>
+                  <div class="g-ios-toolbar">
+                    <span class="g-ios-tool">‹</span>
+                    <span class="g-ios-share">
+                      <svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                      <span class="g-ios-tap"></span>
+                    </span>
+                    <span class="g-ios-tool">▢</span>
+                  </div>
+                </div>
+                <div class="g-ios-sheet">
+                  <span class="g-ios-sheet-grip"></span>
+                  <div class="g-ios-row"><span class="g-ios-row-ic">🔖</span><span class="g-ios-fake-text"></span></div>
+                  <div class="g-ios-row"><span class="g-ios-row-ic">⭐</span><span class="g-ios-fake-text"></span></div>
+                  <div class="g-ios-row g-ios-row-hl"><span class="g-ios-row-ic">➕</span><span id="g-ios-addhome"></span></div>
+                  <div class="g-ios-row"><span class="g-ios-row-ic">🖨</span><span class="g-ios-fake-text"></span></div>
+                </div>
+                <div class="g-ios-home">
+                  <div class="g-ios-app g-ios-app-real"><span>&Sigma;</span></div>
+                  <div class="g-ios-app"></div>
+                  <div class="g-ios-app"></div>
+                  <div class="g-ios-app"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ol id="g-steps">
+            <li><span class="g-ic">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.2"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" fill="#fff" stroke="none"/></svg>
+                </span><span id="g-s1"></span></li>
+            <li><span class="g-ic">
+                  <svg viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </span><span id="g-s2"></span></li>
+            <li><span class="g-ic">
+                  <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </span><span id="g-s3"></span></li>
+            <li><span class="g-ic">
+                  <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span><span id="g-s4"></span></li>
+          </ol>
+          <!-- Only unhidden + wired to actually boot the app on real iOS
+               Safari — see the boot script. Elsewhere it stays hidden: the
+               steps above already tell a desktop/Android visitor how it works. -->
+          <button id="g-web" class="g-btn g-primary" hidden></button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="g-foot">&Sigma; Sigmacta</footer>
+  </div>
+  <style>
+    *{box-sizing:border-box}
+    #landing-gate{position:fixed;inset:0;z-index:9999;overflow-y:auto;overflow-x:hidden;
+      background:#050506;color:#F2F3F7;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    #landing-gate h1,#landing-gate h2,#landing-gate h3{
+      font-family:'Clash Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    /* Small persistent corner chrome — brand mark + live scroll-progress %,
+       the same "you are here" signature detail agency sites like armur.co
+       use so the page reads as a designed product, not just a scroll of
+       sections. Pure decoration: never intercepts clicks. */
+    .g-chrome{position:fixed;z-index:2;top:78px;pointer-events:none;
+      font-size:12px;font-weight:700;letter-spacing:1.5px;color:#7C88FF;
+      text-transform:uppercase}
+    .g-chrome-right{right:24px;text-align:right;color:#8F94A3}
+
+    /* Site navigation — brand + hamburger, always fixed up top. The menu
+       itself is a full-width panel that drops down over the page rather
+       than a tiny dropdown, so the tap targets stay comfortable on a phone. */
+    .g-nav{position:fixed;top:0;left:0;right:0;z-index:6;display:flex;
+      align-items:center;justify-content:space-between;padding:16px 22px;
+      background:linear-gradient(rgba(5,5,6,.85),rgba(5,5,6,.5) 70%,transparent);
+      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+    .g-nav-brand{font-size:14px;font-weight:800;letter-spacing:.5px;color:#F2F3F7}
+    .g-nav-burger{position:relative;z-index:7;width:38px;height:38px;border:0;
+      border-radius:10px;background:rgba(255,255,255,.08);cursor:pointer;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+    .g-nav-burger span{display:block;width:18px;height:2px;border-radius:2px;
+      background:#F2F3F7;transition:transform .25s ease,opacity .25s ease}
+    .g-nav-burger.g-nav-burger-open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+    .g-nav-burger.g-nav-burger-open span:nth-child(2){opacity:0}
+    .g-nav-burger.g-nav-burger-open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+    .g-nav-menu{position:fixed;inset:0;z-index:5;background:#08080a;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+      opacity:0;visibility:hidden;transform:translateY(-12px);
+      transition:opacity .3s ease,transform .3s ease,visibility 0s linear .3s}
+    .g-nav-menu.g-nav-open{opacity:1;visibility:visible;transform:translateY(0);
+      transition:opacity .3s ease,transform .3s ease,visibility 0s}
+    .g-nav-link{font-family:'Clash Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      font-size:clamp(22px,6vw,30px);font-weight:600;color:#F2F3F7;text-decoration:none;
+      padding:10px 20px}
+    .g-nav-langs{display:flex;gap:10px;margin-top:22px}
+    .g-nav-lang-btn{padding:9px 20px;border-radius:999px;border:1px solid rgba(255,255,255,.15);
+      background:rgba(255,255,255,.05);color:#AEB3C4;font-size:13px;font-weight:700;
+      letter-spacing:1px;cursor:pointer}
+    .g-nav-lang-btn.g-lang-active{background:linear-gradient(135deg,#4F7CFF,#7C6CFF);
+      color:#fff;border-color:transparent}
+
+    /* Hero "jump to download" button */
+    .g-hero-dl{display:flex;align-items:center;gap:8px;margin:0 0 28px;padding:12px 22px;
+      border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);
+      color:#F2F3F7;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;
+      transition:transform .2s ease,background .2s ease}
+    .g-hero-dl:hover{transform:translateY(-2px);background:rgba(255,255,255,.1)}
+    .g-hero-dl svg{width:16px;height:16px;stroke:#9FB0FF;flex:0 0 auto}
+    .g-eyebrow{display:block;margin:0 0 10px;font-size:12px;font-weight:700;
+      letter-spacing:2px;text-transform:uppercase;color:#7C88FF}
+    #landing-gate[hidden]{display:none}
+    #landing-gate [hidden]{display:none!important}
+
+    .g-bg{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+    .g-orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.35}
+    .g-orb1{width:420px;height:420px;left:-120px;top:-80px;
+      background:radial-gradient(circle,#4F7CFF,transparent 70%);animation:g-drift1 22s ease-in-out infinite}
+    .g-orb2{width:380px;height:380px;right:-140px;top:30vh;
+      background:radial-gradient(circle,#9B7FFF,transparent 70%);animation:g-drift2 26s ease-in-out infinite}
+    .g-orb3{width:340px;height:340px;left:10vw;bottom:-100px;
+      background:radial-gradient(circle,#4F7CFF,transparent 70%);animation:g-drift1 30s ease-in-out infinite reverse}
+    @keyframes g-drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,50px)}}
+    @keyframes g-drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-50px,30px)}}
+    .g-rain{position:fixed;inset:0;z-index:0;width:100%;height:100%;pointer-events:none}
+    .g-hero{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;text-align:center;padding:48px 24px}
+    .g-logo{width:84px;height:84px;margin:0 auto 20px;border-radius:24px;
+      background:linear-gradient(135deg,#4F7CFF,#9B7FFF);display:flex;
+      align-items:center;justify-content:center;font-size:46px;font-weight:800;
+      color:#fff;box-shadow:0 20px 60px rgba(79,124,255,.45);
+      animation:g-pulse 4s ease-in-out infinite}
+    @keyframes g-pulse{0%,100%{box-shadow:0 20px 60px rgba(79,124,255,.45)}
+      50%{box-shadow:0 20px 80px rgba(155,127,255,.6)}}
+    .g-logo-face{display:inline-block;animation:g-spin3d 7s linear infinite}
+    @keyframes g-spin3d{0%{transform:perspective(600px) rotateY(0deg)}100%{transform:perspective(600px) rotateY(360deg)}}
+    .g-hero h1{margin:0 0 10px;font-size:clamp(42px,12vw,72px);font-weight:600;letter-spacing:-2px}
+    .g-tag{margin:0 0 32px;color:#AEB3C4;font-size:clamp(15px,3.6vw,19px);line-height:1.5;max-width:440px}
+    .g-features{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+      max-width:420px;width:100%;margin:0 0 40px}
+    .g-feat{background:rgba(255,255,255,.05);backdrop-filter:blur(8px);
+      border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:14px 6px;
+      display:flex;flex-direction:column;align-items:center;gap:7px;
+      transition:transform .25s ease,background .25s ease}
+    .g-feat:hover{transform:translateY(-3px);background:rgba(255,255,255,.08)}
+    .g-feat svg{width:20px;height:20px;fill:#9FB0FF;stroke:#9FB0FF;stroke-width:1.4}
+    .g-feat span{font-size:11.5px;color:#C3C7D6;font-weight:600;line-height:1.2}
+    .g-scrolldown{width:26px;height:26px;color:#5B6072;animation:g-bounce 2s ease-in-out infinite}
+    @keyframes g-bounce{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(8px);opacity:1}}
+
+    .g-about,.g-video,.g-why,.g-social{position:relative;z-index:1;max-width:560px;
+      margin:0 auto;padding:96px 24px;text-align:center}
+    .g-about h2,.g-video h2,.g-why h2,.g-social h2{margin:0 0 18px;
+      font-size:clamp(28px,7vw,44px);font-weight:600;letter-spacing:-1px}
+    .g-about p{margin:0 0 28px;color:#AEB3C4;font-size:15.5px;line-height:1.65}
+    .g-do{list-style:none;margin:0;padding:0;text-align:left;display:grid;gap:10px}
+    .g-do li{position:relative;padding:12px 16px 12px 42px;background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.07);border-radius:14px;font-size:14.5px;
+      color:#DDE0EA;line-height:1.4}
+    .g-do li::before{content:'✓';position:absolute;left:16px;top:12px;color:#7EE0A8;font-weight:800}
+
+    .g-video-frame{position:relative;width:100%;padding-top:56.25%;border-radius:20px;
+      overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.55);background:#000}
+    .g-video-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+
+    .g-founder{position:relative;z-index:1;max-width:600px;margin:0 auto;padding:20px 24px 64px;text-align:center}
+    .g-founder-badge{width:56px;height:56px;margin:0 auto 18px;border-radius:18px;
+      background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+      display:flex;align-items:center;justify-content:center;font-size:26px}
+    .g-founder h2{margin:0 0 16px;font-size:clamp(28px,7vw,44px);font-weight:600;letter-spacing:-1px}
+    .g-founder p{margin:0;color:#AEB3C4;font-size:15.5px;line-height:1.65}
+    .g-stats{display:grid;grid-template-columns:1fr 1fr;gap:28px 16px;margin:40px 0 0}
+    @media (min-width:640px){.g-stats{grid-template-columns:repeat(4,1fr)}}
+    .g-stat{display:flex;flex-direction:column;align-items:center;gap:6px}
+    .g-stat-num,.g-stat-num[data-static]{font-size:clamp(32px,8vw,44px);font-weight:800;line-height:1;
+      background:linear-gradient(135deg,#8FB0FF,#C9A8FF);-webkit-background-clip:text;
+      background-clip:text;color:transparent}
+    .g-stat-label{font-size:12.5px;color:#AEB3C4;font-weight:600;line-height:1.3;max-width:130px}
+
+    .g-faq{position:relative;z-index:1;max-width:640px;margin:0 auto;padding:20px 24px 64px;text-align:center}
+    .g-faq h2{margin:0 0 26px;font-size:clamp(28px,7vw,44px);font-weight:600;letter-spacing:-1px}
+    .g-faq-list{display:grid;gap:12px;text-align:left}
+    .g-faq-item{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+      border-radius:16px;padding:2px 20px;overflow:hidden}
+    .g-faq-item summary{list-style:none;cursor:pointer;padding:17px 30px 17px 0;position:relative;
+      font-weight:700;font-size:15px;color:#F2F3F7}
+    .g-faq-item summary::-webkit-details-marker{display:none}
+    .g-faq-item summary::after{content:'+';position:absolute;right:2px;top:12px;font-size:22px;
+      color:#7C88FF;transition:transform .25s ease;font-weight:400}
+    .g-faq-item[open] summary::after{transform:rotate(45deg)}
+    .g-faq-item p{margin:0 0 18px;color:#AEB3C4;font-size:14px;line-height:1.6}
+
+    .g-roadmap{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:20px 24px 64px;text-align:center}
+    .g-roadmap h2{margin:0 0 12px;font-size:clamp(28px,7vw,44px);font-weight:600;letter-spacing:-1px}
+    .g-roadmap>p{margin:0 0 26px;color:#AEB3C4;font-size:14.5px;line-height:1.5}
+    .g-roadmap-list{list-style:none;margin:0;padding:0;text-align:left;display:grid;gap:10px}
+    .g-roadmap-list li{position:relative;padding:12px 16px 12px 42px;background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.07);border-radius:14px;font-size:14.5px;color:#DDE0EA;line-height:1.4}
+    .g-roadmap-list li::before{content:'→';position:absolute;left:14px;top:11px;color:#9B7FFF;font-weight:800}
+
+    .g-showcase{position:relative;z-index:1;max-width:1100px;margin:0 auto;
+      padding:20px 0 60px;text-align:center}
+    .g-showcase h2{margin:0 0 8px;font-size:clamp(28px,7vw,44px);font-weight:600;letter-spacing:-1px}
+    .g-carousel{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:22px;
+      padding:36px 24px 30px;margin:18px 0 0;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none}
+    .g-carousel::-webkit-scrollbar{display:none}
+    .g-card{position:relative;flex:0 0 78%;max-width:300px;scroll-snap-align:center;
+      text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+      border-radius:26px;padding:18px 18px 22px}
+    .g-card:nth-child(odd){transform:rotate(-1.4deg)}
+    .g-card:nth-child(even){transform:rotate(1.4deg)}
+    .g-card-n{position:absolute;top:-14px;left:20px;width:32px;height:32px;border-radius:10px;
+      background:linear-gradient(135deg,#4F7CFF,#9B7FFF);color:#fff;font-weight:800;font-size:13px;
+      display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(79,124,255,.4)}
+    .g-card-shot{border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.5);margin:0 0 16px}
+    .g-card-shot img{display:block;width:100%;height:auto}
+    .g-card h3{margin:0 0 8px;font-size:19px;font-weight:600;letter-spacing:-.3px;
+      font-family:'Clash Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .g-card p{margin:0;color:#AEB3C4;font-size:14px;line-height:1.55}
+    @media (min-width:640px){.g-card{flex:0 0 320px}}
+    .g-carousel-dots{display:flex;justify-content:center;gap:7px;margin:0 0 10px}
+    .g-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.18);
+      transition:background .25s ease,transform .25s ease}
+    .g-dot-active{background:#7C88FF;transform:scale(1.35)}
+    .g-swipe-hint{display:inline-flex;align-items:center;gap:8px;color:#7C88FF;
+      font-size:12.5px;font-weight:700;letter-spacing:.5px;opacity:1;transition:opacity .4s ease}
+    .g-swipe-hint svg{width:16px;height:16px;animation:g-swipe-nudge 1.6s ease-in-out infinite}
+    @keyframes g-swipe-nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(6px)}}
+    .g-swipe-hint.g-hint-gone{opacity:0;pointer-events:none}
+
+    .g-why-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;text-align:left}
+    .g-why-item{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);
+      border-radius:16px;padding:18px 16px;display:flex;flex-direction:column;gap:10px;
+      font-size:14px;color:#DDE0EA;line-height:1.4;transition:transform .25s ease}
+    .g-why-item:hover{transform:translateY(-3px)}
+    .g-why-ic{font-size:26px;line-height:1}
+    @media (max-width:480px){.g-why-grid{grid-template-columns:1fr}}
+
+    .g-social-row{display:flex;justify-content:center;gap:14px}
+    .g-soc{width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;
+      transition:transform .25s ease,background .25s ease}
+    .g-soc:hover{transform:translateY(-3px);background:rgba(255,255,255,.12)}
+    .g-soc svg{width:22px;height:22px;fill:#DDE0EA}
+
+    .g-cta{position:relative;z-index:1;max-width:640px;margin:0 auto;
+      padding:20px 24px 56px;text-align:center}
+    .g-cta h2{margin:0 0 28px;font-size:clamp(28px,7vw,44px);font-weight:600;letter-spacing:-1px}
+    .g-paths{display:grid;grid-template-columns:1fr;gap:16px;text-align:left}
+    @media (min-width:640px){.g-paths{grid-template-columns:1fr 1fr}}
+    .g-path{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+      border-radius:20px;padding:22px}
+    .g-path-head{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+    .g-path-ic{font-size:22px;line-height:1}
+    .g-path-head h3{margin:0;font-size:17px;font-weight:800}
+    .g-path p{margin:0 0 16px;color:#AEB3C4;font-size:13.5px;line-height:1.5}
+    .g-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+      padding:15px 16px;margin:0 0 10px;border:0;border-radius:14px;font-size:15.5px;
+      font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;
+      transition:transform .2s ease,box-shadow .2s ease}
+    .g-primary{background:linear-gradient(135deg,#4F7CFF,#7C6CFF);color:#fff;
+      box-shadow:0 10px 30px rgba(79,124,255,.35)}
+    .g-primary:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(79,124,255,.5)}
+    .g-ghost{background:rgba(255,255,255,.05);color:#F2F3F7;border:1px solid rgba(255,255,255,.12)}
+    .g-ghost:hover{background:rgba(255,255,255,.09)}
+    .g-play-ic{width:18px;height:18px;fill:#fff}
+
+    /* iOS install mockup — a single 9s loop drives every layer below, so
+       they all reference the same duration and stay in sync: Safari page ->
+       tap Share -> sheet slides up with a row highlighted -> home screen
+       fades in with the icon landing. */
+    .g-ios-mock{display:flex;justify-content:center;margin:0 0 18px}
+    .g-ios-frame{width:132px;aspect-ratio:9/19.5;background:#0a0a0c;border-radius:22px;
+      padding:6px;box-shadow:0 16px 40px rgba(0,0,0,.5);position:relative}
+    .g-ios-notch{position:absolute;top:6px;left:50%;transform:translateX(-50%);
+      width:44px;height:14px;background:#0a0a0c;border-radius:0 0 10px 10px;z-index:3}
+    .g-ios-screen{width:100%;height:100%;border-radius:16px;overflow:hidden;
+      position:relative;background:#F2F3F7}
+    .g-ios-page{position:absolute;inset:0;display:flex;flex-direction:column}
+    .g-ios-bar{padding:16px 8px 4px;text-align:center}
+    .g-ios-url{font-size:6px;color:#667;background:rgba(0,0,0,.06);border-radius:5px;
+      padding:2px 8px;display:inline-block}
+    .g-ios-body{flex:1;display:flex;align-items:center;justify-content:center}
+    .g-ios-logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#4F7CFF,#9B7FFF);
+      color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center}
+    .g-ios-toolbar{display:flex;align-items:center;justify-content:space-around;
+      padding:6px 4px 8px;color:#334;border-top:1px solid rgba(0,0,0,.06)}
+    .g-ios-tool{font-size:11px}
+    .g-ios-share{position:relative;display:flex}
+    .g-ios-share svg{width:13px;height:13px;stroke:#4F7CFF}
+    .g-ios-tap{position:absolute;inset:-6px;border-radius:50%;background:rgba(79,124,255,.35);
+      opacity:0;animation:g-ios-tap 9s ease-in-out infinite}
+    @keyframes g-ios-tap{
+      0%,17%,100%{opacity:0;transform:scale(.4)}
+      20%{opacity:.9;transform:scale(1)}
+      25%{opacity:0;transform:scale(1.7)}
+    }
+    .g-ios-sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;
+      border-radius:14px 14px 0 0;padding:8px 10px 10px;box-shadow:0 -6px 16px rgba(0,0,0,.12);
+      transform:translateY(100%);animation:g-ios-sheet-move 9s ease-in-out infinite}
+    @keyframes g-ios-sheet-move{
+      0%,22%{transform:translateY(100%)}
+      32%,63%{transform:translateY(0)}
+      71%,100%{transform:translateY(100%)}
+    }
+    .g-ios-sheet-grip{display:block;width:26px;height:3px;border-radius:2px;
+      background:rgba(0,0,0,.15);margin:0 auto 6px}
+    .g-ios-row{display:flex;align-items:center;gap:6px;padding:4px 4px;border-radius:6px}
+    .g-ios-row-ic{font-size:8px;line-height:1}
+    .g-ios-fake-text{flex:1;height:5px;border-radius:3px;background:rgba(0,0,0,.08)}
+    .g-ios-row-hl{background:rgba(79,124,255,.08);animation:g-ios-row-hl 9s ease-in-out infinite}
+    .g-ios-row-hl #g-ios-addhome{font-size:6.5px;font-weight:700;color:#22242c}
+    @keyframes g-ios-row-hl{
+      0%,53%,100%{background:rgba(79,124,255,.08)}
+      58%{background:rgba(79,124,255,.32)}
+      63%{background:rgba(79,124,255,.08)}
+    }
+    .g-ios-home{position:absolute;inset:0;background:linear-gradient(160deg,#2b2f45,#15172a);
+      display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-content:start;
+      padding:26px 14px;opacity:0;animation:g-ios-home-fade 9s ease-in-out infinite}
+    @keyframes g-ios-home-fade{
+      0%,68%{opacity:0}
+      78%,96%{opacity:1}
+      100%{opacity:0}
+    }
+    .g-ios-app{width:100%;aspect-ratio:1;border-radius:9px;background:rgba(255,255,255,.12)}
+    .g-ios-app-real{background:linear-gradient(135deg,#4F7CFF,#9B7FFF);display:flex;
+      align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;
+      transform:scale(0);opacity:0;animation:g-ios-icon-pop 9s ease-in-out infinite}
+    @keyframes g-ios-icon-pop{
+      0%,73%{transform:scale(0);opacity:0}
+      80%{transform:scale(1.2);opacity:1}
+      86%,96%{transform:scale(1);opacity:1}
+      100%{transform:scale(0);opacity:0}
+    }
+    @media (prefers-reduced-motion:reduce){
+      .g-ios-tap,.g-ios-home,.g-ios-app-real{animation:none!important;opacity:0!important}
+      .g-ios-sheet{animation:none!important;transform:translateY(0)!important}
+      .g-ios-row-hl{animation:none!important;background:rgba(79,124,255,.28)!important}
+    }
+
+    #g-steps{margin:18px 0 0;padding:0;list-style:none;text-align:left}
+    #g-steps li{display:flex;align-items:center;gap:12px;padding:10px 12px;
+      margin-bottom:8px;background:rgba(255,255,255,.05);border-radius:12px;font-size:14px}
+    .g-ic{flex:0 0 26px;height:26px;border-radius:50%;background:#4F7CFF;color:#fff;
+      display:flex;align-items:center;justify-content:center}
+    .g-ic svg{width:15px;height:15px;fill:#fff;stroke:#fff}
+
+    .g-foot{position:relative;z-index:1;text-align:center;padding:0 24px 40px;
+      color:#4B4F5E;font-size:13px;font-weight:600}
+
+    /* Scroll reveal — plain CSS transition, toggled by IntersectionObserver JS.
+       A real 3D tilt (perspective + rotateX) rather than a flat slide, so
+       every section settles into place instead of just sliding up. */
+    .g-reveal{opacity:0;transform:perspective(1000px) translateY(30px) rotateX(-10deg);
+      transform-origin:50% 100%;
+      transition:opacity .9s cubic-bezier(.22,1,.36,1),transform .9s cubic-bezier(.22,1,.36,1)}
+    .g-reveal.g-in{opacity:1;transform:perspective(1000px) translateY(0) rotateX(0)}
+
+    /* Lighter hover-tilt for cards that aren't the hero screenshots — same
+       pointer-follow technique, smaller max angle so it reads as a subtle
+       lift rather than a flip. */
+    .g-tilt-sm{transition:transform .3s ease;will-change:transform}
+
+    @media (prefers-reduced-motion:reduce){
+      .g-orb,.g-logo,.g-logo-face,.g-scrolldown{animation:none!important}
+      .g-reveal{transition:none;opacity:1;transform:none}
+      .g-tilt-sm{transition:none}
+    }
+  </style>
   <script>
-    window.addEventListener('load', function(ev) {
-      // Download main.dart.js
+    // Scroll-reveal: fade+slide each section in once, the first time it enters
+    // the viewport. Runs for every platform — this is decorative, not gating.
+    (function () {
+      var els = document.querySelectorAll('.g-reveal');
+      if (!('IntersectionObserver' in window) || !els.length) {
+        els.forEach(function (el) { el.classList.add('g-in'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('g-in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15 });
+      els.forEach(function (el) { io.observe(el); });
+      // Safety net: this is a marketing page, not a puzzle — a visitor must
+      // never be looking at a permanently blank screen because the observer
+      // didn't fire in some edge case (backgrounded tab, odd embedder). Force
+      // everything visible shortly after load regardless.
+      setTimeout(function () {
+        els.forEach(function (el) { el.classList.add('g-in'); });
+      }, 1200);
+    })();
+
+    // Falling Σ and $ — a slow, sparse, translucent drift rather than literal
+    // rain (too many/too fast reads as noise, not atmosphere). Canvas rather
+    // than one DOM node per symbol, since this repaints every frame.
+    (function () {
+      var canvas = document.getElementById('g-rain');
+      if (!canvas || !canvas.getContext) return;
+      var ctx = canvas.getContext('2d');
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var W, H, particles;
+
+      function resize() {
+        W = canvas.width = Math.round(window.innerWidth * dpr);
+        H = canvas.height = Math.round(window.innerHeight * dpr);
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      function spawn(fresh) {
+        var isSigma = Math.random() < 0.65; // mostly the brand mark, dollars as an accent
+        return {
+          x: Math.random() * W,
+          y: fresh ? Math.random() * H : -60 * dpr,
+          size: (16 + Math.random() * 26) * dpr,
+          speed: (0.25 + Math.random() * 0.55) * dpr,
+          sway: Math.random() * Math.PI * 2,
+          swaySpeed: 0.004 + Math.random() * 0.008,
+          swayAmp: (10 + Math.random() * 18) * dpr,
+          opacity: 0.05 + Math.random() * 0.13,
+          char: isSigma ? 'Σ' : '$',
+          color: isSigma ? '159,176,255' : '255,214,140'
+        };
+      }
+      var density = Math.min(70, Math.round((window.innerWidth * window.innerHeight) / 24000));
+      particles = [];
+      for (var i = 0; i < density; i++) particles.push(spawn(true));
+
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      function draw() {
+        ctx.clearRect(0, 0, W, H);
+        particles.forEach(function (p) {
+          var x = p.x + Math.sin(p.sway) * p.swayAmp;
+          ctx.font = p.size + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.fillStyle = 'rgba(' + p.color + ',' + p.opacity + ')';
+          ctx.fillText(p.char, x, p.y);
+        });
+      }
+      if (reduceMotion) { draw(); return; } // static, no loop
+
+      function frame() {
+        particles.forEach(function (p) {
+          p.y += p.speed;
+          p.sway += p.swaySpeed;
+          if (p.y > H + 60 * dpr) { var n = spawn(false); for (var k in n) p[k] = n[k]; }
+        });
+        draw();
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    })();
+
+    // Stat counters — count up once, the first time the row scrolls into
+    // view. Purely decorative (like the reveal fade), so reduced-motion just
+    // jumps straight to the final value instead of skipping the numbers.
+    (function () {
+      var nums = document.querySelectorAll('.g-stat-num[data-count]');
+      if (!nums.length) return;
+      var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      function setFinal(el) {
+        el.textContent = el.getAttribute('data-count') + (el.getAttribute('data-suffix') || '');
+      }
+      function animate(el) {
+        if (reduceMotion) { setFinal(el); return; }
+        var target = parseFloat(el.getAttribute('data-count'));
+        var suffix = el.getAttribute('data-suffix') || '';
+        var dur = 1100, start = null;
+        function step(ts) {
+          if (!start) start = ts;
+          var p = Math.min((ts - start) / dur, 1);
+          var eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = Math.round(target * eased) + suffix;
+          if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+      if (!('IntersectionObserver' in window)) { nums.forEach(animate); return; }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) { animate(entry.target); io.unobserve(entry.target); }
+        });
+      }, { threshold: 0.4 });
+      nums.forEach(function (el) { io.observe(el); });
+      // Safety net: force the final value directly (no rAF) if nothing has
+      // updated it after a few seconds — covers both "observer never fired"
+      // and "rAF never got a frame to run in". A visitor must never be
+      // stuck looking at permanent zeros.
+      setTimeout(function () {
+        nums.forEach(function (el) { if (el.textContent === '0') setFinal(el); });
+      }, 1600);
+    })();
+
+    // Live scroll-progress readout for the corner chrome above. Reads
+    // gate.scrollTop directly rather than hooking into Lenis, so it keeps
+    // working even if Lenis fails to load — same "never depend on the
+    // decorative layer for correctness" rule as everything else here.
+    (function () {
+      var gate = document.getElementById('landing-gate');
+      var pctEl = document.getElementById('g-scroll-pct');
+      if (!gate) return;
+      function update() {
+        var max = gate.scrollHeight - gate.clientHeight;
+        var pct = max > 0 ? (gate.scrollTop / max) * 100 : 0;
+        pct = Math.max(0, Math.min(100, pct));
+        if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+      }
+      gate.addEventListener('scroll', update, { passive: true });
+      update();
+    })();
+
+    // Smooth, slightly "weighted" scroll (the same inertia feel armur.co
+    // uses) instead of the browser's 1:1 wheel scroll. Loaded from a CDN and
+    // guarded end-to-end — if it fails to load or init for any reason, the
+    // page must keep scrolling normally; this can never be allowed to leave
+    // the page unscrollable for a real visitor.
+    (function () {
+      var gate = document.getElementById('landing-gate');
+      if (!gate) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/lenis@1/dist/lenis.min.js';
+      script.onload = function () {
+        try {
+          var lenis = new Lenis({ wrapper: gate, content: gate });
+          requestAnimationFrame(function raf(time) {
+            lenis.raf(time);
+            requestAnimationFrame(raf);
+          });
+          // The feature screenshots load lazily further down the page —
+          // once Lenis has taken its first height measurement, a lazy image
+          // finishing load makes the real page taller without Lenis ever
+          // finding out, so it keeps clamping scroll to the old, shorter
+          // height and scrolling silently stops partway down. Re-measuring
+          // on an interval is the bulletproof fix regardless of what caused
+          // the change (images, fonts, anything else).
+          setInterval(function () { try { lenis.resize(); } catch (e2) {} }, 400);
+        } catch (e) {}
+      };
+      document.body.appendChild(script);
+    })();
+
+    // 3D tilt following the pointer — skipped on touch devices, where
+    // there's no hover and it would just fight with scrolling. Stat/why
+    // cards get a gentle lift so the page feels alive without fighting for
+    // attention (the showcase cards below have their own carousel motion
+    // instead of this hover effect).
+    (function () {
+      if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+      function wire(el, maxDeg, lift) {
+        el.addEventListener('mousemove', function (e) {
+          var r = el.getBoundingClientRect();
+          var px = (e.clientX - r.left) / r.width - 0.5;
+          var py = (e.clientY - r.top) / r.height - 0.5;
+          el.style.transform = 'perspective(1400px) rotateX(' + (py * -maxDeg) + 'deg) rotateY(' + (px * maxDeg) + 'deg) scale3d(' + lift + ',' + lift + ',' + lift + ')';
+        });
+        el.addEventListener('mouseleave', function () {
+          el.style.transform = 'perspective(1400px) rotateX(0) rotateY(0) scale3d(1,1,1)';
+        });
+      }
+      document.querySelectorAll('.g-tilt-sm').forEach(function (el) { wire(el, 5, 1.03); });
+    })();
+
+    // Showcase carousel — dot indicators track the nearest snapped card, and
+    // the swipe hint disappears the first time the visitor actually scrolls
+    // it (or after a few seconds regardless, so it isn't a permanent nag).
+    (function () {
+      var carousel = document.getElementById('g-carousel');
+      var dotsWrap = document.getElementById('g-carousel-dots');
+      var hint = document.getElementById('g-swipe-hint');
+      if (!carousel || !dotsWrap) return;
+      var cards = carousel.querySelectorAll('.g-card');
+      cards.forEach(function (_, i) {
+        var d = document.createElement('span');
+        d.className = 'g-dot' + (i === 0 ? ' g-dot-active' : '');
+        dotsWrap.appendChild(d);
+      });
+      var dots = dotsWrap.querySelectorAll('.g-dot');
+      function updateActiveDot() {
+        var center = carousel.scrollLeft + carousel.clientWidth / 2;
+        var closest = 0, closestDist = Infinity;
+        cards.forEach(function (card, i) {
+          var cardCenter = card.offsetLeft + card.clientWidth / 2;
+          var dist = Math.abs(cardCenter - center);
+          if (dist < closestDist) { closestDist = dist; closest = i; }
+        });
+        dots.forEach(function (d, i) { d.classList.toggle('g-dot-active', i === closest); });
+      }
+      carousel.addEventListener('scroll', updateActiveDot, { passive: true });
+      if (hint) {
+        carousel.addEventListener('scroll', function onFirstScroll() {
+          hint.classList.add('g-hint-gone');
+          carousel.removeEventListener('scroll', onFirstScroll);
+        }, { passive: true, once: true });
+        setTimeout(function () { hint.classList.add('g-hint-gone'); }, 5000);
+      }
+    })();
+
+    // The web app itself (~1.4 MB of main.dart.js) is iPhone-only. Everyone
+    // else — Android, desktop, and whatever a search-engine crawler's UA
+    // looks like — must only ever see the marketing card above: Android gets
+    // pushed to Google Play, desktop gets pointed at both, and nothing here
+    // ever calls bootFlutter() for them, so the engine never even downloads.
+    var __booted = false;
+    function bootFlutter() {
+      if (__booted) return;
+      __booted = true;
       _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion,
-        },
-        onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine().then(function(appRunner) {
+        serviceWorker: { serviceWorkerVersion: serviceWorkerVersion },
+        onEntrypointLoaded: function (engineInitializer) {
+          engineInitializer.initializeEngine().then(function (appRunner) {
             appRunner.runApp();
           });
         }
       });
+    }
+
+    // Default true: an already-installed iOS Home Screen PWA boots straight
+    // in, no gate — see the standalone check below.
+    var __autoBoot = true;
+
+    (function () {
+      var ua = navigator.userAgent || '';
+      // iPadOS 13+ reports itself as a Mac, so a touch-capable "Mac" is an iPad.
+      var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      var isAndroid = /Android/.test(ua);
+      // Already installed to the Home Screen — it IS the app now, don't nag.
+      var standalone = window.navigator.standalone === true ||
+        window.matchMedia('(display-mode: standalone)').matches;
+      if (standalone) return;
+
+      // Matches the app's own two locales rather than inventing a third.
+      // A manually-picked language (see the RU/EN buttons in the nav menu)
+      // always wins over the browser's own auto-detected locale.
+      var savedLang = '';
+      try { savedLang = localStorage.getItem('sigLang') || ''; } catch (e) {}
+      var ru = (savedLang || navigator.language || '').toLowerCase().indexOf('ru') === 0;
+      var t = ru ? {
+        tag: 'Соцсеть с чатами, сторис, музыкой и сообществами.',
+        f1: 'Чаты', f2: 'Сторис', f3: 'Музыка', f4: 'Сообщества',
+        eyebrowAbout: 'О приложении',
+        eyebrowFounder: 'Основатель',
+        eyebrowShowcase: 'Скриншоты',
+        eyebrowWhy: 'Причины',
+        eyebrowFaq: 'Вопросы',
+        eyebrowRoadmap: 'Будущее',
+        showcaseTitle: 'Как это выглядит',
+        swipeHint: 'Листайте',
+        aboutTitle: 'Что такое Sigmacta',
+        aboutBody: 'Sigmacta — это социальная сеть, в которой общение и личный рост живут в одном месте. Идея простая: соцсеть не должна просто отнимать время — она должна помогать становиться лучше. Поэтому рядом с чатами и лентой здесь есть годовые цели, персональный ИИ-коуч, бесплатная музыка и подкасты.',
+        do1: 'Общаться в чатах и группах — с реальными статусами прочтения',
+        do2: 'Публиковать посты, сторис и reels',
+        do3: 'Слушать бесплатную музыку, подкасты и аудиокниги в разделе Ритм',
+        do4: 'Ставить годовые цели и получать советы от ИИ-коуча',
+        do5: 'Соревноваться с друзьями в целях (дуэли) и состоять в сообществах',
+        do6: 'Делиться моментами через сторис с музыкой и стикерами',
+        videoTitle: 'Идея Sigmacta за 30 секунд',
+        ft1: 'Никаких лишних данных', fb1: 'Регистрация за 10 секунд — только логин и пароль. Ни email, ни номер телефона никому не нужны.',
+        ft2: 'ИИ, который реально подталкивает', fb2: 'Годовые цели с трекером прогресса и персональные советы от ИИ-коуча каждый день.',
+        ft3: 'Бесплатная музыка без границ', fb3: 'Тысячи треков в разделе Ритм — легально и без подписки. Просто открой и слушай.',
+        ft4: 'Подкасты со всего мира', fb4: 'От топовых шоу до нишевых находок — ищи, подписывайся, слушай в дороге.',
+        ft5: 'Книги, которые всегда с собой', fb5: 'Бесплатные аудиокниги прямо в приложении — для тех, кто любит читать ушами.',
+        ft6: 'Твой прогресс — на виду', fb6: 'Статистика активности, Aura-очки и цели — всё в одном профиле, который растёт вместе с тобой.',
+        whyTitle: 'Почему Sigmacta',
+        why1: 'Приватность: регистрация без email и телефона — только логин и пароль',
+        why2: 'Бесплатная музыка, подкасты и аудиокниги — легально, без подписки',
+        why3: 'Личный рост как часть соцсети: годовые цели + персональный ИИ-коуч',
+        why4: 'Всё в одном приложении: чат, лента, сторис, музыка и сообщества — вместо пяти разных',
+        founderTitle: 'Джахангир Омирбаев',
+        founderBody: 'Я сделал Sigmacta один — без команды и инвесторов — потому что устал смотреть, как бесконечная лента чужих жизней подменяет людям настоящую. Дешёвый дофамин от скролла легко получить и легко потерять из-за него себя. Sigmacta задумана так, чтобы соцсеть подталкивала вперёд — к целям, привычкам и лучшей версии себя, — а не держала на крючке.',
+        navAbout: 'О приложении',
+        navFeatures: 'Функции',
+        navFaq: 'FAQ',
+        navPrivacy: 'Конфиденциальность',
+        navTerms: 'Условия использования',
+        heroDownload: 'Скачать',
+        stat1: 'функций в одном приложении',
+        stat2: 'языка интерфейса',
+        stat3: 'сделано самостоятельно',
+        stat4: 'ИИ-коуч на связи',
+        faqTitle: 'Частые вопросы',
+        faqQ1: 'Sigmacta бесплатна?',
+        faqA1: 'Да — чат, лента, сторис, музыка, подкасты, аудиокниги и сообщества бесплатны. Есть опциональная подписка Sigma Pro с дополнительными возможностями.',
+        faqQ2: 'Нужен ли email или телефон для регистрации?',
+        faqA2: 'Нет — регистрация занимает 10 секунд: только логин и пароль. Ничего личного не запрашивается.',
+        faqQ3: 'На каких платформах работает Sigmacta?',
+        faqA3: 'Приложение для Android есть в Google Play. Для iPhone уже сейчас работает веб-версия — устанавливается на «Экран «Домой»» и ведёт себя как настоящее приложение.',
+        faqQ4: 'Когда выйдет версия для App Store?',
+        faqA4: 'Уже в разработке. А пока веб-версия уже даёт пользователям iPhone полноценный опыт без ограничений.',
+        faqQ5: 'Могу я предложить функцию или сообщить о баге?',
+        faqA5: 'Да, пишите в любую из соцсетей ниже — сообщения читает лично автор, команда здесь — один человек.',
+        roadmapTitle: 'Что дальше',
+        roadmapIntro: 'Sigmacta продолжает расти — вот, над чем сейчас идёт работа.',
+        rm1: 'Native-приложение в App Store',
+        rm2: 'Больше языков интерфейса',
+        rm3: 'Растущая библиотека музыки, подкастов и аудиокниг',
+        rm4: 'Новые инструменты для сторис и видео',
+        socialTitle: 'Мы в соцсетях',
+        ctaTitle: 'Как получить Sigmacta',
+        androidBody: 'Установите приложение из Google Play.',
+        iosBody: 'Приложения пока нет в App Store — но веб-версия работает как настоящее приложение. Вот как её поставить:',
+        appLinkLabel: 'Открыть Sigmacta',
+        play: 'Открыть в Google Play',
+        web: 'Использовать веб-версию',
+        s1: 'Откройте эту страницу в Safari',
+        s2: 'Нажмите «Поделиться»',
+        s3: 'Выберите «На экран «Домой»»',
+        s4: 'Готово — Sigmacta на главном экране',
+        addHome: 'Добавить на экран «Домой»'
+      } : {
+        tag: 'A social app with chat, stories, music and communities.',
+        f1: 'Chat', f2: 'Stories', f3: 'Music', f4: 'Communities',
+        eyebrowAbout: 'About',
+        eyebrowFounder: 'Founder',
+        eyebrowShowcase: 'Screenshots',
+        eyebrowWhy: 'Reasons',
+        eyebrowFaq: 'Questions',
+        eyebrowRoadmap: 'What’s ahead',
+        showcaseTitle: 'What it looks like',
+        swipeHint: 'Swipe',
+        aboutTitle: 'What is Sigmacta',
+        aboutBody: 'Sigmacta is a social app where connecting with people and personal growth live in one place. The idea is simple: a social app shouldn’t just take up your time — it should help you get better. So alongside chat and a feed, there are yearly goals, a personal AI coach, and free music and podcasts.',
+        do1: 'Chat one-on-one and in groups — with real read receipts',
+        do2: 'Post updates, stories and reels',
+        do3: 'Stream free music, podcasts and audiobooks in Rhythm',
+        do4: 'Set yearly goals and get tips from an AI coach',
+        do5: 'Race friends toward goals (Duels) and join communities',
+        do6: 'Share moments through stories with music and stickers',
+        videoTitle: 'The idea behind Sigmacta, in 30 seconds',
+        ft1: 'No data you don’t need to give', fb1: 'Sign up in 10 seconds — just a username and password. No email, no phone number, ever.',
+        ft2: 'An AI that actually nudges you', fb2: 'Yearly goals with progress tracking, and personal tips from an AI coach every day.',
+        ft3: 'Free music, no limits', fb3: 'Thousands of tracks in Rhythm — legal, no subscription. Just open it and listen.',
+        ft4: 'Podcasts from everywhere', fb4: 'From the biggest shows to niche finds — search, subscribe, listen on the go.',
+        ft5: 'Books that go wherever you do', fb5: 'Free audiobooks built right into the app — for people who read with their ears.',
+        ft6: 'Your progress, on display', fb6: 'Activity stats, Aura points and goals — all in one profile that grows with you.',
+        whyTitle: 'Why Sigmacta',
+        why1: 'Privacy: sign up with just a username and password — no email or phone',
+        why2: 'Free music, podcasts and audiobooks — legally, no subscription',
+        why3: 'Personal growth built in: yearly goals + a personal AI coach',
+        why4: 'Everything in one app: chat, feed, stories, music and communities — instead of five',
+        founderTitle: 'Jakhangir Omirbaev',
+        founderBody: 'I built Sigmacta alone — no team, no investors — because I got tired of watching an endless feed of other people’s lives replace real ones. Cheap dopamine from scrolling is easy to get, and easy to lose yourself to. Sigmacta is built to push you forward instead — toward goals, habits, and a better version of yourself — not to keep you hooked.',
+        navAbout: 'About',
+        navFeatures: 'Features',
+        navFaq: 'FAQ',
+        navPrivacy: 'Privacy Policy',
+        navTerms: 'Terms of Use',
+        heroDownload: 'Download',
+        stat1: 'features in one app',
+        stat2: 'interface languages',
+        stat3: 'built solo',
+        stat4: 'AI coach on call',
+        faqTitle: 'Frequently asked questions',
+        faqQ1: 'Is Sigmacta free?',
+        faqA1: 'Yes — chat, feed, stories, music, podcasts, audiobooks and communities are all free. There’s an optional Sigma Pro subscription with extra perks.',
+        faqQ2: 'Do I need an email or phone number to sign up?',
+        faqA2: 'No — signing up takes 10 seconds: just a username and password. Nothing personal required.',
+        faqQ3: 'What platforms does Sigmacta run on?',
+        faqA3: 'There’s an Android app on Google Play. For iPhone, the web version already works today — add it to your Home Screen and it behaves like a real app.',
+        faqQ4: 'When is the App Store version coming?',
+        faqA4: 'It’s already in development. Meanwhile, the web version already gives iPhone users the full experience, no shortcuts.',
+        faqQ5: 'Can I suggest a feature or report a bug?',
+        faqA5: 'Yes — message any of the social links below. Every message is read personally, it’s a one-person team.',
+        roadmapTitle: 'What’s next',
+        roadmapIntro: 'Sigmacta keeps growing — here’s what’s actively in the works.',
+        rm1: 'A native App Store release',
+        rm2: 'More interface languages',
+        rm3: 'A growing music, podcast and audiobook library',
+        rm4: 'New story and video editing tools',
+        socialTitle: 'Find us online',
+        ctaTitle: 'Get Sigmacta',
+        androidBody: 'Install the app from Google Play.',
+        iosBody: 'The app is not in the App Store yet — but the web version works just like a real app. Here’s how to set it up:',
+        appLinkLabel: 'Open Sigmacta',
+        play: 'Get it on Google Play',
+        web: 'Use the web version',
+        s1: 'Open this page in Safari',
+        s2: 'Tap Share',
+        s3: 'Choose "Add to Home Screen"',
+        s4: 'Done — Sigmacta is on your Home Screen',
+        addHome: 'Add to Home Screen'
+      };
+      document.getElementById('g-tag').textContent = t.tag;
+      document.getElementById('g-f1').textContent = t.f1;
+      document.getElementById('g-f2').textContent = t.f2;
+      document.getElementById('g-f3').textContent = t.f3;
+      document.getElementById('g-f4').textContent = t.f4;
+      document.getElementById('g-eyebrow-about').textContent = t.eyebrowAbout;
+      document.getElementById('g-eyebrow-founder').textContent = t.eyebrowFounder;
+      document.getElementById('g-eyebrow-showcase').textContent = t.eyebrowShowcase;
+      document.getElementById('g-showcase-title').textContent = t.showcaseTitle;
+      document.getElementById('g-swipe-hint-label').textContent = t.swipeHint;
+      document.getElementById('g-eyebrow-why').textContent = t.eyebrowWhy;
+      document.getElementById('g-eyebrow-faq').textContent = t.eyebrowFaq;
+      document.getElementById('g-eyebrow-roadmap').textContent = t.eyebrowRoadmap;
+      document.getElementById('g-about-title').textContent = t.aboutTitle;
+      document.getElementById('g-about-body').textContent = t.aboutBody;
+      document.getElementById('g-do1').textContent = t.do1;
+      document.getElementById('g-do2').textContent = t.do2;
+      document.getElementById('g-do3').textContent = t.do3;
+      document.getElementById('g-do4').textContent = t.do4;
+      document.getElementById('g-do5').textContent = t.do5;
+      document.getElementById('g-do6').textContent = t.do6;
+      document.getElementById('g-video-title').textContent = t.videoTitle;
+      for (var n = 1; n <= 6; n++) {
+        document.getElementById('g-ft' + n).textContent = t['ft' + n];
+        document.getElementById('g-fb' + n).textContent = t['fb' + n];
+      }
+      document.getElementById('g-why-title').textContent = t.whyTitle;
+      document.getElementById('g-why1').textContent = t.why1;
+      document.getElementById('g-why2').textContent = t.why2;
+      document.getElementById('g-why3').textContent = t.why3;
+      document.getElementById('g-why4').textContent = t.why4;
+      document.getElementById('g-founder-title').textContent = t.founderTitle;
+      document.getElementById('g-founder-body').textContent = t.founderBody;
+      document.getElementById('g-nav-l1').textContent = t.navAbout;
+      document.getElementById('g-nav-l2').textContent = t.navFeatures;
+      document.getElementById('g-nav-l3').textContent = t.navFaq;
+      document.getElementById('g-nav-l4').textContent = t.navPrivacy;
+      document.getElementById('g-nav-l5').textContent = t.navTerms;
+      document.getElementById('g-hero-dl-label').textContent = t.heroDownload;
+      document.getElementById('g-stat1').textContent = t.stat1;
+      document.getElementById('g-stat2').textContent = t.stat2;
+      document.getElementById('g-stat3').textContent = t.stat3;
+      document.getElementById('g-stat4').textContent = t.stat4;
+      document.getElementById('g-faq-title').textContent = t.faqTitle;
+      for (var q = 1; q <= 5; q++) {
+        document.getElementById('g-faq-q' + q).textContent = t['faqQ' + q];
+        document.getElementById('g-faq-a' + q).textContent = t['faqA' + q];
+      }
+      document.getElementById('g-roadmap-title').textContent = t.roadmapTitle;
+      document.getElementById('g-roadmap-intro').textContent = t.roadmapIntro;
+      document.getElementById('g-rm1').textContent = t.rm1;
+      document.getElementById('g-rm2').textContent = t.rm2;
+      document.getElementById('g-rm3').textContent = t.rm3;
+      document.getElementById('g-rm4').textContent = t.rm4;
+      document.getElementById('g-social-title').textContent = t.socialTitle;
+
+      // Both paths below are shown to EVERY visitor, on every platform — a
+      // desktop visitor researching the app needs the iPhone steps just as
+      // much as an Android one needs the Play Store button. Only "Use the web
+      // version" actually does anything, so it's the one thing gated to iOS.
+      document.getElementById('g-cta-title').textContent = t.ctaTitle;
+      document.getElementById('g-path-android-body').textContent = t.androidBody;
+      document.getElementById('g-path-ios-body').textContent = t.iosBody;
+      document.getElementById('g-app-link-label').textContent = t.appLinkLabel;
+      document.getElementById('g-play').href = 'https://play.google.com/store/apps/details?id=com.sigmacta.app';
+      document.getElementById('g-play-label').textContent = t.play;
+      ['s1', 's2', 's3', 's4'].forEach(function (k) {
+        document.getElementById('g-' + k).textContent = t[k];
+      });
+      document.getElementById('g-ios-addhome').textContent = t.addHome;
+
+      var gate = document.getElementById('landing-gate');
+      gate.hidden = false;
+      // Shown the marketing card at all ⇒ not allowed to auto-boot. Only the
+      // iOS branch below ever flips this back on.
+      __autoBoot = false;
+
+      if (!isIOS) return; // Android, desktop, crawlers — informational only.
+
+      // iOS, not yet added to the Home Screen — the one platform the web app
+      // is actually for.
+      var webBtn = document.getElementById('g-web');
+      webBtn.hidden = false;
+      webBtn.textContent = t.web;
+      webBtn.onclick = function () {
+        gate.hidden = true;
+        __autoBoot = true;
+        bootFlutter();
+      };
+    })();
+
+    // Nav menu: burger toggle, smooth-scroll for the in-page links, and the
+    // manual RU/EN switch (saves to localStorage and reloads — simplest way
+    // to re-run the whole population pass above in the other language).
+    (function () {
+      var burger = document.getElementById('g-nav-burger');
+      var menu = document.getElementById('g-nav-menu');
+      if (burger && menu) {
+        burger.addEventListener('click', function () {
+          var open = menu.classList.toggle('g-nav-open');
+          burger.classList.toggle('g-nav-burger-open', open);
+          burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        menu.querySelectorAll('[data-scroll]').forEach(function (a) {
+          a.addEventListener('click', function (e) {
+            e.preventDefault();
+            var target = document.querySelector(a.getAttribute('href'));
+            menu.classList.remove('g-nav-open');
+            burger.classList.remove('g-nav-burger-open');
+            burger.setAttribute('aria-expanded', 'false');
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        });
+      }
+
+      var heroDl = document.getElementById('g-hero-dl');
+      if (heroDl) {
+        heroDl.addEventListener('click', function () {
+          var target = document.getElementById('g-cta-section');
+          if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      }
+
+      var ruBtn = document.getElementById('g-lang-ru');
+      var enBtn = document.getElementById('g-lang-en');
+      var current = '';
+      try { current = localStorage.getItem('sigLang') || ''; } catch (e) {}
+      if (!current) current = (navigator.language || '').toLowerCase().indexOf('ru') === 0 ? 'ru' : 'en';
+      if (ruBtn && enBtn) {
+        ruBtn.classList.toggle('g-lang-active', current === 'ru');
+        enBtn.classList.toggle('g-lang-active', current === 'en');
+        ruBtn.addEventListener('click', function () {
+          try { localStorage.setItem('sigLang', 'ru'); } catch (e) {}
+          location.reload();
+        });
+        enBtn.addEventListener('click', function () {
+          try { localStorage.setItem('sigLang', 'en'); } catch (e) {}
+          location.reload();
+        });
+      }
+    })();
+
+    window.addEventListener('load', function () {
+      if (__autoBoot) bootFlutter();
     });
   </script>
 </body>

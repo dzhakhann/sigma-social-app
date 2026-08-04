@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import '../services/device_info_service.dart';
 import '../services/session.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
@@ -102,6 +103,7 @@ class _LoginScreenState extends State<LoginScreen>
         HapticFeedback.lightImpact();
         final user = data['data']['user'];
         await Session.save(data['data']['token'], user);
+        DeviceInfoService.reportSession();
         if (mounted) {
           if (recoveryPhrase != null && recoveryPhrase.isNotEmpty) {
             // First time: show the one-time recovery phrase before entering.

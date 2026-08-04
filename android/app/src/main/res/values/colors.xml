@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#2D5BFF</color>
+    <!-- Launcher-icon backgrounds for the Premium themes. Same navy/pink as
+         the in-app palettes, so the home-screen icon matches the theme the
+         user picked. -->
+    <color name="ic_launcher_bg_boy">#0D2A5C</color>
+    <color name="ic_launcher_bg_girl">#F58EB6</color>
 </resources>

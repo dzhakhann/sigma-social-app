@@ -4,24 +4,29 @@ import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import 'year_review_screen.dart';
+import 'duels_screen.dart';
 
-// Goal categories: id → (label, icon, color-picker)
+// Goal categories: id → (icon, color-picker).
+//
+// The display name is NOT stored here — it's looked up as `cat_<id>` at render
+// time so switching language re-translates it. A hardcoded Russian `label`
+// field used to sit alongside; nothing read it, and keeping it invited someone
+// to render it and quietly break localization.
 class GoalCat {
   final String id;
-  final String label;
   final IconData icon;
-  const GoalCat(this.id, this.label, this.icon);
+  const GoalCat(this.id, this.icon);
 }
 
 const List<GoalCat> kCats = [
-  GoalCat('study', 'Учёба', Icons.school_outlined),
-  GoalCat('career', 'Карьера', Icons.work_outline_rounded),
-  GoalCat('health', 'Здоровье', Icons.favorite_outline_rounded),
-  GoalCat('finance', 'Финансы', Icons.savings_outlined),
-  GoalCat('relationships', 'Отношения', Icons.people_outline_rounded),
-  GoalCat('hobby', 'Хобби', Icons.brush_outlined),
-  GoalCat('personal', 'Личное', Icons.star_outline_rounded),
-  GoalCat('other', 'Другое', Icons.category_outlined),
+  GoalCat('study', Icons.school_outlined),
+  GoalCat('career', Icons.work_outline_rounded),
+  GoalCat('health', Icons.favorite_outline_rounded),
+  GoalCat('finance', Icons.savings_outlined),
+  GoalCat('relationships', Icons.people_outline_rounded),
+  GoalCat('hobby', Icons.brush_outlined),
+  GoalCat('personal', Icons.star_outline_rounded),
+  GoalCat('other', Icons.category_outlined),
 ];
 
 GoalCat catOf(String? id) =>
@@ -169,7 +174,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                      backgroundColor: c.accent,
+                      backgroundColor: c.accentFill,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14))),
@@ -219,7 +224,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                        backgroundColor: c.accent,
+                        backgroundColor: c.accentFill,
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12))),
@@ -332,6 +337,14 @@ class _GoalsScreenState extends State<GoalsScreen> {
         title: Text(context.t('myGoalsTitle').replaceAll('{year}', '$year')),
         actions: [
           IconButton(
+            tooltip: context.t('duelsTitle'),
+            icon: Icon(Icons.sports_kabaddi_rounded, color: c.accent),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => DuelsScreen(user: widget.user)),
+            ),
+          ),
+          IconButton(
             tooltip: context.t('myYearTooltip'),
             icon: Icon(Icons.auto_awesome_rounded, color: c.accent),
             onPressed: () => Navigator.push(
@@ -343,7 +356,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: c.accent,
+        backgroundColor: c.accentFill,
         onPressed: _addGoal,
         icon: const Icon(Icons.add),
         label: Text(context.t('goalFabBtn')),

@@ -37,10 +37,16 @@ class StoryCapture {
   /// or null. Never audio bytes — the viewer streams from the catalog.
   final Map? music;
 
-  const StoryCapture.photo(Uint8List bytes, {this.links = const [], this.music})
+  /// Animated GIF stickers: {url, x, y, scale, rot}. Never flattened into the
+  /// media — the viewer draws live (animating) images.
+  final List<Map> gifs;
+
+  const StoryCapture.photo(Uint8List bytes,
+      {this.links = const [], this.music, this.gifs = const []})
       : photo = bytes,
         videoPath = null;
-  const StoryCapture.video(String path, {this.links = const [], this.music})
+  const StoryCapture.video(String path,
+      {this.links = const [], this.music, this.gifs = const []})
       : videoPath = path,
         photo = null;
 
@@ -529,40 +535,6 @@ class _StoryCameraScreenState extends State<StoryCameraScreen>
                   ),
                 ),
               ]),
-            ),
-          ),
-
-        // ── Vertical zoom slider on the right ──────────────────────────
-        if (_maxZoom > 1.05 && !_recording)
-          Positioned(
-            right: 6,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: SizedBox(
-                height: 190,
-                width: 40,
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: SliderTheme(
-                    data: SliderThemeData(
-                      trackHeight: 3,
-                      thumbShape:
-                          const RoundSliderThumbShape(enabledThumbRadius: 8),
-                      overlayShape: SliderComponentShape.noOverlay,
-                      activeTrackColor: Colors.white,
-                      inactiveTrackColor: Colors.white30,
-                      thumbColor: Colors.white,
-                    ),
-                    child: Slider(
-                      value: _zoom.clamp(_minZoom, _maxZoom),
-                      min: _minZoom,
-                      max: _maxZoom,
-                      onChanged: _applyZoom,
-                    ),
-                  ),
-                ),
-              ),
             ),
           ),
 

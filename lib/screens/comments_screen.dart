@@ -1,27 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/pro_badge.dart';
+import '../widgets/verified_badge.dart';
 import '../l10n/app_strings.dart';
 import '../widgets/emoji_picker.dart';
 import '../widgets/action_menu.dart';
+import '../widgets/post_media_carousel.dart';
+import '../widgets/link_preview.dart';
+import '../widgets/music_widgets.dart';
 
-/// Threads-style thread view: the post at the top, replies below as a thread.
+/// Instagram-style single-post view: the post (carousel + engagement row) at
+/// the top, replies below as a thread. A full screen (was a bottom sheet) —
+/// matches Instagram's own post-detail view instead of a partial sheet.
 class CommentsScreen extends StatefulWidget {
   final Map post;
   final Map user;
   const CommentsScreen({Key? key, required this.post, required this.user})
       : super(key: key);
 
-  /// Opens the thread as a bottom sheet (post on top, replies below).
+  /// Opens the post as a full-screen route (post on top, replies below).
   static Future<void> show(BuildContext context,
       {required Map post, required Map user}) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => CommentsScreen(post: post, user: user),
+    return Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CommentsScreen(post: post, user: user)),
     );
   }
 
@@ -37,10 +44,122 @@ class _CommentsScreenState extends State<CommentsScreen> {
   bool _sending = false;
   String? _editingId; // if set, the composer edits this comment instead
 
+  // Local copy so liking/reposting updates instantly without re-fetching
+  // the whole post from the server.
+  late bool _isLiked = widget.post['is_liked'] == true;
+  late int _likesCount = (widget.post['likes_count'] ?? 0) as int;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _toggleLike() async {
+    final wasLiked = _isLiked;
+    setState(() {
+      _isLiked = !wasLiked;
+      _likesCount += wasLiked ? -1 : 1;
+    });
+    try {
+      await ApiService.likePost(widget.post['id'].toString(), widget.user['id'].toString());
+    } catch (_) {
+      if (mounted) setState(() { _isLiked = wasLiked; _likesCount -= wasLiked ? -1 : 1; });
+    }
+  }
+
+  Future<void> _repost() async {
+    // Optimistic: confirm instantly and let the request finish in the
+    // background — waiting on a sleepy free-tier backend made every repost
+    // feel like the button hadn't registered.
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(context.t('reposted'))));
+    try {
+      await ApiService.repostPost(widget.post['id'].toString());
+    } catch (_) {}
+  }
+
+  Future<void> _editPost() async {
+    final c = context.k;
+    final ctrl = TextEditingController(text: (widget.post['content'] ?? '').toString());
+    final newContent = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(context.t('mEdit'),
+                  style: TextStyle(color: c.ink, fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                maxLines: 6,
+                minLines: 1,
+                style: TextStyle(color: c.ink),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: c.surface2,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: c.accentFill),
+                  onPressed: () => Navigator.pop(sheetCtx, ctrl.text.trim()),
+                  child: Text(context.t('saveBtn')),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (newContent == null || newContent.isEmpty || !mounted) return;
+    final r = await ApiService.editPost(widget.post['id'].toString(), newContent);
+    if (r['success'] == true) {
+      setState(() => widget.post['content'] = newContent);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r['error']?.toString() ?? 'Failed')));
+    }
+  }
+
+  Future<void> _deletePost() async {
+    final c = context.k;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text(context.t('deletePostTitle')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: Text(context.t('cancelBtn'))),
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, true),
+              child: Text(context.t('mDelete'), style: TextStyle(color: c.danger))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await ApiService.deletePost(widget.post['id'].toString());
+    if (r['success'] == true) {
+      if (mounted) Navigator.pop(context, true);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r['error']?.toString() ?? 'Failed')));
+    }
   }
 
   Future<void> _load() async {
@@ -149,7 +268,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
   String _time(dynamic raw) {
     if (raw == null) return '';
     try {
-      return timeago.format(DateTime.parse(raw.toString()).toLocal(),
+      return timeago.format(ApiService.parseServerTime(raw.toString()),
           locale: 'en_short');
     } catch (_) {
       return '';
@@ -159,42 +278,16 @@ class _CommentsScreenState extends State<CommentsScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.k;
-    final size = MediaQuery.of(context).size;
-    final kb = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: kb),
-      child: Container(
-        constraints: BoxConstraints(maxHeight: size.height * 0.92),
-        decoration: BoxDecoration(
-          color: c.bg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: AppBar(
+        backgroundColor: c.bg,
+        title: Text(context.t('postLabel')),
+      ),
+      body: Column(
           children: [
-            // Grab handle + close (no title here — the post comes first).
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                    margin: const EdgeInsets.only(top: 8, bottom: 4),
-                    width: 40, height: 4,
-                    decoration: BoxDecoration(
-                        color: c.ink.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(2))),
-                Positioned(
-                  right: 4, top: 0,
-                  child: IconButton(
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(Icons.close_rounded, color: c.inkSoft),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
-              ],
-            ),
             Flexible(
               child: ListView(
-                shrinkWrap: true,
                 padding: const EdgeInsets.only(bottom: 12),
                 children: [
                   // 1) the publication itself
@@ -229,7 +322,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
             _composer(c),
           ],
         ),
-      ),
     );
   }
 
@@ -245,48 +337,115 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
   Widget _head(BrutalColors c) {
     final p = widget.post;
-    final img = p['image_url'];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _avatar(c, p['user_avatar'] ?? p['avatar_url'], r: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Text(p['username'] ?? 'user',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15)),
-                  if (p['is_verified'] == true) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.verified_rounded, size: 14, color: c.ink),
+    final hasMedia = PostMediaCarousel.urlsOf(p).isNotEmpty;
+    final isOwn = p['user_id'] == widget.user['id'];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _avatar(c, p['user_avatar'] ?? p['avatar_url'], r: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text(p['username'] ?? 'user',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 15)),
+                    if (p['is_verified'] == true) ...[
+                      const SizedBox(width: 4),
+                      const VerifiedBadge(),
+                    ],
+                    if (p['is_pro'] == true) ...[
+                      const SizedBox(width: 4),
+                      ProBadge(
+                          isPro: true,
+                          gifUrl: p['pro_badge_gif']?.toString(),
+                          height: 18),
+                    ],
+                    const Spacer(),
+                    Text(_time(p['created_at']),
+                        style: TextStyle(color: c.inkSoft, fontSize: 12)),
+                    GestureDetector(
+                      onTap: () => ActionMenu.post(
+                        context,
+                        postId: p['id'].toString(),
+                        authorId: (p['user_id'] ?? '').toString(),
+                        isOwn: isOwn,
+                        onEdit: _editPost,
+                        onDelete: _deletePost,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Icon(Icons.more_vert_rounded,
+                            size: 18, color: c.inkSoft),
+                      ),
+                    ),
+                  ]),
+                  if ((p['content'] ?? '').toString().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(p['content'],
+                        style: TextStyle(fontSize: 15, height: 1.35, color: c.ink)),
                   ],
-                ]),
-                if ((p['content'] ?? '').toString().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(p['content'],
-                      style: TextStyle(fontSize: 15, height: 1.35, color: c.ink)),
+                  // Link preview (Telegram-style unfurl) — same rule as the
+                  // feed: only when the post has no photos of its own.
+                  if (!hasMedia && firstUrl((p['content'] ?? '').toString()) != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: GestureDetector(
+                        onTap: () {
+                          final u = firstUrl((p['content'] ?? '').toString())!;
+                          launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+                        },
+                        child: LinkPreviewCard(
+                            url: firstUrl((p['content'] ?? '').toString())!),
+                      ),
+                    ),
                 ],
-                if (img != null) ...[
-                  const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                        imageUrl: img.toString(),
-                        width: double.infinity,
-                        fit: BoxFit.cover),
-                  ),
-                ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+      if (hasMedia)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: PostMediaCarousel(post: p, height: 340),
+        ),
+      if (p['music'] is Map)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: PostMusicBar(track: Map<String, dynamic>.from(p['music'])),
+        ),
+      // ── Instagram-style engagement row: like / comment / repost / save ──
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 16, 0),
+        child: Row(children: [
+          IconButton(
+            icon: Icon(
+                _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: _isLiked ? c.danger : c.inkSoft),
+            onPressed: _toggleLike,
+          ),
+          if (_likesCount > 0)
+            Text('$_likesCount',
+                style: TextStyle(color: c.inkSoft, fontWeight: FontWeight.w600)),
+          IconButton(
+            icon: Icon(Icons.chat_bubble_outline_rounded, color: c.inkSoft),
+            onPressed: () => _focus.requestFocus(),
+          ),
+          if (comments.isNotEmpty) Text('${comments.length}', style: TextStyle(color: c.inkSoft)),
+          IconButton(
+            icon: Icon(Icons.repeat_rounded, color: c.inkSoft),
+            onPressed: _repost,
+          ),
+          const Spacer(),
+        ]),
+      ),
+    ]);
   }
 
   Widget _reply(BrutalColors c, Map cm) {

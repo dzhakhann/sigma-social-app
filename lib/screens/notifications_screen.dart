@@ -3,8 +3,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/pro_badge.dart';
+import '../widgets/verified_badge.dart';
 import '../l10n/app_strings.dart';
 import 'comments_screen.dart';
+import 'duels_screen.dart';
 import 'profile_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -45,6 +48,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case 'follow': return Icons.person_add;
       case 'repost': return Icons.repeat_rounded;
       case 'channel_post': return Icons.campaign_rounded;
+      case 'new_post': return Icons.grid_on_rounded;
+      case 'new_story': return Icons.auto_stories_rounded;
+      case 'duel_invite': return Icons.sports_kabaddi_rounded;
+      case 'duel_accepted': return Icons.handshake_rounded;
+      case 'duel_won': return Icons.emoji_events_rounded;
       default: return Icons.notifications;
     }
   }
@@ -55,6 +63,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case 'comment': return c.accent2;
       case 'follow': return c.accent;
       case 'channel_post': return c.accent3;
+      case 'new_post': return c.accent2;
+      case 'new_story': return c.accent3;
+      case 'duel_invite': return c.accent;
+      case 'duel_accepted': return c.accent2;
+      case 'duel_won': return c.accent3;
       default: return c.inkSoft;
     }
   }
@@ -70,6 +83,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case 'follow': key = 'nFollow'; break;
       case 'repost': key = 'nRepost'; break;
       case 'channel_post': key = 'nChannelPost'; break;
+      case 'new_post': key = 'nNewPost'; break;
+      case 'new_story': key = 'nNewStory'; break;
       default: key = '';
     }
     if (key.isEmpty || u.isEmpty) return (n['message'] ?? '').toString();
@@ -95,6 +110,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   // follow → open the follower's profile.
   Future<void> _openNotif(Map n) async {
     final type = (n['type'] ?? '').toString();
+    if (type == 'duel_invite' || type == 'duel_accepted' || type == 'duel_won') {
+      if (!mounted) return;
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => DuelsScreen(user: widget.user)));
+      return;
+    }
     if (type == 'follow') {
       final fromId = n['from_user_id'];
       if (fromId == null) return;
@@ -113,7 +134,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
     // like / comment / repost → open the referenced post
     final postId = n['post_id'];
-    if (postId == null) return;
+    if (postId == null) {
+      // new_post / new_story (and anything else without a specific post
+      // reference) → fall back to the sender's profile, same as follow.
+      final fromId = n['from_user_id'];
+      if (fromId == null || !mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(
+            user: widget.user,
+            targetUserId: fromId,
+            isOwnProfile: fromId == widget.user['id'],
+          ),
+        ),
+      );
+      return;
+    }
     final post =
         await ApiService.getPost(postId.toString(), widget.user['id'].toString());
     if (post == null || !mounted) return;
@@ -232,14 +269,31 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 ),
               ],
             ),
-            title: Text(
-              _notifText(n),
-              style: TextStyle(
-                fontSize: 14,
-                color: c.ink,
-                fontWeight: isRead ? FontWeight.w400 : FontWeight.w600,
+            // The text is a whole sentence with the username inside it, so the
+            // badge goes after the sentence rather than mid-phrase.
+            title: Row(children: [
+              Expanded(
+                child: Text(
+                  _notifText(n),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: c.ink,
+                    fontWeight: isRead ? FontWeight.w400 : FontWeight.w600,
+                  ),
+                ),
               ),
-            ),
+              if (n['from_verified'] == true) ...[
+                const SizedBox(width: 4),
+                const VerifiedBadge(size: 13),
+              ],
+              if (n['from_is_pro'] == true) ...[
+                const SizedBox(width: 4),
+                ProBadge(
+                    isPro: true,
+                    gifUrl: n['from_pro_badge_gif']?.toString(),
+                    height: 17),
+              ],
+            ]),
             subtitle: createdAt != null
                 ? Text(
                     timeago.format(createdAt),

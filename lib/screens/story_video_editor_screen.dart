@@ -347,7 +347,7 @@ class _StoryVideoEditorScreenState extends State<StoryVideoEditorScreen> {
             child: FilledButton(
               onPressed: _exporting ? null : _export,
               style: FilledButton.styleFrom(
-                backgroundColor: c.accent,
+                backgroundColor: c.accentFill,
                 padding: const EdgeInsets.symmetric(vertical: 13),
               ),
               child: _exporting

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
+import 'emoji_data.dart';
 
 // Keyword index for emoji search (EN + RU) — covers the popular ones.
 const Map<String, String> _kw = {
@@ -57,15 +58,33 @@ const Map<String, String> _kw = {
 
 /// Lightweight, dependency-free emoji picker. A button next to a text field
 /// that opens a categorized emoji panel and inserts at the cursor.
+///
+/// Categories merge two sources: the curated lists below go FIRST (they carry
+/// the ZWJ combos like ❤️‍🔥 that can't be generated from code points), then
+/// the full generated Unicode set from emoji_data.dart (~1500 emoji) fills in
+/// the rest, deduped.
+final List<EmojiCat> _cats = _mergeCats();
 
-class _EmojiCat {
-  final String icon;
-  final List<String> emojis;
-  const _EmojiCat(this.icon, this.emojis);
+List<EmojiCat> _mergeCats() {
+  final curatedByIcon = <String, List<String>>{
+    for (final c in _curated) c.icon: c.emojis,
+  };
+  // Pair curated categories with their generated counterpart.
+  const iconMap = {
+    '👋': '👍', '🐻': '🐶', '🏁': '🇷🇺',
+  };
+  final out = <EmojiCat>[];
+  for (final cat in kEmojiCats) {
+    final cur =
+        curatedByIcon[cat.icon] ?? curatedByIcon[iconMap[cat.icon]] ?? const [];
+    final seen = <String>{...cur};
+    out.add(EmojiCat(cat.icon, [...cur, ...cat.emojis.where(seen.add)]));
+  }
+  return out;
 }
 
-const List<_EmojiCat> _cats = [
-  _EmojiCat('😀', [
+const List<EmojiCat> _curated = [
+  EmojiCat('😀', [
     '😀','😃','😄','😁','😆','😅','😂','🤣','🥲','☺️','😊','😇','🙂','🙃','😉',
     '😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓',
     '😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫',
@@ -75,7 +94,7 @@ const List<_EmojiCat> _cats = [
     '🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩',
     '👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾',
   ]),
-  _EmojiCat('👍', [
+  EmojiCat('👍', [
     '👍','👎','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','👇',
     '☝️','🫵','✋','🤚','🖐️','🖖','👋','🤝','🫱','🫲','🫳','🫴','🙏','💪','🦾',
     '🙌','👏','🤲','🫶','👐','✊','👊','🤛','🤜','✍️','💅','🤳','💃','🕺','👶',
@@ -83,14 +102,14 @@ const List<_EmojiCat> _cats = [
     '🤷','👮','🕵️','💂','👷','🤴','👸','👰','🤵','🦸','🦹','🧙','🧚','🧛','🧜',
     '👣','👀','👁️','🧠','🫀','🫁','🦷','🦴','👅','👄','🫦','💋','🩸',
   ]),
-  _EmojiCat('❤️', [
+  EmojiCat('❤️', [
     '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','❤️‍🔥','❤️‍🩹','💔','❣️','💕','💞',
     '💓','💗','💖','💘','💝','💟','♥️','💌','⭐','🌟','✨','⚡','🔥','💥','💫',
     '💯','💢','💦','💨','🕳️','💬','💭','🗯️','♻️','✅','☑️','✔️','❌','❎','➕',
     '➖','➗','✖️','❓','❔','❗','❕','‼️','⁉️','〰️','🔝','🔙','🔚','🔛','🔜',
     '🎉','🎊','🎁','🎈','🎀','🏆','🥇','🥈','🥉','🏅','👑','💎','🔔','🔕',
   ]),
-  _EmojiCat('🐶', [
+  EmojiCat('🐶', [
     '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐽',
     '🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉',
     '🦇','🐺','🐗','🐴','🦄','🐝','🪲','🐛','🦋','🐌','🐞','🐜','🪰','🦂','🕷️',
@@ -101,7 +120,7 @@ const List<_EmojiCat> _cats = [
     '🥀','🌺','🌸','🌼','🌻','🌞','🌝','🌚','🌍','🌎','🌏','⭐','🌙','☁️','⛅',
     '🌈','☀️','🌊','❄️','⛄','💧',
   ]),
-  _EmojiCat('🍔', [
+  EmojiCat('🍔', [
     '🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍',
     '🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🌽','🥕','🫒','🧄','🧅',
     '🥔','🍠','🥐','🥯','🍞','🥖','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗',
@@ -110,7 +129,7 @@ const List<_EmojiCat> _cats = [
     '🥧','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🥛',
     '🍼','☕','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾',
   ]),
-  _EmojiCat('⚽', [
+  EmojiCat('⚽', [
     '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑',
     '🥍','🏏','🥅','⛳','🪁','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌',
     '🎿','⛷️','🏂','🏋️','🤼','🤸','⛹️','🤺','🤾','🏌️','🏇','🧘','🏄','🏊','🤽',
@@ -118,7 +137,7 @@ const List<_EmojiCat> _cats = [
     '🤹','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🪕','🎻',
     '🎲','♟️','🎯','🎳','🎮','🎰','🧩','🎨','📸','📷','🎥','📽️','📺','📻',
   ]),
-  _EmojiCat('💡', [
+  EmojiCat('💡', [
     '⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','💽','💾','💿','📀','📷','📸','📹','🎥',
     '📞','☎️','📟','📠','📺','📻','🎙️','⏰','⏱️','⏲️','🕰️','⌛','⏳','📡','🔋',
     '🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💸','💵','💴','💶','💷','🪙','💰','💳',
@@ -132,7 +151,7 @@ const List<_EmojiCat> _cats = [
     '📌','📍','📎','🖇️','📏','📐','✂️','🔒','🔓','🔏','🔐','✈️','🚗','🚕','🚌',
     '🚀','🛸','🚁','⛵','🚤','🏠','🏡','🏢','🏥','🏦','🏨','🏫','⛪','🕌','🗽','🗼',
   ]),
-  _EmojiCat('🇷🇺', [
+  EmojiCat('🇷🇺', [
     '🏳️','🏴','🏁','🚩','🏳️‍🌈','🏳️‍⚧️','🇷🇺','🇺🇿','🇰🇿','🇰🇬','🇹🇯','🇹🇲',
     '🇺🇸','🇬🇧','🇩🇪','🇫🇷','🇮🇹','🇪🇸','🇵🇹','🇳🇱','🇧🇪','🇨🇭','🇦🇹','🇸🇪',
     '🇳🇴','🇩🇰','🇫🇮','🇵🇱','🇺🇦','🇨🇿','🇬🇷','🇹🇷','🇷🇴','🇭🇺','🇨🇳','🇯🇵',

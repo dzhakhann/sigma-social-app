@@ -16,10 +16,27 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
 
+    <!-- Sigma Nearby (Nearby Connections: BLE + Wi-Fi discovery) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
+
+    <!-- Auto Backup: chat history lives ONLY on the device (server keeps just
+         the undelivered queue), so Google's app-data backup is what lets the
+         history survive uninstall → reinstall on the same account. -->
     <application
         android:label="Sigmacta"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
+        android:allowBackup="true"
+        android:fullBackupContent="true"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
@@ -33,19 +50,93 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-            <!-- Deep links: sigmacta.app/@username and /post/xxx open in-app -->
+            <!--
+              NO MAIN/LAUNCHER filter here on purpose. The launcher entry lives
+              entirely in the activity-aliases below, exactly one of which is
+              enabled at a time. Keeping a filter here too would list the app
+              twice in the launcher, and disabling MainActivity itself to hide it
+              would mean disabling the component that is currently running.
+            -->
+            <!-- Deep links: sigmacta.pages.dev/@username and /post/xxx open
+                 in-app. sigmacta.app isn't registered yet — it was listed
+                 here too, but with no DNS at all it can never pass Google's
+                 domain verification, which is what breaks verification for
+                 BOTH hosts in this same intent-filter. Add it back (and its
+                 own entry in web/.well-known/assetlinks.json — already
+                 generic per-package, so no change needed there) once the
+                 domain is bought and pointed at Cloudflare Pages. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="sigmacta.pages.dev"/>
-                <data android:scheme="https" android:host="sigmacta.app"/>
             </intent-filter>
         </activity>
+        <activity-alias
+            android:name=".MainActivityIconDefault"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Sigmacta">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!--
+          One alias per theme icon. Switching the launcher icon on Android is
+          done by enabling exactly one of these and disabling the rest — there
+          is no API to change an activity's icon directly.
+
+          Both start DISABLED so a fresh install shows the default icon. The
+          MAIN/LAUNCHER filter is duplicated here on purpose: an alias without
+          it is not a launcher entry, so enabling it would remove the app from
+          the home screen instead of re-skinning it.
+
+          targetActivity is .MainActivity for all of them, so whichever alias is
+          active launches the same app.
+        -->
+        <activity-alias
+            android:name=".MainActivityIconBoy"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_boy"
+            android:label="Sigmacta">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <!--
+          One alias per theme icon. Switching the launcher icon on Android is
+          done by enabling exactly one of these and disabling the rest — there
+          is no API to change an activity's icon directly.
+
+          Both start DISABLED so a fresh install shows the default icon. The
+          MAIN/LAUNCHER filter is duplicated here on purpose: an alias without
+          it is not a launcher entry, so enabling it would remove the app from
+          the home screen instead of re-skinning it.
+
+          targetActivity is .MainActivity for all of them, so whichever alias is
+          active launches the same app.
+        -->
+        <activity-alias
+            android:name=".MainActivityIconGirl"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_girl"
+            android:label="Sigmacta">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -77,6 +168,16 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Without this, Android 11+'s package-visibility rules make
+             url_launcher's query for "who can open https://" come back
+             empty, so launchUrl() throws — caught and silently swallowed by
+             every _open()/try-catch in the app, so Privacy Policy/Terms of
+             Use (and any other external link) just silently did nothing. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <category android:name="android.intent.category.BROWSABLE"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

@@ -6,6 +6,7 @@ import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import '../services/podcast_store.dart';
 import '../services/podcast_audio.dart';
+import '../widgets/download_button.dart';
 
 /// Full-screen "now playing", bound to the app-wide [PodcastAudio] player.
 /// Collapsing (down arrow) just pops this screen — audio keeps playing and the
@@ -106,6 +107,11 @@ class _PodcastPlayerScreenState extends State<PodcastPlayerScreen> {
                 color: _fav ? c.danger : c.ink),
             onPressed: _toggleFav,
           ),
+          if (!PodcastAudio.isVideo(ep))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Center(child: DownloadButton(track: ep, size: 24)),
+            ),
           IconButton(
             icon: Icon(Icons.playlist_add_rounded, color: c.ink),
             onPressed: _addToPlaylist,

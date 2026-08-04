@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/device_info_service.dart';
+import '../services/pro_state.dart';
 import '../services/session.dart';
 import '../theme/brutal_theme.dart';
 import 'login_screen.dart';
@@ -47,6 +49,12 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkSession() async {
     final user = await Session.load();
     if (mounted) setState(() { _user = user; _sessionChecked = true; });
+    if (user != null) {
+      DeviceInfoService.reportSession();
+      // Seeds the reactive flag (and drops a Premium theme if entitlement is
+      // gone). The settings picker can only stop you PICKING one.
+      ProState.set(user['is_pro'] == true);
+    }
   }
 
   void _navigate() {
@@ -136,37 +144,30 @@ class _SplashScreenState extends State<SplashScreen>
                   Text(
                     'from',
                     style: TextStyle(
-                      color: c.inkSoft,
+                      color: c.inkSoft, // grey
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          gradient: c.buttonGradient,
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'Σ',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
+                      Text(
+                        'Σ',
+                        style: TextStyle(
+                          color: c.accent, // blue sigma
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
                         ),
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 6),
                       Text(
-                        'Sigmacta',
+                        'Sigmacta Systems',
                         style: TextStyle(
-                          color: c.ink,
+                          color: c.ink, // black
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.3,

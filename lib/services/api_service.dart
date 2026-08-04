@@ -1,9 +1,24 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../constants.dart';
+import '../l10n/app_strings.dart' show S;
 import '../theme/brutal_theme.dart' show appConfig;
 
 class ApiService {
+  /// Parses a timestamp coming from the backend (Postgres via Supabase),
+  /// which serialises `timestamptz` columns WITHOUT a 'Z'/offset suffix
+  /// (e.g. "2026-07-22T14:00:39.370143") even though the value is always UTC.
+  /// Bare `DateTime.parse` treats a suffix-less string as LOCAL time, which
+  /// silently shifted every "time ago" / online-status / read-receipt
+  /// computation in the app by the device's UTC offset. Always use this
+  /// instead of `DateTime.parse` for any `created_at`/`last_seen`/etc. field
+  /// that came from the API.
+  static DateTime parseServerTime(String raw) {
+    final s = raw.trim();
+    final hasZone = s.endsWith('Z') || RegExp(r'[+-]\d\d:?\d\d$').hasMatch(s);
+    return DateTime.parse(hasZone ? s : '${s}Z').toLocal();
+  }
+
   // ─── SESSION ────────────────────────────────────────────────────────────────
   // JWT issued by the server on login/register/recover. Attached to every
   // request so the server knows who is acting — the client no longer needs to
@@ -67,6 +82,24 @@ class ApiService {
         'new_password': newPassword,
       });
 
+  /// Fire-and-forget device/app telemetry for the admin CRM panel — see
+  /// DeviceInfoService, called once right after login/register.
+  static Future<void> sendSessionInfo({
+    required String deviceModel,
+    required String osVersion,
+    required String appVersion,
+    required String platform,
+  }) async {
+    try {
+      await _post('/session-info', {
+        'device_model': deviceModel,
+        'os_version': osVersion,
+        'app_version': appVersion,
+        'platform': platform,
+      });
+    } catch (_) {}
+  }
+
   // ─── MEDIA ────────────────────────────────────────────────────────────────
   // Upload bytes through the server (which holds the Supabase key) and get back
   // a public URL. The client never touches the storage key.
@@ -123,11 +156,14 @@ class ApiService {
   }
 
   static Future<Map> createPost(String userId, String content,
-      {String? imageUrl, Map? music}) =>
+          {String? imageUrl, Map? music, List<String>? mediaUrls}) =>
       _post('/posts', {
         'user_id': userId,
         'content': content,
         if (imageUrl != null) 'image_url': imageUrl,
+        // Full photo carousel (Instagram-style) — image_url above stays the
+        // first photo for any older code that only reads a single image.
+        if (mediaUrls != null && mediaUrls.isNotEmpty) 'media_urls': mediaUrls,
         // Only a Rhythm catalog reference — audio is never uploaded.
         if (music != null) 'music': music,
       });
@@ -136,6 +172,9 @@ class ApiService {
       _post('/posts/$postId/like', {'user_id': userId});
 
   static Future<Map> deletePost(String postId) => _delete('/posts/$postId');
+
+  static Future<Map> editPost(String postId, String content) =>
+      _put('/posts/$postId', {'content': content});
 
   // A user's own posts (incl. reposts) — for the profile.
   static Future<List> getUserPosts(String targetId, String viewerId) async {
@@ -160,10 +199,8 @@ class ApiService {
     return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
-  static Future<Map> addComment(
-          String postId, String userId, String content) =>
-      _post('/posts/$postId/comments',
-          {'user_id': userId, 'content': content});
+  static Future<Map> addComment(String postId, String userId, String content) =>
+      _post('/posts/$postId/comments', {'user_id': userId, 'content': content});
 
   static Future<Map> deleteComment(String commentId) =>
       _delete('/comments/$commentId');
@@ -181,8 +218,8 @@ class ApiService {
   static Future<Map> uploadStory(String userId, String base64Image,
       {List<Map> links = const []}) async {
     if (links.isEmpty) {
-      return _post('/stories/upload',
-          {'user_id': userId, 'image_base64': base64Image});
+      return _post(
+          '/stories/upload', {'user_id': userId, 'image_base64': base64Image});
     }
     // Link stickers have to be attached to the media URL, and that URL only
     // exists after the file is stored — so upload first, then create the story
@@ -223,15 +260,17 @@ class ApiService {
   // only (never sent to the server), so the image/video still loads normally
   // and the database needs no new column.
 
-  /// Packs story extras onto the media URL: link stickers and/or ONE music
-  /// track (only its Rhythm stream link + fragment — never an audio copy).
+  /// Packs story extras onto the media URL: link stickers, GIF stickers (kept
+  /// live so they keep ANIMATING in the viewer — baked pixels can't) and/or
+  /// ONE music track (only its Rhythm stream link + fragment — never audio).
   static String packStoryExtras(String mediaUrl,
-      {List<Map> links = const [], Map? music}) {
+      {List<Map> links = const [], Map? music, List<Map> gifs = const []}) {
     final base = mediaUrl.split('#').first;
-    if (links.isEmpty && music == null) return base;
+    if (links.isEmpty && music == null && gifs.isEmpty) return base;
     final payload = base64Url.encode(utf8.encode(jsonEncode({
       if (links.isNotEmpty) 'l': links,
       if (music != null) 'm': music,
+      if (gifs.isNotEmpty) 'g': gifs,
     })));
     return '$base#s2=$payload';
   }
@@ -269,11 +308,18 @@ class ApiService {
           .map((e) => Map.from(e))
           .toList();
 
-  /// The story's music: {url, title, artist, art, start, len, x, y, scale}.
+  /// The story's music: {url, title, artist, art, start, len, x, y, scale,
+  /// style, rot, color}.
   static Map? unpackStoryMusic(String mediaUrl) {
     final m = _storyExtras(mediaUrl)['m'];
     return m == null ? null : Map.from(m);
   }
+
+  /// Animated GIF stickers: [{url, x, y, scale, rot}].
+  static List<Map> unpackStoryGifs(String mediaUrl) =>
+      ((_storyExtras(mediaUrl)['g'] as List?) ?? const [])
+          .map((e) => Map.from(e))
+          .toList();
 
   /// The URL to actually fetch — without our fragment.
   static String storyMediaUrl(String url) => url.split('#').first;
@@ -295,8 +341,7 @@ class ApiService {
   }
 
   static Future<Map> getOrCreateChat(String user1Id, String user2Id) =>
-      _post('/chats/get-or-create',
-          {'user1_id': user1Id, 'user2_id': user2Id});
+      _post('/chats/get-or-create', {'user1_id': user1Id, 'user2_id': user2Id});
 
   // ─── MESSAGES ─────────────────────────────────────────────────────────────
 
@@ -311,6 +356,8 @@ class ApiService {
     String content, {
     String? mediaUrl,
     String messageType = 'text',
+    Map? replyTo,
+    String? forwardedFrom,
   }) =>
       _post('/messages', {
         'chat_id': chatId,
@@ -318,13 +365,157 @@ class ApiService {
         'content': content,
         'message_type': messageType,
         if (mediaUrl != null) 'media_url': mediaUrl,
+        if (replyTo != null) 'reply_to': replyTo,
+        if (forwardedFrom != null) 'forwarded_from': forwardedFrom,
       });
+
+  /// Confirms receipt: the server deletes the acked rows (device-stored
+  /// history — the DB only holds messages not yet delivered).
+  static Future<void> ackMessages(String chatId, List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      await _post('/messages/ack', {'chat_id': chatId, 'ids': ids});
+    } catch (_) {}
+  }
 
   static Future<Map> deleteMessage(String messageId) =>
       _delete('/messages/$messageId');
 
   static Future<Map> editMessage(String messageId, String content) =>
       _put('/messages/$messageId', {'content': content});
+
+  static Future<Map> reactToMessage(String messageId, String emoji) =>
+      _post('/messages/$messageId/react', {'emoji': emoji});
+
+  /// Refreshes reactions/read-status for messages already in the local
+  /// cache — catches up on anything that changed while this chat wasn't
+  /// open to receive the live socket event. Best-effort: a failure just
+  /// means the cache stays as-is until the next successful sync.
+  static Future<Map<String, Map>> syncMessages(List<String> ids) async {
+    if (ids.isEmpty) return {};
+    try {
+      final d = await _post('/messages/sync', {'ids': ids});
+      if (d['success'] != true) return {};
+      return (d['data'] as Map)
+          .map((k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v)));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// A shared /story/<id> link. Returns `{stories: [...], index: n}` — the
+  /// author's whole current set plus where the linked one sits, because the
+  /// viewer is a pager and a single story with no siblings can't be swiped.
+  static Future<Map> storyById(String id) async {
+    try {
+      final d = await _get('/stories/$id');
+      return d['success'] == true ? (d['data'] as Map? ?? {}) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ─── GROUP READ RECEIPTS ──────────────────────────────────────────────────
+  // Distinct from ack: ack = this phone downloaded it, read = this person
+  // opened the chat. See migrations/group_message_reads.sql.
+
+  static Future<void> markGroupRead(String groupId, List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      await _post('/groups/$groupId/messages/read', {'ids': ids});
+    } catch (_) {}
+  }
+
+  /// `{read: [...], unread: [...]}` — both sides, so the client never has to
+  /// infer "hasn't read" by subtracting a separately-fetched member list.
+  static Future<Map> groupMessageReads(String groupId, String messageId) async {
+    try {
+      final d = await _get('/groups/$groupId/messages/$messageId/reads');
+      return d['success'] == true ? (d['data'] as Map? ?? {}) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ─── BILLING ──────────────────────────────────────────────────────────────
+
+  /// Whether the server can verify a purchase at all. Asked BEFORE showing a
+  /// Buy button — see the endpoint's comment for why offering one without this
+  /// means charging a user for nothing.
+  static Future<bool> billingAvailable() async {
+    try {
+      final d = await _get('/billing/status');
+      return d['success'] == true && d['data']?['available'] == true;
+    } catch (_) {
+      // Unreachable server → assume unavailable. Failing closed is the only
+      // safe default when the downside is an unverifiable charge.
+      return false;
+    }
+  }
+
+  /// Hands a Play purchase token to the server, which verifies it against the
+  /// Play Developer API and grants Pro. The client never decides entitlement.
+  static Future<Map> verifyPurchase({
+    required String purchaseToken,
+    required String productId,
+  }) async {
+    try {
+      return await _post('/billing/verify', {
+        'purchase_token': purchaseToken,
+        'product_id': productId,
+      });
+    } catch (_) {
+      return {'success': false, 'error': 'network'};
+    }
+  }
+
+  // ─── PRO BADGE ────────────────────────────────────────────────────────────
+
+  /// Sets (or clears, with null) the GIF shown instead of the "PRO" chip.
+  /// Server rejects non-Giphy URLs and non-Pro accounts.
+  static Future<Map> setProBadge(String? url) async {
+    try {
+      return await _put('/users/me/pro-badge', {'url': url});
+    } catch (_) {
+      return {'success': false, 'error': 'network'};
+    }
+  }
+
+  // ─── PINNED MESSAGES ──────────────────────────────────────────────────────
+  // Pass `message: null` to unpin — one endpoint handles both directions.
+  // The server stores a trimmed snapshot, not a reference, because the message
+  // row itself is deleted once delivered (device-stored history).
+
+  static Future<Map?> pinChatMessage(String chatId, Map? message) async {
+    try {
+      final d = await _put('/chats/$chatId/pin', {'message': message});
+      return d['success'] == true ? (d['data'] as Map?) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Groups are admin-only; a non-admin gets `error: 'admin_only'`.
+  static Future<Map> pinGroupMessage(String groupId, Map? message) async {
+    try {
+      return await _put('/groups/$groupId/pin', {'message': message});
+    } catch (_) {
+      return {'success': false, 'error': 'network'};
+    }
+  }
+
+  // ─── PROMO CODES ──────────────────────────────────────────────────────────
+
+  /// Redeems a promo code for a Pro subscription. On failure `error` is a
+  /// stable machine-readable reason (`not_found`, `expired`, `exhausted`,
+  /// `already_used`, `inactive`) so the UI can localize it.
+  static Future<Map> redeemPromo(String code) async {
+    try {
+      return await _post('/promo/redeem', {'code': code});
+    } catch (_) {
+      return {'success': false, 'error': 'network'};
+    }
+  }
 
   // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
 
@@ -339,12 +530,14 @@ class ApiService {
   static Future<Map> markAllNotificationsRead(String userId) =>
       _post('/notifications/read-all', {'user_id': userId});
 
+  static Future<Map> saveFcmToken(String token) =>
+      _post('/users/fcm-token', {'token': token});
+
   // ─── SEARCH ───────────────────────────────────────────────────────────────
 
   static Future<List> searchUsers(String query) async {
     if (query.isEmpty) return [];
-    final d =
-        await _get('/search/users?q=${Uri.encodeComponent(query)}');
+    final d = await _get('/search/users?q=${Uri.encodeComponent(query)}');
     return d['success'] == true ? (d['data'] ?? []) : [];
   }
 
@@ -393,8 +586,238 @@ class ApiService {
     return d['success'] == true ? (d['data'] ?? {}) : {};
   }
 
+  // ─── SIGMAFIT (bundled exercise circuits, only a tiny result row server-side) ─
+  static Future<Map> logWorkout(String routineId, int durationSeconds) => _post(
+      '/workouts',
+      {'routine_id': routineId, 'duration_seconds': durationSeconds});
+
+  // ─── ОБЗОР: exact-handle YouTube channel + cached regional trending ────────
+  /// Videos for a search query: the matching channel's own recent uploads if
+  /// the query IS a YouTube handle, otherwise a normal keyword video search
+  /// (the server decides — see /api/youtube/channel). Scraping + a videos.list
+  /// batch can take a few seconds, hence the longer timeout than the old
+  /// handle-only lookup had.
+  static Future<List> getYoutubeChannelVideos(String handle) async {
+    final d = await _getSafe(
+        '/youtube/channel?handle=${Uri.encodeComponent(handle)}',
+        timeoutSec: 25);
+    if (d['success'] != true) return [];
+    final data = d['data'] ?? {};
+    return (data['found'] == true) ? (data['videos'] ?? []) : [];
+  }
+
+  static Future<List> getYoutubeTrending() async {
+    final region = appConfig.value.lang == 'ru' ? 'ru' : 'us';
+    final d =
+        await _getSafe('/youtube/trending?region=$region', timeoutSec: 15);
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  // ─── DUELS (goal races between two friends) ────────────────────────────────
+  static Future<List> getDuels() async {
+    final d = await _get('/duels');
+    return d['success'] == true ? (d['data'] ?? []) : [];
+  }
+
+  static Future<Map> createDuel(
+          String title, String category, String opponentId) =>
+      _post('/duels',
+          {'title': title, 'category': category, 'opponent_id': opponentId});
+
+  static Future<Map> respondDuel(String id, bool accept) =>
+      _post('/duels/$id/respond', {'accept': accept});
+
+  static Future<Map> updateDuelProgress(String id, int progress) =>
+      _post('/duels/$id/progress', {'progress': progress});
+
+  static Future<Map> deleteDuel(String id) => _delete('/duels/$id');
+
   // Self-service account deletion (Google Play requirement).
   static Future<Map> deleteAccount() => _delete('/account');
+
+  // ─── NOTES (Instagram-style: 24h text note, mutual follows only) ──────────
+  static Future<List<Map>> getNotes() async {
+    final d = await _getSafe('/notes', timeoutSec: 15);
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List)
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  static Future<bool> postNote(String text) async {
+    try {
+      final d = await _post('/notes', {'text': text});
+      return d['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> deleteNote() async {
+    try {
+      await _delete('/notes');
+    } catch (_) {}
+  }
+
+  // ─── GROUPS (Telegram-style open/closed group chats) ──────────────────────
+  static Future<Map> createGroup(String name,
+          {String description = '', bool isOpen = false, String? avatarUrl}) =>
+      _post('/groups', {
+        'name': name,
+        'description': description,
+        'is_open': isOpen,
+        if (avatarUrl != null) 'avatar_url': avatarUrl,
+      });
+
+  static Future<List<Map>> getGroups() async {
+    final d = await _getSafe('/groups', timeoutSec: 20);
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List)
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  static Future<Map?> getGroup(String id) async {
+    final d = await _getSafe('/groups/$id', timeoutSec: 20);
+    if (d['success'] != true) return null;
+    return Map<String, dynamic>.from(d['data']);
+  }
+
+  static Future<Map> updateGroup(String id,
+          {String? name, String? description, String? avatarUrl}) =>
+      _put('/groups/$id', {
+        if (name != null) 'name': name,
+        if (description != null) 'description': description,
+        if (avatarUrl != null) 'avatar_url': avatarUrl,
+      });
+
+  static Future<Map> joinGroup(String id) => _post('/groups/$id/join', {});
+  static Future<Map> addGroupMember(String id, String userId) =>
+      _post('/groups/$id/members', {'user_id': userId});
+  static Future<Map> removeGroupMember(String id, String userId) =>
+      _delete('/groups/$id/members/$userId');
+  static Future<Map> promoteGroupAdmin(String id, String userId) =>
+      _post('/groups/$id/admins/$userId', {});
+  static Future<Map> demoteGroupAdmin(String id, String userId) =>
+      _delete('/groups/$id/admins/$userId');
+
+  static Future<List<Map>> getGroupMessages(String groupId) async {
+    final d = await _getSafe('/groups/$groupId/messages', timeoutSec: 20);
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List)
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  static Future<Map> sendGroupMessage(
+    String groupId,
+    String content, {
+    String? mediaUrl,
+    String messageType = 'text',
+    Map? replyTo,
+  }) =>
+      _post('/groups/$groupId/messages', {
+        'content': content,
+        'message_type': messageType,
+        if (mediaUrl != null) 'media_url': mediaUrl,
+        if (replyTo != null) 'reply_to': replyTo,
+      });
+
+  static Future<void> ackGroupMessages(String groupId, List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      await _post('/groups/$groupId/messages/ack', {'ids': ids});
+    } catch (_) {}
+  }
+
+  static Future<Map> deleteGroupMessage(String groupId, String messageId) =>
+      _delete('/groups/$groupId/messages/$messageId');
+
+  static Future<Map> editGroupMessage(
+          String groupId, String messageId, String content) =>
+      _put('/groups/$groupId/messages/$messageId', {'content': content});
+
+  static Future<Map> reactToGroupMessage(
+          String groupId, String messageId, String emoji) =>
+      _post('/groups/$groupId/messages/$messageId/react', {'emoji': emoji});
+
+  /// Same idea as [syncMessages] but for group chat's reactions + seen-by.
+  static Future<Map<String, Map>> syncGroupMessages(
+      String groupId, List<String> ids) async {
+    if (ids.isEmpty) return {};
+    try {
+      final d = await _post('/groups/$groupId/messages/sync', {'ids': ids});
+      if (d['success'] != true) return {};
+      return (d['data'] as Map)
+          .map((k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v)));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ─── FOLLOWERS / FOLLOWING LISTS ───────────────────────────────────────────
+  static Future<List<Map>> getFollowers(String userId,
+      {int limit = 40, int offset = 0}) async {
+    final d = await _getSafe(
+        '/users/$userId/followers?limit=$limit&offset=$offset',
+        timeoutSec: 20);
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List)
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  static Future<List<Map>> getFollowing(String userId,
+      {int limit = 40, int offset = 0}) async {
+    final d = await _getSafe(
+        '/users/$userId/following?limit=$limit&offset=$offset',
+        timeoutSec: 20);
+    if (d['success'] != true) return [];
+    return ((d['data'] ?? []) as List)
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  // ─── CHAT DELETE ────────────────────────────────────────────────────────────
+  static Future<Map> deleteChat(String chatId) => _delete('/chats/$chatId');
+
+  // ─── SIGMA NEARBY ──────────────────────────────────────────────────────────
+  /// Opens a Nearby session: the returned token is advertised over BLE.
+  static Future<String?> nearbyStart() async {
+    try {
+      final d = await _post('/nearby/start', {});
+      if (d['success'] != true) return null;
+      return (d['data']?['token'] ?? '').toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> nearbyStop() async {
+    try {
+      await _post('/nearby/stop', {});
+    } catch (_) {}
+  }
+
+  /// Resolves a discovered token to its owner's public profile.
+  static Future<Map?> nearbyPeek(String token) async {
+    final d = await _getSafe(
+        '/nearby/peek?token=${Uri.encodeQueryComponent(token)}',
+        timeoutSec: 10);
+    if (d['success'] != true || d['data'] == null) return null;
+    return Map.from(d['data']);
+  }
+
+  /// Performs the exchange: mutual follow + Aura. Returns the other profile.
+  static Future<Map?> nearbyConnect(String token) async {
+    try {
+      final d = await _post('/nearby/connect', {'token': token});
+      if (d['success'] != true || d['data']?['user'] == null) return null;
+      return Map.from(d['data']['user']);
+    } catch (_) {
+      return null;
+    }
+  }
 
   // ─── STORY STATS + PROFILE ANALYTICS ─────────────────────────────────────
   static Future<Map> viewStoryStat(String storyId) =>
@@ -467,11 +890,9 @@ class ApiService {
   // ─── AI (Gemini via backend) ───────────────────────────────────────────────
   // messages: [{'role':'user'|'model','text':'...'}]
   static Future<String> aiChat(List<Map<String, String>> messages) async {
-    final d = await _post('/ai/chat',
-        {'messages': messages, 'lang': appConfig.value.lang});
-    return (d['reply'] ??
-            (appConfig.value.lang == 'ru' ? 'ИИ недоступен.' : 'AI is unavailable.'))
-        .toString();
+    final d = await _post(
+        '/ai/chat', {'messages': messages, 'lang': appConfig.value.lang});
+    return (d['reply'] ?? S.tr('aiUnavailable')).toString();
   }
 
   static Future<String> aiRecommend() async {
@@ -486,6 +907,17 @@ class ApiService {
   }
 
   // ─── PODCASTS (via our server proxy; nothing stored — pure pass-through) ────
+  /// Fire-and-forget ping to wake the backend. Render's free tier spins the
+  /// server down after inactivity and a cold start takes ~50s — calling this
+  /// at app launch means the media catalogs (podcasts / audiobooks) are already
+  /// warm by the time the user opens "Ритм".
+  static void warmUp() {
+    http
+        .get(Uri.parse('$kApiUrl/health'))
+        .timeout(const Duration(seconds: 60))
+        .catchError((_) => http.Response('', 500));
+  }
+
   // A short timeout so the UI never hangs if the server is cold/unreachable.
   static Future<Map<String, dynamic>> _getSafe(String path,
       {int timeoutSec = 25}) async {
@@ -500,10 +932,15 @@ class ApiService {
   }
 
   static Future<List<Map>> searchPodcasts(String term) async {
-    final d =
-        await _getSafe('/podcast/search?term=${Uri.encodeQueryComponent(term)}');
+    final d = await _getSafe(
+        '/podcast/search?term=${Uri.encodeQueryComponent(term)}',
+        timeoutSec: 45);
     if (d['success'] != true) return [];
-    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+    // Tag the media kind so History / Favourites can be filtered per section
+    // (podcast history must not leak music or audiobooks, and vice-versa).
+    return ((d['data'] ?? []) as List)
+        .map((e) => {...Map.from(e), 'kind': 'podcast'})
+        .toList();
   }
 
   static Future<List<Map>> fetchEpisodes(String feedUrl) async {
@@ -511,6 +948,37 @@ class ApiService {
         '/podcast/episodes?feed=${Uri.encodeQueryComponent(feedUrl)}');
     if (d['success'] != true) return [];
     return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+  }
+
+  /// Get-or-create a stable shareable id for one episode. Returns null if the
+  /// server can't mint one (migration not run yet, or offline) — callers
+  /// should fall back to the raw episode url rather than share a broken link.
+  static Future<String?> sharePodcastEpisode(Map episode) async {
+    try {
+      final d = await _post('/podcast/share', {
+        'feedUrl': episode['feedUrl'],
+        'audio': episode['audio'],
+        'title': episode['title'],
+        'artist': episode['showTitle'],
+        'artwork': episode['artwork'],
+        'duration': episode['duration'],
+      });
+      return d['success'] == true ? d['id']?.toString() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Resolves a `/podcast/<id>` link back to a playable episode.
+  static Future<Map?> podcastEpisodeById(String id) async {
+    try {
+      final d = await _get('/podcast/share/$id');
+      if (d['success'] != true) return null;
+      final ep = d['episode'];
+      return ep == null ? null : Map<String, dynamic>.from(ep);
+    } catch (_) {
+      return null;
+    }
   }
 
   // ─── AUDIOBOOKS (LibriVox — public domain, via backend proxy) ─────────────
@@ -521,61 +989,111 @@ class ApiService {
     if (language.isNotEmpty) {
       q += '&language=${Uri.encodeQueryComponent(language)}';
     }
-    final d = await _getSafe(q);
+    final d = await _getSafe(q, timeoutSec: 45);
     if (d['success'] != true) return [];
-    return ((d['data'] ?? []) as List).map((e) => Map.from(e)).toList();
+    return ((d['data'] ?? []) as List)
+        .map((e) => {...Map.from(e), 'kind': 'book'})
+        .toList();
   }
 
   // ─── MUSIC (Audius — free legal streaming API, commercial use allowed) ────
-  static const String _audius = 'https://discoveryprovider.audius.co/v1';
   static const String _audiusApp = 'app_name=sigmacta';
 
+  // A single hard-coded discovery node is flaky: when it is briefly down or
+  // geo-throttled the whole music picker shows "Ничего не найдено". So we try a
+  // list of nodes in order (remembering the first that answers) and fall back to
+  // the load-balanced gateway. Stream URLs always use the stable gateway so that
+  // songs saved to History / Favourites keep working even if a node disappears.
+  static const String _audiusGateway = 'https://api.audius.co';
+  static const List<String> _audiusHosts = [
+    'https://discoveryprovider.audius.co',
+    'https://discoveryprovider2.audius.co',
+    'https://discoveryprovider3.audius.co',
+    _audiusGateway,
+  ];
+  static String? _audiusHost; // the last node that answered (cached)
+
   static Map _audiusTrack(Map t) => {
+        'id': t['id']?.toString() ?? '',
         'title': t['title'] ?? 'Track',
         'showTitle': (t['user']?['name'] ?? '').toString(),
-        'artwork': (t['artwork']?['480x480'] ??
-                t['artwork']?['150x150'] ??
-                '')
+        'artwork': (t['artwork']?['480x480'] ?? t['artwork']?['150x150'] ?? '')
             .toString(),
-        'audio': '$_audius/tracks/${t['id']}/stream?$_audiusApp',
+        'audio': '$_audiusGateway/v1/tracks/${t['id']}/stream?$_audiusApp',
         'duration': t['duration']?.toString() ?? '',
         'kind': 'music', // distinguishes music from podcasts/books locally
       };
 
-  static Future<List<Map>> musicTrending({String genre = ''}) async {
-    try {
-      final g = genre.isNotEmpty
-          ? '&genre=${Uri.encodeQueryComponent(genre)}'
-          : '';
-      final r = await http
-          .get(Uri.parse('$_audius/tracks/trending?$_audiusApp$g'))
-          .timeout(const Duration(seconds: 12));
-      final j = jsonDecode(r.body);
-      return ((j['data'] ?? []) as List)
-          .map((t) => _audiusTrack(Map.from(t)))
-          .toList();
-    } catch (_) {
-      return [];
+  /// Hits an Audius `/v1` endpoint, trying each node until one returns data.
+  /// `path` starts after `/v1`, e.g. `/tracks/trending?...`.
+  static Future<List<Map>> _audiusGet(String path) async {
+    final hosts = <String>[
+      if (_audiusHost != null) _audiusHost!,
+      ..._audiusHosts.where((h) => h != _audiusHost),
+    ];
+    for (final host in hosts) {
+      try {
+        final r = await http
+            .get(Uri.parse('$host/v1$path'))
+            .timeout(const Duration(seconds: 8));
+        if (r.statusCode != 200) continue;
+        final data = (jsonDecode(r.body)['data'] ?? []) as List;
+        _audiusHost = host; // remember the node that worked
+        return data.map((t) => _audiusTrack(Map.from(t))).toList();
+      } catch (_) {
+        // try the next node
+      }
     }
+    return [];
   }
 
-  static Future<List<Map>> musicSearch(String q) async {
-    try {
-      final r = await http
-          .get(Uri.parse(
-              '$_audius/tracks/search?query=${Uri.encodeQueryComponent(q)}&$_audiusApp'))
-          .timeout(const Duration(seconds: 12));
-      final j = jsonDecode(r.body);
-      return ((j['data'] ?? []) as List)
-          .map((t) => _audiusTrack(Map.from(t)))
-          .toList();
-    } catch (_) {
-      return [];
+  static Future<List<Map>> musicTrending({String genre = ''}) {
+    final g =
+        genre.isNotEmpty ? '&genre=${Uri.encodeQueryComponent(genre)}' : '';
+    return _audiusGet('/tracks/trending?$_audiusApp$g');
+  }
+
+  static Future<List<Map>> musicSearch(String q) => _audiusGet(
+      '/tracks/search?query=${Uri.encodeQueryComponent(q)}&$_audiusApp');
+
+  /// Resolves a single Audius track by id — the shared-link case, where
+  /// there's no search query, only the id embedded in a `sigmacta.pages.dev/music/<id>`
+  /// link. Unlike [_audiusGet], a miss here (deleted/unknown track) must be
+  /// distinguishable from a normal empty list, hence the nullable return.
+  static Future<Map?> musicTrackById(String id) async {
+    final hosts = <String>[
+      if (_audiusHost != null) _audiusHost!,
+      ..._audiusHosts.where((h) => h != _audiusHost),
+    ];
+    for (final host in hosts) {
+      try {
+        final r = await http
+            .get(Uri.parse('$host/v1/tracks/$id?$_audiusApp'))
+            .timeout(const Duration(seconds: 8));
+        if (r.statusCode != 200) continue;
+        final data = jsonDecode(r.body)['data'];
+        if (data == null) return null;
+        _audiusHost = host;
+        return _audiusTrack(Map.from(data));
+      } catch (_) {
+        // try the next node
+      }
     }
+    return null;
   }
 
   // ─── GIFs (Tenor via backend) ──────────────────────────────────────────────
-  static Future<List> searchGifs(String query) async {
+  static Future<List> searchGifs(String query, {bool stickers = false}) async {
+    if (stickers) {
+      final d = await _getSafe(
+          '/gifs?q=${Uri.encodeQueryComponent(query)}&kind=stickers',
+          timeoutSec: 20);
+      return d['success'] == true ? (d['data'] ?? []) : [];
+    }
+    return _searchGifsPlain(query);
+  }
+
+  static Future<List> _searchGifsPlain(String query) async {
     final d = await _get('/gifs?q=${Uri.encodeComponent(query)}');
     return d['success'] == true ? (d['data'] ?? []) : [];
   }

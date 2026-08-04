@@ -58,10 +58,15 @@ class FavTrackPill extends StatelessWidget {
   }
 }
 
-/// Subtle owner-only button when no track is set yet.
+/// Subtle owner-only button when no track is set yet. Pro-gated: [locked]
+/// swaps the icon for a lock so the tap still lands (to trigger the upsell)
+/// without pretending the feature is free.
 class FavTrackAddButton extends StatelessWidget {
   final VoidCallback onTap;
-  const FavTrackAddButton({Key? key, required this.onTap}) : super(key: key);
+  final bool locked;
+  const FavTrackAddButton(
+      {Key? key, required this.onTap, this.locked = false})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +74,8 @@ class FavTrackAddButton extends StatelessWidget {
     return Center(
       child: TextButton.icon(
         onPressed: onTap,
-        icon: Icon(Icons.music_note_rounded, size: 16, color: c.inkSoft),
+        icon: Icon(locked ? Icons.lock_rounded : Icons.music_note_rounded,
+            size: 16, color: c.inkSoft),
         label: Text(context.t('favTrackAdd'),
             style: TextStyle(color: c.inkSoft, fontSize: 13)),
       ),

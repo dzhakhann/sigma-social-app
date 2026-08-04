@@ -1,9 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/launcher_icon.dart';
+
 // ════════════════════════════════════════════════════════════════════════════
 //  SIGMA SOCIAL — DESIGN SYSTEM  ·  "QUIET LUXURY"
-//  Three mature, restrained palettes. No neon, no cartoons.
+//  Four mature, restrained palettes. No neon, no cartoons.
 //  Clean typography, soft shadows, muted accents.
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -70,9 +74,44 @@ class BrutalColors extends ThemeExtension<BrutalColors> {
     );
   }
 
+  /// The accent shade to put BEHIND [onAccent] text — buttons, send FABs,
+  /// filled chips. Text and fills pull the SAME colour in opposite
+  /// directions and no single shade can serve both: to stay readable as
+  /// text on Sigma's #0F1015 page a blue needs relative luminance ≥ 0.199,
+  /// but to carry a white label it needs ≤ 0.183. So `accent` stays vivid
+  /// for text/icons and this darkens it just enough to clear 4.5:1.
+  ///
+  /// Returns `accent` untouched when it already passes (Light, Girls) or
+  /// when the label is dark rather than white (Boys' cyan) — darkening
+  /// would make that case worse, so it's explicitly excluded.
+  Color get accentFill {
+    if (_contrast(onAccent, accent) >= 4.5) return accent;
+    if (_luminance(onAccent) <= _luminance(accent)) return accent;
+    var c = accent;
+    for (var i = 0; i < 14; i++) {
+      c = Color.lerp(c, const Color(0xFF000000), 0.05)!;
+      if (_contrast(onAccent, c) >= 4.5) return c;
+    }
+    return c;
+  }
+
+  static double _channel(double c) => c <= 0.03928
+      ? c / 12.92
+      : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+
+  static double _luminance(Color c) =>
+      0.2126 * _channel(c.red / 255) +
+      0.7152 * _channel(c.green / 255) +
+      0.0722 * _channel(c.blue / 255);
+
+  static double _contrast(Color a, Color b) {
+    final la = _luminance(a), lb = _luminance(b);
+    return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+  }
+
   /// Subtle single-color send button gradient
   LinearGradient get buttonGradient => LinearGradient(
-    colors: [accent, accent.withOpacity(0.80)],
+    colors: [accentFill, accentFill.withOpacity(0.80)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -131,12 +170,64 @@ const List<BrutalTheme> kThemes = [
       surface:  Color(0xFFFFFFFF),
       surface2: Color(0xFFEDEDEA),
       ink:      Color(0xFF17181C),
-      inkSoft:  Color(0xFF6E7280),
+      inkSoft:  Color(0xFF66697A), // was #6E7280 — 4.39:1 on bg, just under AA
+
       accent:   Color(0xFF3563E9),
       accent2:  Color(0xFF5A82F0),
       accent3:  Color(0xFF8A6FF0),
       danger:   Color(0xFFD64560),
       shadow:   Color(0x22000000),
+      onAccent: Color(0xFFFFFFFF),
+      isDark:   false,
+    ),
+  ),
+
+  // BOYS — deep midnight-navy with an electric cyan accent.
+  BrutalTheme(
+    id: 'boys',
+    nameEn: 'Boys',
+    nameRu: 'Boys',
+    c: BrutalColors(
+      bg:       Color(0xFF0A121F),
+      surface:  Color(0xFF122032),
+      surface2: Color(0xFF1A2C43),
+      ink:      Color(0xFFE6F0FA),
+      inkSoft:  Color(0xFF7C93AD),
+      accent:   Color(0xFF17B8E8), // electric cyan
+      accent2:  Color(0xFF4FD3F5),
+      accent3:  Color(0xFF3A7BD5),
+      danger:   Color(0xFFFF5C77),
+      shadow:   Color(0x77000000),
+      onAccent: Color(0xFF04121A),
+      isDark:   true,
+    ),
+  ),
+
+  // GIRLS — soft blush paper with a rose accent.
+  BrutalTheme(
+    id: 'girls',
+    nameEn: 'Girls',
+    nameRu: 'Girls',
+    c: BrutalColors(
+      bg:       Color(0xFFFFF5F8),
+      surface:  Color(0xFFFFFFFF),
+      surface2: Color(0xFFFDE8EF),
+      ink:      Color(0xFF3A1F2B),
+      // Muted text and the accent are DELIBERATELY this deep: the first pass
+      // used a lighter rose (#E8508D / #9B7684) and theme_contrast_test.dart
+      // caught it — white button labels sat at 3.5:1 and muted text at 3.7:1,
+      // i.e. the same unreadable-on-light problem the post music bar had.
+      // Don't lighten these without re-running that test.
+      inkSoft:  Color(0xFF7D5566),
+      accent:   Color(0xFFCE2F66), // rose
+      accent2:  Color(0xFFF477AC),
+      accent3:  Color(0xFFB06AD8), // orchid
+      // Clearly RED, not another rose: the first pass used #D6395B, which
+      // sat right next to the #D6336C accent — a "Delete" button looked
+      // almost identical to a normal one. Destructive actions have to read
+      // as destructive at a glance.
+      danger:   Color(0xFFC0392B),
+      shadow:   Color(0x1F5A2340),
       onAccent: Color(0xFFFFFFFF),
       isDark:   false,
     ),
@@ -184,6 +275,11 @@ Future<void> loadAppConfig() async {
       try {
         final p = await SharedPreferences.getInstance();
         await p.setInt('cfg_theme', appConfig.value.themeIndex);
+        // The launcher icon follows the theme. Hooked into the persist
+        // listener rather than the settings screen: that's the one place every
+        // theme change goes through, including enforceThemeEntitlement()
+        // revoking a Premium theme.
+        LauncherIcon.apply(appConfig.value.theme.id);
         await p.setString('cfg_lang', appConfig.value.lang);
         await p.setString('cfg_nav', appConfig.value.navSide);
       } catch (_) {}
@@ -192,6 +288,25 @@ Future<void> loadAppConfig() async {
 }
 
 // ─── INHERITED ACCESS ─────────────────────────────────────────────────────────
+/// Themes that require an active Pro subscription.
+const Set<String> kPremiumThemeIds = {'boys', 'girls'};
+
+/// Drops the user back to the default theme if they're sitting on a Premium one
+/// without Pro.
+///
+/// The settings picker already blocks selecting one, but that isn't enough on
+/// its own: a subscription that lapses (or a promo code that expires) would
+/// otherwise leave the theme applied forever, since nothing re-checks it. Call
+/// this wherever the user's Pro state becomes known — i.e. right after login or
+/// a profile refresh.
+void enforceThemeEntitlement(bool hasPro) {
+  if (hasPro) return;
+  final current = appConfig.value.theme.id;
+  if (kPremiumThemeIds.contains(current)) {
+    appConfig.value = appConfig.value.copyWith(themeIndex: 0);
+  }
+}
+
 class AppScope extends InheritedWidget {
   final AppConfig config;
   const AppScope({super.key, required this.config, required super.child});

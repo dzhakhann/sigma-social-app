@@ -1,4 +1,12 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../services/deep_links.dart';
+import '../services/notification_prefs.dart';
+import '../services/active_chat.dart';
+import '../widgets/island_banner.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
 import 'home_screen.dart';
@@ -8,6 +16,9 @@ import 'profile_screen.dart';
 import 'compose_screen.dart';
 import 'goals_screen.dart';
 import '../widgets/mini_player.dart';
+import '../services/socket_service.dart';
+import '../services/notification_service.dart';
+import '../services/push_service.dart';
 
 /// Threads-style bottom menu bar with 5 slots:
 /// Главная · Рекомендации · Публикация(+) · Чат · Профиль.
@@ -21,17 +32,122 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _tab = 0;
-  late final List<Widget> _screens;
+  // Built lazily, one at a time, on first visit — not all four in initState.
+  // Each tab's own initState fires real network calls (goals/weather/news/
+  // stories for Home, the whole Rhythm catalog for Podcasts, chats+groups
+  // for Chats, profile+posts+stories for Profile); building every tab at
+  // launch meant all of that fired at once on a cold start, competing for
+  // bandwidth and CPU before the user had even looked at three of them.
+  // Cached once built so switching back still preserves scroll position and
+  // doesn't refetch — same as before, just not paid for up front.
+  final List<Widget?> _built = List.filled(4, null);
+  StreamSubscription? _notifSub;
+
+  Widget _tabScreen(int i) {
+    return _built[i] ??= switch (i) {
+      0 => HomeScreen(user: widget.user),
+      1 => PodcastsScreen(user: widget.user),
+      2 => ChatsScreen(user: widget.user),
+      _ => ProfileScreen(user: widget.user, isOwnProfile: true),
+    };
+  }
 
   @override
   void initState() {
     super.initState();
-    _screens = [
-      HomeScreen(user: widget.user),
-      PodcastsScreen(user: widget.user),
-      ChatsScreen(user: widget.user),
-      ProfileScreen(user: widget.user, isOwnProfile: true),
-    ];
+    // App-wide: live push (over the socket, not polling) for activity on
+    // people you follow — lives here rather than inside a tab so it keeps
+    // firing no matter which tab is currently visible.
+    NotificationService.init();
+    SocketService().connect(widget.user['id'].toString());
+    _notifSub = SocketService().onNotification.listen(_onNotification);
+    // Same notifications, but able to reach a killed/backgrounded app too —
+    // no-ops until a real Firebase project is wired in (see PushService).
+    PushService.init();
+    // A link that arrived while signed out was parked; replay it now that a
+    // session exists AND the navigator is mounted. Post-frame because pushing a
+    // route during initState has nothing to push onto yet.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => DeepLinks.consumePending());
+  }
+
+  /// Banner currently shown in-app, if any.
+  Map? _banner;
+  Timer? _bannerTimer;
+
+  /// While the app is in the FOREGROUND a system notification is the wrong
+  /// affordance — Android may not even show it, and it pulls focus out of the
+  /// app. So a message shows the in-app island instead, and everything else
+  /// (likes, follows) still goes through the system channel.
+  static const _inChatTypes = {
+    'message', 'group_message', 'reaction', 'reply', 'mention'
+  };
+
+  void _onNotification(Map data) {
+    final type = (data['type'] ?? '').toString();
+    // Everything that happens INSIDE a conversation gets the in-app island
+    // rather than a system notification while the app is in the foreground.
+    final isMessage = _inChatTypes.contains(type);
+    if (!isMessage) {
+      // flutter_local_notifications has no web build at all — a like/follow/
+      // comment would otherwise just vanish silently while the tab is open,
+      // since there's no OS notification tray to fall back to.
+      if (kIsWeb) {
+        _showBanner(data);
+      } else {
+        NotificationService.showForNotification(data);
+      }
+      return;
+    }
+    // Never announce a conversation the user is already looking at.
+    if (ActiveChat.matches(data)) return;
+    if (!NotificationPrefs.value.value
+        .allows(type == 'group_message' ? 'groups' : 'messages')) {
+      return;
+    }
+    _showBanner(data);
+  }
+
+  void _showBanner(Map data) {
+    setState(() => _banner = data);
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _banner = null);
+    });
+  }
+
+  /// Copy for the island banner — chat types show the message text itself;
+  /// everything else (only ever reaches the banner on web) gets the same
+  /// "{u} liked your post" style line the activity feed uses.
+  String _bannerSubtitle() {
+    final b = _banner;
+    if (b == null) return '';
+    if (_inChatTypes.contains((b['type'] ?? '').toString())) {
+      return (b['message'] ?? '').toString();
+    }
+    return NotificationService.textFor(b);
+  }
+
+  void _onBannerAction() {
+    final b = _banner;
+    setState(() => _banner = null);
+    if (b == null) return;
+    if (_inChatTypes.contains((b['type'] ?? '').toString())) {
+      // Jump to the Chat tab; opening the exact thread from here would need
+      // the full chat row, which the notification payload doesn't carry.
+      setState(() => _tab = 3);
+      return;
+    }
+    // Like/follow/comment/etc: same post-or-profile routing a tapped system
+    // notification uses natively.
+    NotificationService.openFor(b);
+  }
+
+  @override
+  void dispose() {
+    _notifSub?.cancel();
+    _bannerTimer?.cancel();
+    super.dispose();
   }
 
   // Center "+" now asks what to create: a post (goes to your profile) or a goal.
@@ -98,7 +214,33 @@ class _MainScreenState extends State<MainScreen> {
     final c = context.k;
     return Scaffold(
       backgroundColor: c.bg,
-      body: IndexedStack(index: _tab, children: _screens),
+      body: Stack(children: [
+        IndexedStack(
+          index: _tab,
+          children: [
+            for (var i = 0; i < 4; i++)
+              i == _tab || _built[i] != null
+                  ? _tabScreen(i)
+                  : const SizedBox.shrink(),
+          ],
+        ),
+        IslandBanner(
+          visible: _banner != null,
+          accent: c.accent,
+          leading: _banner?['from_avatar'] == null
+              ? null
+              : CircleAvatar(
+                  radius: 23,
+                  backgroundImage: CachedNetworkImageProvider(
+                      _banner!['from_avatar'].toString()),
+                ),
+          title: (_banner?['from_username'] ?? '').toString(),
+          subtitle: _bannerSubtitle(),
+          actionLabel: context.t('openChat'),
+          onAction: _onBannerAction,
+          onDismiss: () => setState(() => _banner = null),
+        ),
+      ]),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

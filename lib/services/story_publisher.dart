@@ -74,22 +74,40 @@ class StoryPublisher {
   void publishPhoto(String userId, Uint8List bytes,
       {List<Map> links = const [],
       Map? music,
+      List<Map> gifs = const [],
       String uploadingText = 'Uploading story…',
       String doneText = 'Story published',
       String failText = 'Upload failed'}) {
+    // Web has no filesystem to persist a job file to (that mechanism exists
+    // only to survive an Android foreground service restart) — upload the
+    // bytes already in memory directly instead.
+    if (kIsWeb) {
+      _startWeb(userId,
+          bytes: bytes,
+          isVideo: false,
+          links: links,
+          music: music,
+          gifs: gifs,
+          doneText: doneText,
+          failText: failText);
+      return;
+    }
     _start(userId,
         photoBytes: bytes,
         links: links,
         music: music,
+        gifs: gifs,
         uploadingText: uploadingText,
         doneText: doneText,
         failText: failText);
   }
 
-  /// Video story (path to a local clip). Returns immediately.
+  /// Video story (path to a local clip). Native only — see [publishVideoBytes]
+  /// for web, which has no filesystem path to give this.
   void publishVideo(String userId, String path,
       {List<Map> links = const [],
       Map? music,
+      List<Map> gifs = const [],
       String uploadingText = 'Uploading story…',
       String doneText = 'Story published',
       String failText = 'Upload failed'}) {
@@ -97,9 +115,70 @@ class StoryPublisher {
         videoPath: path,
         links: links,
         music: music,
+        gifs: gifs,
         uploadingText: uploadingText,
         doneText: doneText,
         failText: failText);
+  }
+
+  /// Video story from in-memory bytes — the web entry point. Skips
+  /// compression (ffmpeg has no web build) and uploads the clip as captured.
+  void publishVideoBytes(String userId, Uint8List bytes,
+      {List<Map> links = const [],
+      Map? music,
+      List<Map> gifs = const [],
+      String doneText = 'Story published',
+      String failText = 'Upload failed'}) {
+    _startWeb(userId,
+        bytes: bytes,
+        isVideo: true,
+        links: links,
+        music: music,
+        gifs: gifs,
+        doneText: doneText,
+        failText: failText);
+  }
+
+  /// Web publish path: no job file, no foreground service, no ffmpeg — just
+  /// the bytes already held in memory, uploaded directly.
+  Future<void> _startWeb(
+    String userId, {
+    required Uint8List bytes,
+    required bool isVideo,
+    required List<Map> links,
+    Map? music,
+    List<Map> gifs = const [],
+    required String doneText,
+    required String failText,
+  }) async {
+    failed.value = false;
+    progress.value = 0;
+    try {
+      final err = await uploadAndCreateStory(
+        bytes: bytes,
+        isVideo: isVideo,
+        userId: userId,
+        token: ApiService.token ?? '',
+        apiUrl: kApiUrl,
+        links: links,
+        music: music,
+        gifs: gifs,
+        onPercent: (p) => progress.value = (p / 100).clamp(0.0, 1.0),
+        notify: (_, __) {},
+      );
+      progress.value = null;
+      if (err == null) {
+        failed.value = false;
+        onPublished?.call();
+      } else {
+        failed.value = true;
+        debugPrint('web story publish failed: $err');
+      }
+    } catch (e) {
+      progress.value = null;
+      failed.value = true;
+      debugPrint('web story publish failed: $e');
+    }
   }
 
   /// Re-runs the last failed publish (the job file survives failures).
@@ -121,6 +200,7 @@ class StoryPublisher {
     String? videoPath,
     required List<Map> links,
     Map? music,
+    List<Map> gifs = const [],
     required String uploadingText,
     required String doneText,
     required String failText,
@@ -146,6 +226,7 @@ class StoryPublisher {
         'userId': userId,
         'links': links,
         if (music != null) 'music': music,
+        if (gifs.isNotEmpty) 'gifs': gifs,
         'token': ApiService.token,
         'apiUrl': kApiUrl,
         'uploadingText': uploadingText,
@@ -214,11 +295,11 @@ class StoryPublisher {
 
   /// Fallback: same pipeline, executed in the app process.
   Future<void> _runInProcess() async {
-    final ok = await runStoryUploadJob(
+    final err = await runStoryUploadJob(
       onPercent: (p) => progress.value = (p / 100).clamp(0.0, 1.0),
       notify: (title, text) {},
     );
-    if (ok) {
+    if (err == null) {
       progress.value = null;
       failed.value = false;
       await _showFinalNotification(_doneText ?? 'Story published');
@@ -226,7 +307,7 @@ class StoryPublisher {
     } else {
       progress.value = null;
       failed.value = true;
-      await _showFinalNotification(_failText ?? 'Upload failed');
+      await _showFinalNotification('${_failText ?? 'Upload failed'} · $err');
     }
   }
 
@@ -254,20 +335,23 @@ class StoryPublisher {
 //  service isolate and the in-process fallback share one implementation.
 //  Reads the job file; returns true on success (job file deleted then).
 // ═══════════════════════════════════════════════════════════════════════════
-Future<bool> runStoryUploadJob({
+/// Runs the pending upload job. Returns `null` on success, or a short human
+/// reason on failure (shown in the notification so a failing publish is
+/// diagnosable instead of a generic "Upload failed").
+Future<String?> runStoryUploadJob({
   required void Function(int percent) onPercent,
   required void Function(String title, String text) notify,
 }) async {
   try {
     final dir = await getTemporaryDirectory();
     final jobFile = File('${dir.path}/story_upload_job.json');
-    if (!jobFile.existsSync()) return false;
+    if (!jobFile.existsSync()) return 'no job';
     final job =
         Map<String, dynamic>.from(jsonDecode(await jobFile.readAsString()));
 
     final isVideo = job['type'] == 'video';
     var path = (job['path'] ?? '').toString();
-    if (path.isEmpty || !File(path).existsSync()) return false;
+    if (path.isEmpty || !File(path).existsSync()) return 'media file missing';
 
     // Compress big clips before shipping (720p, crf 26).
     if (isVideo) {
@@ -285,57 +369,29 @@ Future<bool> runStoryUploadJob({
     }
     final bytes = await File(path).readAsBytes();
 
-    // Upload with real byte progress.
-    final token = (job['token'] ?? '').toString();
-    final apiUrl = (job['apiUrl'] ?? '').toString();
-    final dio = Dio();
-    final body = jsonEncode({
-      'file_base64': base64Encode(bytes),
-      'folder': 'story',
-      'ext': isVideo ? 'mp4' : 'jpg',
-      'content_type': isVideo ? 'video/mp4' : 'image/jpeg',
-      'user_id': job['userId'],
-    });
-    var lastShown = -1;
-    final res = await dio.post(
-      '$apiUrl/upload',
-      data: body,
-      options: Options(headers: {
-        'Content-Type': 'application/json',
-        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-      }),
-      onSendProgress: (sent, total) {
-        if (total <= 0) return;
-        final p = (sent / total * 100).round().clamp(0, 100);
-        onPercent(p);
-        if (p - lastShown >= 3) {
-          lastShown = p;
-          notify((job['uploadingText'] ?? 'Uploading story…').toString(), '$p%');
-        }
-      },
-    );
-    final data = res.data is String ? jsonDecode(res.data) : res.data;
-    if (data['success'] != true) return false;
-    final url = (data['url'] ?? '').toString();
-    if (url.isEmpty) return false;
-
-    // Attach link/music extras and create the story record.
+    final gifs = ((job['gifs'] as List?) ?? const [])
+        .map((e) => Map.from(e))
+        .toList();
     final links = ((job['links'] as List?) ?? const [])
         .map((e) => Map.from(e))
         .toList();
     final music = job['music'] is Map ? Map.from(job['music']) : null;
-    final packed = ApiService.packStoryExtras(url, links: links, music: music);
-    final createRes = await dio.post(
-      '$apiUrl/stories/upload',
-      data: jsonEncode({'user_id': job['userId'], 'media_url': packed}),
-      options: Options(headers: {
-        'Content-Type': 'application/json',
-        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-      }),
+
+    final err = await uploadAndCreateStory(
+      bytes: bytes,
+      isVideo: isVideo,
+      userId: (job['userId'] ?? '').toString(),
+      token: (job['token'] ?? '').toString(),
+      apiUrl: (job['apiUrl'] ?? '').toString(),
+      links: links,
+      music: music,
+      gifs: gifs,
+      onPercent: onPercent,
+      notify: (title, text) => notify(
+          title.isEmpty ? (job['uploadingText'] ?? 'Uploading story…').toString() : title,
+          text),
     );
-    final created =
-        createRes.data is String ? jsonDecode(createRes.data) : createRes.data;
-    if (created['success'] != true) return false;
+    if (err != null) return err;
 
     // Done — clean the job up.
     try { jobFile.deleteSync(); } catch (_) {}
@@ -343,11 +399,122 @@ Future<bool> runStoryUploadJob({
       final photo = File('${dir.path}/story_upload_photo.jpg');
       if (photo.existsSync()) photo.deleteSync();
     } catch (_) {}
-    return true;
+    return null;
   } catch (e) {
     debugPrint('story upload job failed: $e');
-    return false;
+    return _short(e);
   }
+}
+
+/// Shared upload + story-creation core: uploads media bytes, then creates the
+/// story record with link/music/GIF extras attached. Used by the native
+/// job-file pipeline above (bytes read from a temp file, ffmpeg-compressed if
+/// large) and by [StoryPublisher._startWeb] (bytes already held in memory —
+/// web has neither a temp filesystem nor ffmpeg to compress with).
+Future<String?> uploadAndCreateStory({
+  required Uint8List bytes,
+  required bool isVideo,
+  required String userId,
+  required String token,
+  required String apiUrl,
+  required List<Map> links,
+  Map? music,
+  required List<Map> gifs,
+  required void Function(int percent) onPercent,
+  required void Function(String title, String text) notify,
+}) async {
+  try {
+    // Generous timeouts: on a cold free-tier server + slow mobile data the very
+    // first byte can take a while. No receiveTimeout so a slow reply won't abort.
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 60),
+      sendTimeout: const Duration(minutes: 3),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+      },
+    ));
+
+    final body = jsonEncode({
+      'file_base64': base64Encode(bytes),
+      'folder': 'story',
+      'ext': isVideo ? 'mp4' : 'jpg',
+      'content_type': isVideo ? 'video/mp4' : 'image/jpeg',
+      'user_id': userId,
+    });
+
+    // Upload the media (retry once — mobile networks drop the first attempt).
+    dynamic data;
+    Object? lastErr;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var lastShown = -1;
+        final res = await dio.post(
+          '$apiUrl/upload',
+          data: body,
+          onSendProgress: (sent, total) {
+            if (total <= 0) return;
+            final p = (sent / total * 100).round().clamp(0, 100);
+            onPercent(p);
+            if (p - lastShown >= 3) {
+              lastShown = p;
+              notify('', '$p%');
+            }
+          },
+        );
+        data = res.data is String ? jsonDecode(res.data) : res.data;
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr != null) return 'upload: ${_short(lastErr)}';
+    if (data == null || data['success'] != true) {
+      return 'upload: ${data?['error'] ?? 'server rejected'}';
+    }
+    final url = (data['url'] ?? '').toString();
+    if (url.isEmpty) return 'upload: no url';
+
+    // Attach link/music/GIF extras and create the story record.
+    final packed =
+        ApiService.packStoryExtras(url, links: links, music: music, gifs: gifs);
+    dynamic created;
+    lastErr = null;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final createRes = await dio.post(
+          '$apiUrl/stories/upload',
+          data: jsonEncode({'user_id': userId, 'media_url': packed}),
+        );
+        created =
+            createRes.data is String ? jsonDecode(createRes.data) : createRes.data;
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr != null) return 'create: ${_short(lastErr)}';
+    if (created == null || created['success'] != true) {
+      return 'create: ${created?['error'] ?? 'server rejected'}';
+    }
+    return null;
+  } catch (e) {
+    debugPrint('story upload job failed: $e');
+    return _short(e);
+  }
+}
+
+/// Trims Dio/exception noise to something readable in a notification.
+String _short(Object e) {
+  var s = e.toString();
+  if (e is DioException) {
+    s = e.response?.statusCode != null
+        ? 'HTTP ${e.response!.statusCode}'
+        : e.type.name;
+  }
+  return s.length > 80 ? s.substring(0, 80) : s;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -373,11 +540,12 @@ class _StoryUploadHandler extends TaskHandler {
       }
     } catch (_) {}
 
-    final ok = await runStoryUploadJob(
+    final err = await runStoryUploadJob(
       onPercent: (p) => FlutterForegroundTask.sendDataToMain({'p': p}),
       notify: (title, text) => FlutterForegroundTask.updateService(
           notificationTitle: title, notificationText: text),
     );
+    final ok = err == null;
 
     // Final state notification survives the service shutdown.
     try {
@@ -387,7 +555,7 @@ class _StoryUploadHandler extends TaskHandler {
       ));
       await n.show(
         7002,
-        ok ? doneText : failText,
+        ok ? doneText : '$failText · $err',
         null,
         const NotificationDetails(
           android: AndroidNotificationDetails('story_upload', 'Story upload',

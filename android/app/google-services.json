@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "845550397480",
+    "project_id": "sigmacta-67de6",
+    "storage_bucket": "sigmacta-67de6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:845550397480:android:29e8d04a8800a07e72ad1d",
+        "android_client_info": {
+          "package_name": "com.sigmacta.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFafBGE-6tZts4y4T8kpvC01TtAOtl9mQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

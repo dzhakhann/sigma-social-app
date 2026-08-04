@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'podcast_store.dart';
+import 'download_store.dart';
+import '../l10n/app_strings.dart' show S;
 import '../theme/brutal_theme.dart' show appConfig;
 
 /// A single app-wide audio player. The whole queue is loaded as one playlist,
@@ -44,16 +46,21 @@ class PodcastAudio {
         u.endsWith('.webm');
   }
 
+  /// Prefer an offline copy when the track has been downloaded — this is what
+  /// makes saved music / episodes play with no network.
+  Uri _sourceUri(Map ep) {
+    final audio = (ep['audio'] ?? '').toString();
+    final local = DownloadStore.localPath(audio);
+    if (local != null && local.isNotEmpty) return Uri.file(local);
+    return Uri.parse(audio);
+  }
+
   MediaItem _mediaItem(Map ep, int i) {
     final art = (ep['artwork'] ?? '').toString();
     return MediaItem(
       id: '${ep['audio']}#$i',
-      title: (ep['title'] ??
-              (appConfig.value.lang == 'ru' ? 'Эпизод' : 'Episode'))
-          .toString(),
-      album: (ep['showTitle'] ??
-              (appConfig.value.lang == 'ru' ? 'Подкаст' : 'Podcast'))
-          .toString(),
+      title: (ep['title'] ?? S.tr('episodeWord')).toString(),
+      album: (ep['showTitle'] ?? S.tr('podcastWord')).toString(),
       artist: (ep['showTitle'] ?? 'Sigmacta').toString(),
       artUri: art.isNotEmpty ? Uri.tryParse(art) : null,
     );
@@ -74,7 +81,7 @@ class PodcastAudio {
         children: [
           for (int i = 0; i < _queue.length; i++)
             AudioSource.uri(
-              Uri.parse(_queue[i]['audio'].toString()),
+              _sourceUri(_queue[i]),
               tag: _mediaItem(_queue[i], i),
             ),
         ],

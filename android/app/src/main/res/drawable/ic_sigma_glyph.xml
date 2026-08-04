@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Σ mark as a vector, sized for an adaptive-icon foreground.
+
+  A vector rather than the PNG set the default icon uses: the theme variants
+  need the SAME glyph on three different backgrounds, and duplicating five
+  density buckets per variant would mean fifteen bitmaps to keep in sync. One
+  path scales to every density instead.
+
+  Drawn inside the 108dp adaptive canvas, where only the middle 72dp is
+  guaranteed visible — hence the inset. viewportWidth/Height are 108 so the
+  coordinates below are dp directly.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+      Σ as a single closed outline: top bar, upper diagonal in to the waist,
+      lower diagonal out, bottom bar, then back up the left edge.
+      Stroke-free (a filled path) so it stays crisp at every size.
+    -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,30 L73,30 L73,39 L49,39 L64,53 L64,55 L49,69 L73,69 L73,78 L35,78 L35,70 L53,54 L35,38 Z" />
+</vector>

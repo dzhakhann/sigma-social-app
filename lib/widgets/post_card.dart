@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'music_widgets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
 import 'action_menu.dart';
 
@@ -150,7 +151,7 @@ class PostCard extends StatelessWidget {
   String _timeAgo(dynamic createdAt) {
     if (createdAt == null) return '';
     try {
-      final dt = DateTime.parse(createdAt.toString()).toLocal();
+      final dt = ApiService.parseServerTime(createdAt.toString());
       final diff = DateTime.now().difference(dt);
       if (diff.inMinutes < 1) return 'just now';
       if (diff.inMinutes < 60) return '${diff.inMinutes}m';

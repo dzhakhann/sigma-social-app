@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../services/api_service.dart';
+import '../services/sigma_link.dart';
 import '../services/music_preview.dart';
 import '../widgets/music_widgets.dart';
 import '../theme/brutal_theme.dart';
@@ -104,16 +105,36 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
 
   Future<void> _initVideo(String url) async {
     await _disposeVideo();
-    final v = VideoPlayerController.networkUrl(Uri.parse(url));
+    // mixWithOthers: a music sticker streams through a separate audioplayers
+    // instance (MusicPreview) alongside this clip — without it, Android audio
+    // focus rules pause one of the two the moment the other starts playing.
+    final v = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _vid = v;
     try {
       await v.initialize();
       await v.setLooping(false);
-      // The chosen track replaces the clip's own sound.
-      if (_music != null) await v.setVolume(0);
+      // Start the Rhythm track together with the first visible video frame —
+      // starting it earlier (as soon as the story opens) meant the audio
+      // played over a black screen for however long the clip took to buffer
+      // over the network, then the video popped in separately: "music first,
+      // then video" instead of both starting together.
+      if (_music != null) {
+        // How loud the clip's OWN sound stays under the track — the editor's
+        // dual volume mixer (default 0 = old hard-mute behaviour).
+        final videoVol = (_music!['videoVolume'] as num?)?.toDouble() ?? 0.0;
+        await v.setVolume(videoVol.clamp(0.0, 1.0));
+        _startMusic(_music!);
+      }
       if (!_isPaused) await v.play();
       if (mounted) setState(() {});
-    } catch (_) {}
+    } catch (_) {
+      // Buffering/playback failed — still give the music a chance to play
+      // rather than leaving the story silent.
+      if (_music != null) _startMusic(_music!);
+    }
   }
 
   void _startTimer() {
@@ -126,15 +147,17 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     final url = ApiService.storyMediaUrl(rawUrl);
     final isVid = ApiService.isVideoStory(url);
     _music = ApiService.unpackStoryMusic(rawUrl);
-    if (_music != null) {
-      _startMusic(_music!);
-    } else {
-      _stopMusic();
-    }
     if (isVid) {
+      // _initVideo starts the music itself, in sync with the first frame.
+      _stopMusic();
       _initVideo(url);
     } else {
       _disposeVideo();
+      if (_music != null) {
+        _startMusic(_music!);
+      } else {
+        _stopMusic();
+      }
     }
     // A photo with music runs as long as the chosen fragment (5s otherwise).
     final photoSec = _music == null
@@ -213,30 +236,35 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     } catch (_) {}
   }
 
-  Future<void> _dmAuthor(Map story, String text,
-      {bool withPreview = false}) async {
-    if (text.trim().isEmpty) return;
+  /// DMs the story's author. The message carries a self-contained `reply_to`
+  /// snapshot (kind: 'story') — the chat screen renders an Instagram-style
+  /// card (story thumbnail + "Replied to your story" / "Liked your story"),
+  /// instead of the old plain-text "Ответ на историю: …" line that gave no
+  /// visual link to the story at all.
+  Future<void> _dmAuthor(Map story, String text, {bool isLike = false}) async {
     final authorId = story['user_id'].toString();
     final r = await ApiService.getOrCreateChat(
         widget.user['id'].toString(), authorId);
-    if (r['success'] == true && r['data'] != null) {
-      // Instagram-style: the DM carries a mini preview of the exact story,
-      // so the author instantly sees WHICH story was liked / replied to.
-      await ApiService.sendMessage(
-        r['data']['id'].toString(),
-        widget.user['id'].toString(),
-        text,
-        messageType: withPreview ? 'image' : 'text',
-        mediaUrl: withPreview ? (story['image_url'] ?? '').toString() : null,
-      );
-    }
+    if (r['success'] != true || r['data'] == null) return;
+    final rawUrl = (story['image_url'] ?? '').toString();
+    await ApiService.sendMessage(
+      r['data']['id'].toString(),
+      widget.user['id'].toString(),
+      text,
+      replyTo: {
+        'kind': 'story',
+        'story_id': story['id'].toString(),
+        'media_url': ApiService.storyMediaUrl(rawUrl),
+        'is_video': ApiService.isVideoStory(rawUrl),
+        'is_like': isLike,
+      },
+    );
   }
 
   void _sendReply(Map story, String text) {
     if (text.trim().isEmpty) return;
     // Instant UI: clear + toast right away, deliver the DM in the background.
-    _dmAuthor(story, '${context.t('storyReplyPrefix')}${text.trim()}',
-        withPreview: true);
+    _dmAuthor(story, text.trim());
     ApiService.replyStoryStat(story['id'].toString());
     _replyCtrl.clear();
     FocusScope.of(context).unfocus();
@@ -255,7 +283,7 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     HapticFeedback.mediumImpact();
     setState(() => _liked.add(id)); // heart fills instantly
     // Fire-and-forget: don't block the UI on the network.
-    _dmAuthor(story, context.t('storyLiked'), withPreview: true);
+    _dmAuthor(story, '', isLike: true);
     // Count the like in the story stats too.
     ApiService.likeStoryStat(story['id'].toString());
   }
@@ -263,7 +291,13 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
   void _shareStory(Map story) {
     _timer?.cancel();
     setState(() => _isPaused = true);
-    final url = (story['image_url'] ?? '').toString();
+    // A canonical /story/<id> link, NOT story['image_url'].
+    //
+    // Sharing the media URL handed people a bare .mp4 that opens in a browser
+    // with no author, no caption and no way back into the app — and it breaks
+    // as soon as the object is moved or the story expires.
+    final url =
+        SigmaLink(SigmaLinkKind.story, (story['id'] ?? '').toString()).url;
     Share.share('${context.t('shareStoryText')}\n$url').whenComplete(() {
       if (mounted) {
         setState(() => _isPaused = false);
@@ -414,8 +448,12 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
             leading: Icon(Icons.link_rounded, color: c.ink),
             title: Text(context.t('copyLink')),
             onTap: () {
-              Clipboard.setData(
-                  ClipboardData(text: (story['image_url'] ?? '').toString()));
+              // Same canonical link as Share — copying the media URL was the
+              // other half of the "link opens a bare mp4 in a browser" bug.
+              Clipboard.setData(ClipboardData(
+                  text: SigmaLink(
+                          SigmaLinkKind.story, (story['id'] ?? '').toString())
+                      .url));
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(context.t('linkCopied'))));
@@ -516,6 +554,8 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                       child: Container(color: Colors.transparent))),
             ]),
           ),
+          // GIF stickers travel as data so they keep ANIMATING after publish.
+          ..._gifOverlays(story),
           // Live music sticker (Пункт 1.4): a real widget with its own
           // animation controller, so the equalizer keeps pulsing after publish.
           ..._musicSticker(),
@@ -573,11 +613,19 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
                                 story['user_avatar']))
                         : CircleAvatar(
                             radius: 18,
-                            backgroundColor: c.accent,
+                            backgroundColor: c.accentFill,
                             child: Icon(Icons.person,
                                 color: Colors.black, size: 16)),
                     const SizedBox(width: 8),
-                    Text(story['username'] ?? 'User',
+                    Text(
+                        (story['username'] ??
+                                (story['user_id'].toString() ==
+                                        widget.user['id'].toString()
+                                    ? (widget.user['username'] ??
+                                        widget.user['first_name'])
+                                    : null) ??
+                                'User')
+                            .toString(),
                         style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -707,24 +755,66 @@ class _StoryViewScreenState extends State<StoryViewScreen> {
     final x = (m['x'] as num?)?.toDouble() ?? 0.5;
     final y = (m['y'] as num?)?.toDouble() ?? 0.22;
     final sc = (m['scale'] as num?)?.toDouble() ?? 1.0;
+    final rot = (m['rot'] as num?)?.toDouble() ?? 0.0;
+    final colorV = (m['color'] as num?)?.toInt();
     return [
+      // Same offsets as the editor's overlay layer, so the sticker lands
+      // exactly where it was placed.
       Positioned(
-        left: x * size.width - 120,
-        top: y * size.height - 35,
+        left: x * size.width - 150,
+        top: y * size.height - 40,
         child: IgnorePointer(
           child: SizedBox(
-            width: 240,
+            width: 300,
             child: Center(
-              child: MusicStickerCard(
-                title: (m['title'] ?? '').toString(),
-                artist: (m['artist'] ?? '').toString(),
-                artUrl: (m['art'] ?? '').toString(),
-                scale: sc,
+              child: Transform.rotate(
+                angle: rot,
+                child: StoryMusicSticker(
+                  title: (m['title'] ?? '').toString(),
+                  artist: (m['artist'] ?? '').toString(),
+                  artUrl: (m['art'] ?? '').toString(),
+                  scale: sc,
+                  styleIdx: (m['style'] as num?)?.toInt() ?? 1,
+                  color: colorV == null ? Colors.white : Color(colorV),
+                ),
               ),
             ),
           ),
         ),
       ),
+    ];
+  }
+
+  /// Animated GIF stickers, positioned exactly like in the editor.
+  List<Widget> _gifOverlays(Map story) {
+    final gifs =
+        ApiService.unpackStoryGifs((story['image_url'] ?? '').toString());
+    if (gifs.isEmpty) return const [];
+    final size = MediaQuery.of(context).size;
+    return [
+      for (final g in gifs)
+        Positioned(
+          left: ((g['x'] as num?)?.toDouble() ?? 0.5) * size.width - 150,
+          top: ((g['y'] as num?)?.toDouble() ?? 0.45) * size.height - 40,
+          child: IgnorePointer(
+            child: SizedBox(
+              width: 300,
+              child: Center(
+                child: Transform.rotate(
+                  angle: (g['rot'] as num?)?.toDouble() ?? 0.0,
+                  child: SizedBox(
+                    width: 120 * ((g['scale'] as num?)?.toDouble() ?? 1.0),
+                    child: CachedNetworkImage(
+                      imageUrl: (g['url'] ?? '').toString(),
+                      fit: BoxFit.contain,
+                      errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
     ];
   }
 

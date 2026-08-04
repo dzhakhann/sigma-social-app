@@ -1,7 +1,10 @@
+import 'dart:ui' as ui;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/music_preview.dart';
+import '../theme/brutal_theme.dart';
 
 /// Shared music visuals: the animated equalizer, the Instagram-style story
 /// sticker card and a marquee for long titles. One implementation everywhere —
@@ -89,16 +92,12 @@ class MusicStickerCard extends StatelessWidget {
           child: SizedBox(
             width: 52 * s,
             height: 52 * s,
-            child: Stack(fit: StackFit.expand, children: [
-              artUrl.isNotEmpty
-                  ? CachedNetworkImage(imageUrl: artUrl, fit: BoxFit.cover)
-                  : Container(
-                      color: const Color(0xFF222327),
-                      child: Icon(Icons.music_note_rounded,
-                          size: 22 * s, color: Colors.white70)),
-              Container(color: Colors.black26),
-              Center(child: EqualizerBars(scale: s)),
-            ]),
+            child: artUrl.isNotEmpty
+                ? CachedNetworkImage(imageUrl: artUrl, fit: BoxFit.cover)
+                : Container(
+                    color: const Color(0xFF222327),
+                    child: Icon(Icons.music_note_rounded,
+                        size: 22 * s, color: Colors.white70)),
           ),
         ),
         SizedBox(width: 10 * s),
@@ -128,6 +127,243 @@ class MusicStickerCard extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// The story music sticker in ALL its styles (0-6) — ONE implementation used
+/// by both the editor and the story viewer, so the published sticker looks
+/// exactly like what was placed in the editor (styles used to reset to the
+/// default card after publishing because the viewer had its own copy).
+class StoryMusicSticker extends StatelessWidget {
+  final String title;
+  final String artist;
+  final String artUrl;
+  final double scale;
+  final int styleIdx;
+
+  /// Tint for the text-only style (6).
+  final Color color;
+
+  const StoryMusicSticker({
+    Key? key,
+    required this.title,
+    this.artist = '',
+    this.artUrl = '',
+    this.scale = 1.0,
+    this.styleIdx = 0,
+    this.color = Colors.white,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final s = scale;
+    switch (styleIdx) {
+      case 1: // Instagram-style white card
+        return MusicStickerCard(
+            title: title, artist: artist, artUrl: artUrl, scale: s);
+      case 4: // cover only
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(14 * s),
+          child: SizedBox(
+            width: 74 * s,
+            height: 74 * s,
+            child: artUrl.isNotEmpty
+                ? CachedNetworkImage(imageUrl: artUrl, fit: BoxFit.cover)
+                : Container(
+                    color: const Color(0xFF222327),
+                    child: Icon(Icons.music_note_rounded,
+                        color: Colors.white70, size: 26 * s)),
+          ),
+        );
+      case 5: // big card: cover on top, title + artist below
+        return Container(
+          width: 150 * s,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16 * s),
+            boxShadow: [BoxShadow(blurRadius: 16 * s, color: Colors.black26)],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              height: 150 * s,
+              width: 150 * s,
+              child: artUrl.isNotEmpty
+                  ? CachedNetworkImage(imageUrl: artUrl, fit: BoxFit.cover)
+                  : Container(
+                      color: const Color(0xFF222327),
+                      child: Icon(Icons.music_note_rounded,
+                          color: Colors.white70, size: 44 * s)),
+            ),
+            Padding(
+              padding: EdgeInsets.all(9 * s),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: const Color(0xFF101012),
+                        fontSize: 13.5 * s,
+                        fontWeight: FontWeight.w800)),
+                if (artist.isNotEmpty)
+                  Text(artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: const Color(0xFF7A7C85), fontSize: 11.5 * s)),
+              ]),
+            ),
+          ]),
+        );
+      case 6: // minimal text (colour-tinted)
+        return Text('♪ $title',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: color,
+                fontSize: 17 * s,
+                fontWeight: FontWeight.w800,
+                shadows: const [Shadow(blurRadius: 8, color: Colors.black54)]));
+      case 2: // mini player
+        return Container(
+          padding: EdgeInsets.symmetric(horizontal: 12 * s, vertical: 9 * s),
+          constraints: BoxConstraints(maxWidth: 240 * s),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.72),
+            borderRadius: BorderRadius.circular(30 * s),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20 * s),
+            SizedBox(width: 8 * s),
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13 * s,
+                          fontWeight: FontWeight.w700)),
+                  if (artist.isNotEmpty)
+                    Text(artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: Colors.white54, fontSize: 10.5 * s)),
+                ],
+              ),
+            ),
+          ]),
+        );
+      case 3: // animated waveform, Telegram-style
+        return _glassPill(
+          s,
+          radius: 30,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.music_note_rounded, color: Colors.white, size: 15 * s),
+            SizedBox(width: 7 * s),
+            Flexible(
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13 * s,
+                      fontWeight: FontWeight.w700)),
+            ),
+            SizedBox(width: 8 * s),
+            MusicWave(scale: s),
+          ]),
+        );
+      default: // 0 — plain glass title pill
+        return _glassPill(
+          s,
+          radius: 40,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.music_note_rounded, color: Colors.white, size: 15 * s),
+            SizedBox(width: 7 * s),
+            Flexible(
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15 * s,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        );
+    }
+  }
+
+  Widget _glassPill(double s, {required double radius, required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius * s),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 14 * s, vertical: 9 * s),
+          constraints: BoxConstraints(maxWidth: 250 * s),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.16),
+            borderRadius: BorderRadius.circular(radius * s),
+            border: Border.all(color: Colors.white30, width: 0.9),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact bouncing bars used inside the waveform sticker style.
+class MusicWave extends StatefulWidget {
+  final double scale;
+  const MusicWave({Key? key, this.scale = 1.0}) : super(key: key);
+  @override
+  State<MusicWave> createState() => _MusicWaveState();
+}
+
+class _MusicWaveState extends State<MusicWave>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat(reverse: true);
+
+  static const _base = [0.35, 0.75, 0.5, 0.95, 0.6, 0.85, 0.4];
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scale;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) => Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (var i = 0; i < _base.length; i++) ...[
+            Container(
+              width: 2.5 * s,
+              height: (7 + 11 * _base[i] * (0.45 + 0.55 * _c.value)) * s,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(2 * s),
+              ),
+            ),
+            SizedBox(width: 2.5 * s),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -232,6 +468,7 @@ class _PostMusicBarState extends State<PostMusicBar> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.k;
     final art = (widget.track['art'] ?? '').toString();
     final playable = _url.isNotEmpty;
     return ValueListenableBuilder<String?>(
@@ -244,9 +481,9 @@ class _PostMusicBarState extends State<PostMusicBar> {
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: c.ink.withOpacity(0.06),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(color: c.ink.withOpacity(0.10)),
             ),
             child: Row(children: [
               ClipRRect(
@@ -258,9 +495,9 @@ class _PostMusicBarState extends State<PostMusicBar> {
                     art.isNotEmpty
                         ? CachedNetworkImage(imageUrl: art, fit: BoxFit.cover)
                         : Container(
-                            color: const Color(0xFF222327),
-                            child: const Icon(Icons.music_note_rounded,
-                                size: 18, color: Colors.white54)),
+                            color: c.surface2,
+                            child: Icon(Icons.music_note_rounded,
+                                size: 18, color: c.inkSoft)),
                     if (isPlaying) ...[
                       Container(color: Colors.black38),
                       const Center(child: EqualizerBars(scale: 0.55)),
@@ -277,16 +514,15 @@ class _PostMusicBarState extends State<PostMusicBar> {
                     Text((widget.track['title'] ?? '').toString(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.white,
+                        style: TextStyle(
+                            color: c.ink,
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700)),
                     if ((widget.track['artist'] ?? '').toString().isNotEmpty)
                       Text((widget.track['artist'] ?? '').toString(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 11.5)),
+                          style: TextStyle(color: c.inkSoft, fontSize: 11.5)),
                   ],
                 ),
               ),
@@ -296,7 +532,7 @@ class _PostMusicBarState extends State<PostMusicBar> {
                     : isPlaying
                         ? Icons.pause_circle_filled_rounded
                         : Icons.play_circle_fill_rounded,
-                color: playable ? Colors.white : Colors.white24,
+                color: playable ? c.accent : c.inkSoft,
                 size: 30,
               ),
             ]),

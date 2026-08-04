@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/api_service.dart';
 import '../theme/brutal_theme.dart';
+import '../widgets/verified_badge.dart';
 import '../l10n/app_strings.dart';
 import 'profile_screen.dart';
 
@@ -121,8 +122,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                           ),
                           if (ch['is_verified'] == true) ...[
                             const SizedBox(width: 4),
-                            Icon(Icons.verified_rounded,
-                                size: 15, color: c.ink),
+                            const VerifiedBadge(size: 15),
                           ],
                         ],
                       ),
@@ -148,7 +148,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                             : FilledButton(
                                 onPressed: () => _toggle(ch),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: c.accent,
+                                  backgroundColor: c.accentFill,
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12)),
                                   padding:

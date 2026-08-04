@@ -4,10 +4,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
+import '../services/catalog_cache.dart';
 import '../services/podcast_store.dart';
 import '../services/podcast_audio.dart';
+import '../services/download_store.dart';
+import '../services/sigma_link.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
+import '../widgets/download_button.dart';
 import 'podcast_player_screen.dart';
 import 'video_podcast_screen.dart';
 
@@ -40,6 +44,8 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
   final _search = TextEditingController();
   List<Map> _shows = [];
   bool _loading = false;
+  bool _failed = false;
+  String _lastTerm = '';
   String _active = 'pc_top';
 
   List<Map> _fav = [];
@@ -51,21 +57,49 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
     'pc_health', 'pc_comedy', 'pc_education', 'pc_motivation',
   ];
 
+  // Rotates which category "Top" opens to by default each week, instead of
+  // the exact same literal "podcast"/"подкаст" search every time — iTunes'
+  // /search endpoint has no offset/pagination to lean on instead.
+  String _weeklyCat() {
+    final pool = _cats.skip(1).toList(); // skip 'pc_top' itself
+    final week = DateTime.now().difference(DateTime(2026)).inDays ~/ 7;
+    return context.t(pool[week % pool.length]);
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _loadShows(context.t('pc_default_term'));
+      if (mounted) _loadShows(_weeklyCat());
     });
   }
 
   Future<void> _loadShows(String term) async {
-    setState(() => _loading = true);
+    _lastTerm = term;
+    // Cached copy first (instant open), then refresh from the network.
+    final cached = CatalogCache.get('podcasts_$term');
+    if (cached != null) {
+      setState(() { _shows = cached; _loading = false; _failed = false; });
+    } else {
+      setState(() { _loading = true; _failed = false; });
+    }
     List<Map> data = [];
     try {
       data = await ApiService.searchPodcasts(term);
+      // The backend sleeps on Render's free tier, so the FIRST call after an
+      // idle period can exceed the request timeout and come back empty. Retry
+      // once — by then the server is awake — instead of showing the user a
+      // "nothing found" that really meant "the server was still waking up".
+      if (data.isEmpty) data = await ApiService.searchPodcasts(term);
     } finally {
-      if (mounted) setState(() { _shows = data; _loading = false; });
+      if (data.isNotEmpty) CatalogCache.put('podcasts_$term', data);
+      if (mounted && (data.isNotEmpty || cached == null)) {
+        setState(() {
+          _shows = data;
+          _loading = false;
+          _failed = data.isEmpty;
+        });
+      }
     }
   }
 
@@ -73,7 +107,15 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
     final f = await PodcastStore.favorites();
     final h = await PodcastStore.history();
     final pl = await PodcastStore.playlists();
-    if (mounted) setState(() { _fav = f; _hist = h; _playlists = pl; });
+    // Podcasts tab shows ONLY podcast history / favourites — music and
+    // audiobooks each keep their own separate lists.
+    if (mounted) {
+      setState(() {
+        _fav = f.where((e) => e['kind'] == 'podcast').toList();
+        _hist = h.where((e) => e['kind'] == 'podcast').toList();
+        _playlists = pl;
+      });
+    }
   }
 
   /// Play an episode: video → video screen; audio → global player + now-playing.
@@ -117,7 +159,9 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
             child: _mediaTab == 0
                 ? MusicTab(key: const PageStorageKey('music'), openEpisode: _openEpisode)
                 : _mediaTab == 2
-                    ? BooksTab(key: const PageStorageKey('books'))
+                    ? BooksTab(
+                        key: const PageStorageKey('books'),
+                        openEpisode: _openEpisode)
                     : _bodyTab(c),
           ),
         ]),
@@ -174,7 +218,8 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
     final labels = [
       context.t('pBrowse'),
       context.t('pHistory'),
-      context.t('pPlaylist')
+      context.t('pPlaylist'),
+      context.t('mDownloads'),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -195,11 +240,15 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                   color: sel ? c.accent : c.surface,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(labels[i],
-                    style: TextStyle(
-                        color: sel ? c.onAccent : c.inkSoft,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(labels[i],
+                      maxLines: 1,
+                      style: TextStyle(
+                          color: sel ? c.onAccent : c.inkSoft,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                ),
               ),
             ),
           );
@@ -215,6 +264,15 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
             context.t('pHistoryEmpty'));
       case 2:
         return _playlistsTab(c);
+      case 3:
+        return ValueListenableBuilder<int>(
+          valueListenable: DownloadStore.version,
+          builder: (_, __, ___) => _episodeList(
+              c,
+              DownloadStore.all(kind: 'podcast'),
+              Icons.download_done_rounded,
+              context.t('emptyDownloads')),
+        );
       default:
         return _browse(c);
     }
@@ -257,9 +315,7 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
                 onTap: () {
                   setState(() => _active = cat);
                   _search.clear();
-                  _loadShows(cat == 'pc_top'
-                      ? context.t('pc_default_term')
-                      : context.t(cat));
+                  _loadShows(cat == 'pc_top' ? _weeklyCat() : context.t(cat));
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -284,8 +340,34 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
             ? Center(child: CircularProgressIndicator(color: c.accent))
             : _shows.isEmpty
                 ? Center(
-                    child: Text(context.t('pNothing'),
-                        style: TextStyle(color: c.inkSoft)))
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                            _failed
+                                ? Icons.cloud_off_rounded
+                                : Icons.search_off_rounded,
+                            color: c.inkSoft,
+                            size: 44),
+                        const SizedBox(height: 10),
+                        Text(
+                            _failed
+                                ? context.t('loadFailedRetry')
+                                : context.t('pNothing'),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: c.inkSoft)),
+                        if (_failed) ...[
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            style:
+                                FilledButton.styleFrom(backgroundColor: c.accentFill),
+                            onPressed: () => _loadShows(_lastTerm),
+                            child: Text(context.t('retryBtn')),
+                          ),
+                        ],
+                      ],
+                    ),
+                  )
                 : GridView.builder(
                     padding: const EdgeInsets.all(14),
                     gridDelegate:
@@ -403,11 +485,17 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: c.inkSoft, fontSize: 12)),
-      trailing: Icon(
-          video
-              ? Icons.play_circle_outline_rounded
-              : Icons.play_circle_fill_rounded,
-          color: c.accent),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (!video) ...[
+          DownloadButton(track: ep, size: 20),
+          const SizedBox(width: 12),
+        ],
+        Icon(
+            video
+                ? Icons.play_circle_outline_rounded
+                : Icons.play_circle_fill_rounded,
+            color: c.accent),
+      ]),
     );
   }
 
@@ -670,6 +758,9 @@ class _PodcastEpisodesScreenState extends State<PodcastEpisodesScreen> {
               'artist': widget.show['artist'],
               'artwork': widget.show['artwork'],
               'feedUrl': widget.show['feedUrl'],
+              // Inherit the show's media kind ('podcast' | 'book') so it lands in
+              // the right History / Favourites section when played.
+              'kind': widget.show['kind'] ?? 'podcast',
             })
         .toList();
     if (mounted) setState(() { _episodes = eps; _loading = false; });
@@ -771,6 +862,8 @@ class _PodcastEpisodesScreenState extends State<PodcastEpisodesScreen> {
                               overflow: TextOverflow.ellipsis,
                               style:
                                   TextStyle(color: c.inkSoft, fontSize: 12)),
+                          trailing:
+                              video ? null : DownloadButton(track: ep, size: 22),
                         );
                       },
                     ),
@@ -795,7 +888,7 @@ class _MusicTabState extends State<MusicTab> {
   List<Map> _tracks = [];
   bool _loading = true;
   int _sub = 0; // 0 home · 1 history · 2 liked · 3 playlists
-  String _genre = '';
+  String _genre = _weeklyGenre();
   List<String> _recentQueries = [];
   Set<String> _favIds = {};
   List<Map> _hist = [];
@@ -808,6 +901,15 @@ class _MusicTabState extends State<MusicTab> {
     ['Classical', 'gClassical'], ['R&B/Soul', 'gRnb'], ['Latin', 'gLatin'],
     ['Ambient', 'gAmbient'], ['Folk', 'gFolk'],
   ];
+
+  // Rotates which genre the trending list opens to by default each week,
+  // instead of always the exact same unfiltered global chart (Audius'
+  // /tracks/trending has no seed/offset of its own) — same week-seed
+  // formula as _weekPick below, so both rotate together.
+  static String _weeklyGenre() {
+    final week = DateTime.now().difference(DateTime(2026)).inDays ~/ 7;
+    return _genres[1 + week % (_genres.length - 1)][0];
+  }
 
   @override
   void initState() {
@@ -851,9 +953,18 @@ class _MusicTabState extends State<MusicTab> {
   }
 
   Future<void> _loadTrending() async {
-    setState(() => _loading = true);
+    // Cached copy first (instant open), then refresh from the network.
+    final cached = CatalogCache.get('music_$_genre');
+    if (cached != null) {
+      setState(() { _tracks = cached; _loading = false; });
+    } else {
+      setState(() => _loading = true);
+    }
     final data = await ApiService.musicTrending(genre: _genre);
-    if (mounted) setState(() { _tracks = data; _loading = false; });
+    if (data.isNotEmpty) CatalogCache.put('music_$_genre', data);
+    if (mounted && (data.isNotEmpty || cached == null)) {
+      setState(() { _tracks = data; _loading = false; });
+    }
   }
 
   Future<void> _run(String q) async {
@@ -905,12 +1016,48 @@ class _MusicTabState extends State<MusicTab> {
               await _addToPlaylistSheet(t);
             },
           ),
+          Builder(builder: (_) {
+            final dl = DownloadStore.isDownloaded(t['audio']?.toString());
+            return ListTile(
+              leading: Icon(
+                  dl ? Icons.download_done_rounded : Icons.download_rounded,
+                  color: dl ? c.accent : c.ink),
+              title: Text(dl ? ctx.t('downloadRemove') : ctx.t('download')),
+              onTap: () async {
+                Navigator.pop(ctx);
+                if (dl) {
+                  await DownloadStore.remove(t['audio']?.toString());
+                } else {
+                  final ok = await DownloadStore.download(t);
+                  if (!ok && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(context.t('downloadFailed'))));
+                  }
+                }
+              },
+            );
+          }),
           ListTile(
             leading: Icon(Icons.share_rounded, color: c.ink),
             title: Text(ctx.t('shareBtn')),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(ctx);
-              Share.share('${t['title']} — ${t['showTitle']}\n${t['audio']}');
+              final musicId = t['id']?.toString() ?? '';
+              String link;
+              if (t['kind'] == 'music' && musicId.isNotEmpty) {
+                link = SigmaLink(SigmaLinkKind.music, musicId).url;
+              } else if (t['kind'] == 'podcast') {
+                // Mints (or reuses) a stable id for this episode server-side —
+                // there's no id to link to until this round-trip happens.
+                final id = await ApiService.sharePodcastEpisode(t);
+                link = id != null
+                    ? SigmaLink(SigmaLinkKind.podcast, id).url
+                    : t['audio'].toString();
+              } else {
+                // Audiobook chapters aren't resolvable by id yet.
+                link = t['audio'].toString();
+              }
+              Share.share('${t['title']} — ${t['showTitle']}\n$link');
             },
           ),
           const SizedBox(height: 6),
@@ -998,7 +1145,7 @@ class _MusicTabState extends State<MusicTab> {
   Widget _subTabs(BrutalColors c) {
     final labels = [
       context.t('mHome'), context.t('mHistory'),
-      context.t('mFav'), context.t('mPlaylists'),
+      context.t('mFav'), context.t('mPlaylists'), context.t('mDownloads'),
     ];
     return SizedBox(
       height: 42,
@@ -1042,6 +1189,12 @@ class _MusicTabState extends State<MusicTab> {
         return _trackList(c, _favs, context.t('emptyFav'));
       case 3:
         return _playlistsList(c);
+      case 4:
+        return ValueListenableBuilder<int>(
+          valueListenable: DownloadStore.version,
+          builder: (_, __, ___) => _trackList(
+              c, DownloadStore.all(kind: 'music'), context.t('emptyDownloads')),
+        );
       default:
         return _home(c);
     }
@@ -1259,7 +1412,9 @@ class _MusicTabState extends State<MusicTab> {
               color: fav ? c.danger : c.inkSoft,
               size: 22),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
+        DownloadButton(track: t, size: 20),
+        const SizedBox(width: 12),
         GestureDetector(
           onTap: () => _trackMenu(t),
           child: Icon(Icons.more_vert_rounded, color: c.inkSoft, size: 20),
@@ -1346,7 +1501,8 @@ class _MusicTabState extends State<MusicTab> {
 
 // ─── АУДИОКНИГИ (LibriVox — public domain, EN + RU catalogs) ─────────────────
 class BooksTab extends StatefulWidget {
-  const BooksTab({Key? key}) : super(key: key);
+  final void Function(List<Map>, int) openEpisode;
+  const BooksTab({Key? key, required this.openEpisode}) : super(key: key);
   @override
   State<BooksTab> createState() => _BooksTabState();
 }
@@ -1355,8 +1511,14 @@ class _BooksTabState extends State<BooksTab> {
   final _search = TextEditingController();
   List<Map> _books = [];
   bool _loading = true;
-  String _genre = '';
+  String _genre = _weeklyGenre();
   String _language = 'English';
+
+  int _sub = 0; // 0 catalog · 1 history · 2 liked · 3 downloaded
+  List<Map> _hist = [];
+  List<Map> _favs = [];
+  Set<String> _favIds = {};
+  bool _retriedCold = false;
 
   static const _genresList = [
     ['', 'bAll'], ['General Fiction', 'bFiction'], ['Classics', 'bClassics'],
@@ -1366,9 +1528,18 @@ class _BooksTabState extends State<BooksTab> {
     ['History', 'bHistory'], ["Children's Fiction", 'bChildren'],
   ];
 
+  // Same reasoning as MusicTab: archive.org's default (no-term) sort is
+  // deterministic "most downloaded", so the catalog opens to a rotating
+  // genre each week instead of the exact same top-40 every time.
+  static String _weeklyGenre() {
+    final week = DateTime.now().difference(DateTime(2026)).inDays ~/ 7;
+    return _genresList[1 + week % (_genresList.length - 1)][0];
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadLocal();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Default catalog language follows the app language.
@@ -1380,15 +1551,177 @@ class _BooksTabState extends State<BooksTab> {
   }
 
   Future<void> _run(String q) async {
-    setState(() => _loading = true);
-    final data = await ApiService.searchAudiobooks(q.trim(),
+    // The default catalog (empty query) is cached on disk — instant open.
+    final key = q.trim().isEmpty ? 'books_${_genre}_$_language' : null;
+    final cached = key == null ? null : CatalogCache.get(key);
+    if (cached != null) {
+      setState(() { _books = cached; _loading = false; });
+    } else {
+      setState(() => _loading = true);
+    }
+    var data = await ApiService.searchAudiobooks(q.trim(),
         genre: _genre, language: _language);
-    if (mounted) setState(() { _books = data; _loading = false; });
+    // Cold-start safety: the free-tier backend may still be waking on the very
+    // first open — give it one more try before showing an empty catalog.
+    if (data.isEmpty && !_retriedCold) {
+      _retriedCold = true;
+      await Future.delayed(const Duration(seconds: 2));
+      data = await ApiService.searchAudiobooks(q.trim(),
+          genre: _genre, language: _language);
+    }
+    if (key != null && data.isNotEmpty) CatalogCache.put(key, data);
+    if (mounted && (data.isNotEmpty || cached == null)) {
+      setState(() { _books = data; _loading = false; });
+    }
+  }
+
+  // Audiobooks keep their OWN history / favourites, separate from music and
+  // podcasts — filtered by kind == 'book'.
+  Future<void> _loadLocal() async {
+    final f = await PodcastStore.favorites();
+    final h = await PodcastStore.history();
+    if (mounted) {
+      setState(() {
+        _favs = f.where((e) => e['kind'] == 'book').toList();
+        _hist = h.where((e) => e['kind'] == 'book').toList();
+        _favIds = f.map((e) => e['audio'].toString()).toSet();
+      });
+    }
+  }
+
+  Future<void> _toggleFav(Map ep) async {
+    HapticFeedback.selectionClick();
+    await PodcastStore.toggleFavorite(ep);
+    _loadLocal();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.k;
+    return Column(children: [
+      _subTabs(c),
+      Expanded(child: _body(c)),
+    ]);
+  }
+
+  Widget _subTabs(BrutalColors c) {
+    final labels = [
+      context.t('bCatalog'), context.t('bHistoryTab'), context.t('bFavTab'),
+      context.t('mDownloads'),
+    ];
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        children: List.generate(labels.length, (i) {
+          final sel = _sub == i;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _sub = i);
+                if (i != 0) _loadLocal();
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                decoration: BoxDecoration(
+                  color: sel ? c.accent : c.surface,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Text(labels[i],
+                    style: TextStyle(
+                        color: sel ? c.onAccent : c.inkSoft,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _body(BrutalColors c) {
+    switch (_sub) {
+      case 1:
+        return _chapterList(c, _hist, context.t('emptyBookHistory'));
+      case 2:
+        return _chapterList(c, _favs, context.t('emptyBookFav'));
+      case 3:
+        return ValueListenableBuilder<int>(
+          valueListenable: DownloadStore.version,
+          builder: (_, __, ___) => _chapterList(
+              c, DownloadStore.all(kind: 'book'), context.t('emptyDownloads')),
+        );
+      default:
+        return _catalog(c);
+    }
+  }
+
+  // ─── A saved audiobook chapter row (History / Liked) ───────────────────────
+  Widget _chapterList(BrutalColors c, List<Map> list, String emptyText) {
+    if (list.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(emptyText,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.inkSoft, height: 1.4)),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: list.length,
+      separatorBuilder: (_, __) =>
+          Divider(height: 1, color: c.ink.withOpacity(0.05)),
+      itemBuilder: (_, i) {
+        final ep = list[i];
+        final art = (ep['artwork'] ?? '').toString();
+        final fav = _favIds.contains(ep['audio'].toString());
+        final video = PodcastAudio.isVideo(ep);
+        return ListTile(
+          onTap: () => widget.openEpisode(list, i),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: art.isEmpty
+                ? Container(
+                    width: 48, height: 48,
+                    color: c.surface2,
+                    child: Icon(Icons.menu_book_rounded, color: c.inkSoft))
+                : CachedNetworkImage(
+                    imageUrl: art, width: 48, height: 48, fit: BoxFit.cover),
+          ),
+          title: Text((ep['title'] ?? context.t('episode')).toString(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: c.ink, fontSize: 14, fontWeight: FontWeight.w600)),
+          subtitle: Text((ep['showTitle'] ?? '').toString(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: c.inkSoft, fontSize: 12)),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            GestureDetector(
+              onTap: () => _toggleFav(ep),
+              child: Icon(
+                  fav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  color: fav ? c.danger : c.inkSoft,
+                  size: 22),
+            ),
+            if (!video) ...[
+              const SizedBox(width: 12),
+              DownloadButton(track: ep, size: 20),
+            ],
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _catalog(BrutalColors c) {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
@@ -1526,7 +1859,7 @@ class _BooksTabState extends State<BooksTab> {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => PodcastEpisodesScreen(show: b)),
-      ),
+      ).then((_) => _loadLocal()),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

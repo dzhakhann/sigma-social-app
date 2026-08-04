@@ -3,11 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../theme/brutal_theme.dart';
 import '../l10n/app_strings.dart';
+import '../services/sigma_link.dart';
 import '../services/api_service.dart';
 
 /// Instagram/Telegram-style "⋯" action sheets, shared across the app
 /// (profiles, posts, comments). Also hosts the report reason picker.
 class ActionMenu {
+  /// Kept for anything still composing its own URL, but new code should go
+  /// through [SigmaLink] — it is the single definition shared with the router,
+  /// so a link we hand out is always one the app can open.
   static const String base = 'https://sigmacta.pages.dev';
 
   static void _snack(BuildContext c, String msg) {
@@ -58,7 +62,7 @@ class ActionMenu {
     required bool isBlocked,
     VoidCallback? onChanged,
   }) {
-    final link = '$base/@$username';
+    final link = SigmaLink(SigmaLinkKind.profile, username).url;
     _sheet(context, [
       _tile(context, Icons.share_rounded, context.t('mShareProfile'), () {
         Navigator.pop(context);
@@ -97,14 +101,56 @@ class ActionMenu {
     ]);
   }
 
+  // ─── CHAT LIST menu (long-press a chat/group row) ─────────────────────────
+  static void chat(BuildContext context, {
+    required bool isGroup,
+    required VoidCallback onDelete,
+    VoidCallback? onBlock,
+    VoidCallback? onCopyLast,
+    required VoidCallback onSelect,
+  }) {
+    _sheet(context, [
+      if (onCopyLast != null)
+        _tile(context, Icons.copy_rounded, context.t('mCopyText'), () {
+          Navigator.pop(context);
+          onCopyLast();
+        }),
+      _tile(context, Icons.check_circle_outline_rounded, context.t('mSelect'),
+          () {
+        Navigator.pop(context);
+        onSelect();
+      }),
+      if (onBlock != null)
+        _tile(context, Icons.block_rounded, context.t('mBlock'), () {
+          Navigator.pop(context);
+          onBlock();
+        }, danger: true),
+      _tile(
+          context,
+          Icons.delete_outline_rounded,
+          isGroup ? context.t('mLeaveGroup') : context.t('mDeleteChat'), () {
+        Navigator.pop(context);
+        onDelete();
+      }, danger: true),
+    ]);
+  }
+
   // ─── POST menu ─────────────────────────────────────────────────────────────
   static void post(BuildContext context, {
     required String postId,
     required String authorId,
+    bool isOwn = false,
+    VoidCallback? onEdit,
+    VoidCallback? onDelete,
     VoidCallback? onChanged,
   }) {
-    final link = '$base/post/$postId';
+    final link = SigmaLink(SigmaLinkKind.post, postId).url;
     _sheet(context, [
+      if (isOwn && onEdit != null)
+        _tile(context, Icons.edit_outlined, context.t('mEdit'), () {
+          Navigator.pop(context);
+          onEdit();
+        }),
       _tile(context, Icons.link_rounded, context.t('mCopyLink'), () {
         Clipboard.setData(ClipboardData(text: link));
         Navigator.pop(context);
@@ -114,23 +160,31 @@ class ActionMenu {
         Navigator.pop(context);
         Share.share(link);
       }),
-      _tile(context, Icons.flag_outlined, context.t('mReport'), () {
-        Navigator.pop(context);
-        reportReasons(context, 'post', postId, link: link);
-      }, danger: true),
-      _tile(context, Icons.not_interested_rounded,
-          context.t('mNotInterested'), () {
-        Navigator.pop(context);
-        _snack(context, context.t('hiddenDone'));
-        onChanged?.call();
-      }),
-      _tile(context, Icons.visibility_off_outlined,
-          context.t('mHideAuthor'), () async {
-        Navigator.pop(context);
-        await ApiService.hideUser(authorId);
-        _snack(context, context.t('hiddenDone'));
-        onChanged?.call();
-      }),
+      if (!isOwn)
+        _tile(context, Icons.flag_outlined, context.t('mReport'), () {
+          Navigator.pop(context);
+          reportReasons(context, 'post', postId, link: link);
+        }, danger: true),
+      if (!isOwn)
+        _tile(context, Icons.not_interested_rounded,
+            context.t('mNotInterested'), () {
+          Navigator.pop(context);
+          _snack(context, context.t('hiddenDone'));
+          onChanged?.call();
+        }),
+      if (!isOwn)
+        _tile(context, Icons.visibility_off_outlined,
+            context.t('mHideAuthor'), () async {
+          Navigator.pop(context);
+          await ApiService.hideUser(authorId);
+          _snack(context, context.t('hiddenDone'));
+          onChanged?.call();
+        }),
+      if (isOwn && onDelete != null)
+        _tile(context, Icons.delete_outline_rounded, context.t('mDelete'), () {
+          Navigator.pop(context);
+          onDelete();
+        }, danger: true),
     ]);
   }
 

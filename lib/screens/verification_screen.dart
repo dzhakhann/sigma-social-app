@@ -72,7 +72,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
             height: 52,
             child: FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: c.accent,
+                  backgroundColor: c.accentFill,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14))),
               onPressed: _sending ? null : _submit,

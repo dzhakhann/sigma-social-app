@@ -117,7 +117,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
                   width: double.infinity,
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
-                        backgroundColor: c.accent,
+                        backgroundColor: c.accentFill,
                         padding: const EdgeInsets.symmetric(vertical: 15),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14))),

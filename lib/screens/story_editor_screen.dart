@@ -10,13 +10,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 import '../l10n/app_strings.dart';
 import '../services/music_preview.dart';
 import '../services/weather_service.dart';
 import '../theme/brutal_theme.dart';
 import '../widgets/music_widgets.dart';
-import 'device_music_sheet.dart';
 import 'gif_picker_screen.dart';
 import 'story_audio_trim_sheet.dart';
 import 'story_camera_screen.dart';
@@ -138,6 +138,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   bool _editingText = false;
   bool _drawing = false;
   bool _publishing = false;
+  bool _saving = false;
   _StoryItem? _editTarget; // overlay being re-edited
   double _baseScale = 1.0;
   double _baseRotation = 0;
@@ -167,6 +168,22 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   /// True when the track is a device file: it is NEVER uploaded — the audio is
   /// burned into the story media at render time instead.
   bool _audioIsLocal = false;
+
+  /// Dual volume mix for a VIDEO story with a track attached: how loud the
+  /// clip's OWN original sound plays (0 = fully replaced by the track, like
+  /// the old hard-mute default) vs how loud the track itself plays. Adjustable
+  /// via the mixer sheet — Instagram lets you blend both instead of an
+  /// all-or-nothing mute.
+  double _videoVolume = 0.0;
+  double _trackVolume = 0.6;
+
+  /// Applies [_videoVolume] to the live video preview — called every time the
+  /// controller becomes available AND whenever a track is added/removed, so
+  /// muting can never race the (async) video initialisation. Previously a
+  /// one-shot `_vid?.setVolume(0)` at pick-time silently no-op'd when the
+  /// controller wasn't ready yet, leaving the clip's OWN audio playing at full
+  /// volume underneath the newly picked track.
+  void _applyVideoVolume() => _vid?.setVolume(_audioUrl != null ? _videoVolume : 1.0);
 
   /// True for the split second we snapshot ONLY the overlay layer (video
   /// stories) — the clip itself is hidden so the PNG stays transparent.
@@ -248,14 +265,34 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         title: _audioTitle ?? '',
         startSec: _audioStartSec,
         lenSec: _audioSeconds,
-        // A video story has its own sound — keep the preview quieter under it.
-        volume: widget.isVideo ? 0.6 : 1.0,
+        volume: widget.isVideo ? _trackVolume : 1.0,
       );
     } catch (_) {}
   }
 
   Future<void> _stopPreview() async {
     await MusicPreview.i.stop();
+  }
+
+  /// Long-press removes an overlay. Removing the music sticker must also SILENCE
+  /// the preview and clear the audio so it doesn't keep playing / get published.
+  void _removeItem(_StoryItem it) {
+    HapticFeedback.selectionClick();
+    final wasMusic = it.kind == _ItemKind.music;
+    setState(() {
+      _items.remove(it);
+      if (wasMusic) {
+        _audioUrl = null;
+        _audioTitle = null;
+        _audioArtist = '';
+        _audioArtwork = '';
+        _audioIsLocal = false;
+      }
+    });
+    if (wasMusic) {
+      _applyVideoVolume(); // back to 1.0 now that _audioUrl is null
+      _stopPreview();
+    }
   }
 
   @override
@@ -272,10 +309,17 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   }
 
   Future<void> _initVideo() async {
-    final v = VideoPlayerController.file(File(widget.videoPath!));
+    // mixWithOthers: this clip plays alongside the music-sticker preview
+    // (a separate audioplayers instance) — without it, Android audio focus
+    // rules pause ONE of the two the moment the other starts.
+    final v = VideoPlayerController.file(
+      File(widget.videoPath!),
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     try {
       await v.initialize();
       await v.setLooping(true);
+      await v.setVolume(_audioUrl != null ? _videoVolume : 1.0);
       await v.play();
       if (mounted) {
         setState(() {
@@ -326,7 +370,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         Navigator.pop(
             context,
             StoryCapture.video(out ?? widget.videoPath!,
-                links: _linkData(), music: _musicData()));
+                links: _linkData(), music: _musicData(), gifs: _gifData()));
         return;
       }
 
@@ -347,13 +391,17 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         final path = await _renderPhotoWithAudio(bytes);
         if (!mounted) return;
         if (path != null) {
-          Navigator.pop(context,
-              StoryCapture.video(path, links: _linkData(), music: _musicData()));
+          Navigator.pop(
+              context,
+              StoryCapture.video(path,
+                  links: _linkData(), music: _musicData(), gifs: _gifData()));
           return;
         }
       }
-      Navigator.pop(context,
-          StoryCapture.photo(bytes, links: _linkData(), music: _musicData()));
+      Navigator.pop(
+          context,
+          StoryCapture.photo(bytes,
+              links: _linkData(), music: _musicData(), gifs: _gifData()));
       return;
     } catch (_) {}
     if (mounted) {
@@ -402,10 +450,16 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       'art': _audioArtwork,
       'start': _audioStartSec,
       'len': _audioSeconds,
+      // How loud the clip's OWN sound should stay under the track — lets the
+      // viewer blend both instead of a hard mute (Пункт: dual volume mixer).
+      if (widget.isVideo) 'videoVolume': _videoVolume,
       if (st != null) ...{
         'x': st.pos.dx,
         'y': st.pos.dy,
         'scale': st.scale,
+        'style': st.styleIdx,
+        'rot': st.rotation,
+        'color': _colors[st.colorIdx].value,
       },
     };
   }
@@ -425,18 +479,41 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
             },
       ];
 
+  /// GIF stickers serialised for the viewer — they ride as DATA so they keep
+  /// animating after publish (flattened into the JPEG they'd freeze).
+  List<Map> _gifData() => [
+        for (final it in _items)
+          if (it.isImage && (it.imageUrl ?? '').isNotEmpty)
+            {
+              'url': it.imageUrl,
+              'x': it.pos.dx,
+              'y': it.pos.dy,
+              'scale': it.scale,
+              'rot': it.rotation,
+            },
+      ];
+
   /// Video story: draw the overlay layer (text, stickers, GIF frame, drawing)
   /// to a transparent PNG the size of the clip, composite it over every frame,
   /// and mix in the chosen track. Returns null if nothing had to change.
   Future<String?> _renderVideoWithOverlays() async {
-    // Music/link stickers are data, not pixels — they don't force a render…
-    // except a DEVICE track, whose audio has to be burned into the clip.
+    // Music/link/GIF stickers are data, not pixels — they don't force a
+    // render… except a DEVICE track, whose audio has to be burned in.
     final burnAudio = _audioIsLocal && _audioUrl != null;
-    final burnable = _items.any(
-        (it) => it.kind != _ItemKind.music && it.kind != _ItemKind.link);
+    // A Rhythm (remote) track is never baked in — only STREAMED by viewers —
+    // but the clip's OWN audio still needs attenuating to match the mixer,
+    // otherwise the exported file plays at full original volume regardless
+    // of what the user chose (the app-side mute only ever happened at
+    // playback time, never in the file itself).
+    final needsVolumeAdjust =
+        !burnAudio && _audioUrl != null && _videoVolume < 0.999;
+    final burnable = _items.any((it) =>
+        it.kind != _ItemKind.music &&
+        it.kind != _ItemKind.link &&
+        !it.isImage);
     final hasOverlays = burnable || _strokes.isNotEmpty;
     final filter = _filters[_filterIdx].$3;
-    if (!hasOverlays && filter.isEmpty && !burnAudio) {
+    if (!hasOverlays && filter.isEmpty && !burnAudio && !needsVolumeAdjust) {
       return null; // untouched clip
     }
     try {
@@ -472,6 +549,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       if (burnAudio) {
         // Device track replaces the clip's own sound; -shortest ends with video.
         cmd.write('-map ${hasOverlays ? '0:v' : '0:v'} -map 1:a -shortest '
+            '-c:v libx264 -preset veryfast -pix_fmt yuv420p '
+            '-c:a aac -b:a 128k "$out"');
+      } else if (needsVolumeAdjust) {
+        // Rhythm track case: keep the clip's own audio but attenuate it to
+        // the chosen mix (0 = old hard-mute default, >0 = blended with music).
+        cmd.write('-af "volume=${_videoVolume.toStringAsFixed(2)}" '
             '-c:v libx264 -preset veryfast -pix_fmt yuv420p '
             '-c:a aac -b:a 128k "$out"');
       } else {
@@ -578,7 +661,6 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       case _ElementAction.emoji: _showEmojiStrip(); break;
       case _ElementAction.text: _openTextInput(); break;
       case _ElementAction.music: _pickMusic(); break;
-      case _ElementAction.deviceMusic: _pickDeviceAudio(); break;
       case _ElementAction.gif: _addGif(); break;
       case _ElementAction.hashtag:
         _askText(context.t('elHashtag'), Icons.tag_rounded, prefix: '#');
@@ -596,7 +678,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     if (res == null || !mounted) return;
     setState(() => _items.add(_StoryItem(
           text: res.$1, // visible label, e.g. "TG"
-          linkUrl: res.$2, // e.g. t.me/akadzh
+          linkUrl: res.$2, // e.g. https://example.com
           kind: _ItemKind.link,
           pos: const Offset(0.5, 0.35),
         )));
@@ -629,7 +711,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
             style: TextStyle(color: c.ink),
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
-                labelText: 'URL', hintText: 't.me/akadzh'),
+                labelText: 'URL', hintText: 'https://…'),
           ),
         ]),
         actions: [
@@ -715,39 +797,6 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
     _addBadge('$prefix$v', icon);
   }
 
-  // ── Music from the device (Bug 2): local file, same trimmer & sticker ─────
-  Future<void> _pickDeviceAudio() async {
-    // Browse device audio with search (spec: «Музыка из устройства»).
-    final picked = await showModalBottomSheet<Map>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black45,
-      isScrollControlled: true,
-      builder: (_) => const DeviceMusicSheet(),
-    );
-    final path = (picked?['path'] ?? '').toString();
-    if (path.isEmpty || !mounted) return;
-    final name = (picked!['title'] ?? 'Audio').toString();
-    setState(() {
-      _audioUrl = path;
-      _audioTitle = name;
-      _audioArtist = '';
-      _audioArtwork = '';
-      _audioTotalSec = ((picked['dur'] as num?)?.toInt() ?? 0);
-      _audioIsLocal = true;
-      // HARD RULE: one track per story — replaces a Rhythm pick too.
-      _items.removeWhere((it) => it.kind == _ItemKind.music);
-      _items.add(_StoryItem(
-        text: name,
-        kind: _ItemKind.music,
-        pos: const Offset(0.5, 0.22),
-        styleIdx: 1,
-      ));
-    });
-    _vid?.setVolume(0);
-    await _askAudioLength();
-    _startPreview();
-  }
 
   // ── Music from "Rhythm" — searchable picker (Пункт 1) ─────────────────────
   Future<void> _pickMusic() async {
@@ -768,11 +817,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       // real timeline instead of guessing.
       _audioTotalSec = int.tryParse((picked['duration'] ?? '').toString()) ?? 0;
       _audioIsLocal = false;
+      _videoVolume = 0.0; // default: track replaces the clip's own sound
+      _trackVolume = 0.6;
       // HARD RULE: one track per story — a new pick replaces the old one.
       _items.removeWhere((it) => it.kind == _ItemKind.music);
     });
-    // The track replaces the clip's own sound — mute the video preview.
-    _vid?.setVolume(0);
+    _applyVideoVolume();
     setState(() => _items.add(_StoryItem(
           text: _audioTitle ?? '',
           kind: _ItemKind.music,
@@ -794,7 +844,8 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
 
   Future<void> _askAudioLength() async {
     // For a video story the music can't outlast the clip — cap the length.
-    final maxLen = widget.isVideo && _videoLenSec > 0 ? _videoLenSec : 60;
+    final videoCapped = widget.isVideo && _videoLenSec > 0;
+    final maxLen = videoCapped ? _videoLenSec : 60;
     final initLen = _audioSeconds.clamp(5, maxLen);
     final res = await showModalBottomSheet<(int start, int len)>(
       context: context,
@@ -803,11 +854,17 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
       isScrollControlled: true,
       builder: (_) => AudioTrimSheet(
         title: _audioTitle ?? '',
+        artist: _audioArtist,
+        artwork: _audioArtwork,
         totalSec: _audioTotalSec,
         startSec: _audioStartSec,
         lenSec: initLen,
         audioUrl: _audioUrl,
         maxLen: maxLen,
+        // Explains why longer presets are missing, instead of a silent cap.
+        capHint: videoCapped
+            ? context.t('trimCappedByVideo').replaceAll('{n}', '$maxLen')
+            : null,
       ),
     );
     if (res != null && mounted) {
@@ -816,6 +873,164 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         _audioSeconds = res.$2;
       });
       _startPreview();
+    }
+  }
+
+  /// Independent volume sliders for the clip's OWN sound vs the added track —
+  /// replaces the old all-or-nothing mute so both can be blended.
+  Future<void> _openVolumeMixer() async {
+    HapticFeedback.selectionClick();
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black45,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+              decoration:
+                  BoxDecoration(color: const Color(0xFF16171C).withOpacity(0.92)),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 18),
+                    decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2))),
+                Text(context.t('volumeMixTitle'),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16)),
+                const SizedBox(height: 18),
+                _mixSlider(
+                  icon: Icons.movie_creation_outlined,
+                  label: context.t('originalVolumeLabel'),
+                  value: _videoVolume,
+                  onChanged: (v) {
+                    _videoVolume = v;
+                    _vid?.setVolume(v);
+                    setSheetState(() {});
+                  },
+                ),
+                const SizedBox(height: 10),
+                _mixSlider(
+                  icon: Icons.music_note_rounded,
+                  label: context.t('trackVolumeLabel'),
+                  value: _trackVolume,
+                  onChanged: (v) {
+                    _trackVolume = v;
+                    MusicPreview.i.player.setVolume(v);
+                    setSheetState(() {});
+                  },
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _mixSlider({
+    required IconData icon,
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Row(children: [
+      Icon(icon, color: Colors.white70, size: 20),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600)),
+            SliderTheme(
+              data: const SliderThemeData(
+                trackHeight: 3,
+                thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7),
+                overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+              ),
+              child: Slider(
+                value: value.clamp(0.0, 1.0),
+                activeColor: Colors.white,
+                inactiveColor: Colors.white24,
+                onChanged: onChanged,
+              ),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(
+        width: 38,
+        child: Text('${(value * 100).round()}%',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      ),
+    ]);
+  }
+
+  /// Saves the CURRENT edited result to the phone's own gallery — separate
+  /// from Publish (no upload, nothing sent anywhere). Rhythm audio can never
+  /// leave the app (licensing: only the catalog link is ever stored), so a
+  /// saved video always keeps the clip's OWN original sound at full volume
+  /// regardless of the in-app mix — there is nothing else to play it back
+  /// once it's just a file on the phone.
+  Future<void> _saveToPhone() async {
+    if (_saving || _publishing) return;
+    setState(() => _saving = true);
+    HapticFeedback.mediumImpact();
+    try {
+      final perm = await PhotoManager.requestPermissionExtend();
+      if (!perm.isAuth && !perm.hasAccess) {
+        throw Exception('permission denied');
+      }
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      if (widget.isVideo) {
+        final savedVolume = _videoVolume;
+        _videoVolume = 1.0;
+        String? rendered;
+        try {
+          rendered = await _renderVideoWithOverlays();
+        } finally {
+          _videoVolume = savedVolume;
+        }
+        await PhotoManager.editor.saveVideo(
+          File(rendered ?? widget.videoPath!),
+          title: 'sigmacta_$stamp.mp4',
+        );
+      } else {
+        final boundary = _boundaryKey.currentContext!.findRenderObject()
+            as RenderRepaintBoundary;
+        final img = await boundary.toImage(pixelRatio: 2.0);
+        final data = await img.toByteData(format: ui.ImageByteFormat.png);
+        if (data == null) throw Exception('capture failed');
+        final bytes = await compute(_pngToJpg, data.buffer.asUint8List());
+        await PhotoManager.editor
+            .saveImage(bytes, filename: 'sigmacta_$stamp.jpg');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(context.t('savedToPhone'))));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.t('saveFailedToast'))));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -923,10 +1138,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
   }
 
   Widget _overlay(_StoryItem it, Size size) {
-    // Links and music are never flattened: links must stay tappable, the
-    // music sticker must keep ANIMATING in the viewer (baked pixels can't).
+    // Links, music and GIFs are never flattened: links must stay tappable,
+    // music and GIFs must keep ANIMATING in the viewer (baked pixels can't).
     if (_hideLinksForCapture &&
-        (it.kind == _ItemKind.link || it.kind == _ItemKind.music)) {
+        (it.kind == _ItemKind.link ||
+            it.kind == _ItemKind.music ||
+            it.isImage)) {
       return const SizedBox.shrink();
     }
     return Positioned(
@@ -948,9 +1165,12 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                 .clamp(0.02, 0.98),
           );
         }),
-        // Tap: music opens its full re-editor; link cycles style; text edits.
+        // Tap: music & link cycle their look; text edits. (Long-press removes.)
         onTap: it.kind == _ItemKind.music
-            ? () => _editMusicSticker(it)
+            ? () {
+                HapticFeedback.selectionClick();
+                setState(() => it.styleIdx = (it.styleIdx + 1) % 7);
+              }
             : it.kind == _ItemKind.link
                 ? () {
                     HapticFeedback.selectionClick();
@@ -959,7 +1179,7 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
                 : (it.isEmoji || it.isImage || it.isBadge)
                     ? null
                     : () => _openTextInput(edit: it),
-        onLongPress: () => setState(() => _items.remove(it)),
+        onLongPress: () => _removeItem(it),
         child: SizedBox(
           width: 300,
           child: Center(
@@ -1202,332 +1422,15 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
         ),
       );
 
-  /// Music widget — tap cycles: title pill → cover card → mini player → wave.
-  Widget _musicWidget(_StoryItem it) {
-    final s = it.scale;
-    final title = it.text;
-    final artist = it.artist ?? '';
-    final col = _colors[it.colorIdx]; // tint for text-based styles
-    switch (it.styleIdx) {
-      case 1: // Instagram-style white card (shared widget)
-        return MusicStickerCard(
-            title: title, artist: artist, artUrl: it.artwork ?? '', scale: s);
-      case 4: // cover only
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(14 * s),
-          child: SizedBox(
-            width: 74 * s,
-            height: 74 * s,
-            child: Stack(fit: StackFit.expand, children: [
-              (it.artwork ?? '').isNotEmpty
-                  ? CachedNetworkImage(imageUrl: it.artwork!, fit: BoxFit.cover)
-                  : Container(color: const Color(0xFF222327)),
-              Container(color: Colors.black26),
-              Center(child: EqualizerBars(scale: 1.1 * s)),
-            ]),
-          ),
-        );
-      case 5: // big card: cover on top, title + artist below
-        return Container(
-          width: 150 * s,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16 * s),
-            boxShadow: [BoxShadow(blurRadius: 16 * s, color: Colors.black26)],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(
-              height: 150 * s,
-              width: 150 * s,
-              child: Stack(fit: StackFit.expand, children: [
-                (it.artwork ?? '').isNotEmpty
-                    ? CachedNetworkImage(imageUrl: it.artwork!, fit: BoxFit.cover)
-                    : Container(color: const Color(0xFF222327)),
-                Container(color: Colors.black26),
-                Center(child: EqualizerBars(scale: 1.4 * s)),
-              ]),
-            ),
-            Padding(
-              padding: EdgeInsets.all(9 * s),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        color: const Color(0xFF101012),
-                        fontSize: 13.5 * s,
-                        fontWeight: FontWeight.w800)),
-                if (artist.isNotEmpty)
-                  Text(artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: const Color(0xFF7A7C85), fontSize: 11.5 * s)),
-              ]),
-            ),
-          ]),
-        );
-      case 6: // minimal text (colour-tinted)
-        return Text('♪ $title',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                color: col,
-                fontSize: 17 * s,
-                fontWeight: FontWeight.w800,
-                shadows: const [Shadow(blurRadius: 8, color: Colors.black54)]));
-      case 2: // mini player
-        return Container(
-          padding: EdgeInsets.symmetric(horizontal: 12 * s, vertical: 9 * s),
-          constraints: BoxConstraints(maxWidth: 240 * s),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.72),
-            borderRadius: BorderRadius.circular(30 * s),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20 * s),
-            SizedBox(width: 8 * s),
-            Flexible(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13 * s,
-                          fontWeight: FontWeight.w700)),
-                  if (artist.isNotEmpty)
-                    Text(artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: Colors.white54, fontSize: 10.5 * s)),
-                ],
-              ),
-            ),
-          ]),
-        );
-      case 3: // animated waveform, Telegram-style
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(30 * s),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 14 * s, vertical: 9 * s),
-              constraints: BoxConstraints(maxWidth: 250 * s),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(30 * s),
-                border: Border.all(color: Colors.white30, width: 0.9),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.music_note_rounded,
-                    color: Colors.white, size: 15 * s),
-                SizedBox(width: 7 * s),
-                Flexible(
-                  child: Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13 * s,
-                          fontWeight: FontWeight.w700)),
-                ),
-                SizedBox(width: 8 * s),
-                _Waveform(scale: s),
-              ]),
-            ),
-          ),
-        );
-      default: // 0 — plain glass title pill
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(40 * s),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              padding:
-                  EdgeInsets.symmetric(horizontal: 15 * s, vertical: 9 * s),
-              constraints: BoxConstraints(maxWidth: 250 * s),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(40 * s),
-                border: Border.all(color: Colors.white30, width: 0.9),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.music_note_rounded,
-                    color: Colors.white, size: 15 * s),
-                SizedBox(width: 7 * s),
-                Flexible(
-                  child: Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15 * s,
-                          fontWeight: FontWeight.w700)),
-                ),
-              ]),
-            ),
-          ),
-        );
-    }
-  }
-
-  /// Re-editor for the music sticker (Instagram: tap the sticker to change
-  /// style, colour, the trimmed part, or swap the song).
-  Future<void> _editMusicSticker(_StoryItem it) async {
-    HapticFeedback.selectionClick();
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black45,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSheet) => ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-            child: Container(
-              color: const Color(0xFF121316).withOpacity(0.9),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                        width: 38,
-                        height: 4,
-                        decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(height: 14),
-                    // Style row — 7 variants.
-                    SizedBox(
-                      height: 40,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          for (var i = 0; i < 7; i++)
-                            GestureDetector(
-                              onTap: () {
-                                setState(() => it.styleIdx = i);
-                                setSheet(() {});
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: it.styleIdx == i
-                                      ? Colors.white
-                                      : Colors.white12,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text('${i + 1}',
-                                    style: TextStyle(
-                                        color: it.styleIdx == i
-                                            ? Colors.black
-                                            : Colors.white,
-                                        fontWeight: FontWeight.w800)),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Colour row (applies to the text-based styles).
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        for (var i = 0; i < _colors.length; i++)
-                          GestureDetector(
-                            onTap: () {
-                              setState(() => it.colorIdx = i);
-                              setSheet(() {});
-                            },
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              margin:
-                                  const EdgeInsets.symmetric(horizontal: 4),
-                              decoration: BoxDecoration(
-                                color: _colors[i],
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                    color: it.colorIdx == i
-                                        ? Colors.white
-                                        : Colors.white24,
-                                    width: it.colorIdx == i ? 2.5 : 1),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Row(children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _askAudioLength(); // edit the trimmed part
-                          },
-                          icon: const Icon(Icons.content_cut_rounded,
-                              size: 18, color: Colors.white),
-                          label: Text(context.t('videoEditTitle'),
-                              style: const TextStyle(color: Colors.white)),
-                          style: OutlinedButton.styleFrom(
-                              side:
-                                  const BorderSide(color: Colors.white24)),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _pickMusic(); // swap the song
-                          },
-                          icon: const Icon(Icons.swap_horiz_rounded,
-                              size: 18, color: Colors.white),
-                          label: Text(context.t('favTrackChange'),
-                              style: const TextStyle(color: Colors.white)),
-                          style: OutlinedButton.styleFrom(
-                              side:
-                                  const BorderSide(color: Colors.white24)),
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        setState(() {
-                          _items.remove(it);
-                          _audioUrl = null;
-                          _audioTitle = null;
-                          _vid?.setVolume(1);
-                        });
-                        _stopPreview();
-                      },
-                      icon: const Icon(Icons.delete_outline_rounded,
-                          size: 18, color: Colors.redAccent),
-                      label: Text(context.t('favTrackRemove'),
-                          style: const TextStyle(color: Colors.redAccent)),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// Music widget — tap cycles through the 7 shared sticker styles.
+  Widget _musicWidget(_StoryItem it) => StoryMusicSticker(
+        title: it.text,
+        artist: it.artist ?? '',
+        artUrl: it.artwork ?? '',
+        scale: it.scale,
+        styleIdx: it.styleIdx,
+        color: _colors[it.colorIdx],
+      );
 
   /// Link card — tap cycles white → black → glass.
   Widget _linkWidget(_StoryItem it) {
@@ -1678,6 +1581,25 @@ class _StoryEditorScreenState extends State<StoryEditorScreen> {
               icon: const Icon(Icons.text_fields_rounded,
                   color: Colors.white, size: 26),
               onPressed: () => _openTextInput(),
+            ),
+            // Dual volume mixer — only relevant once a video has a track.
+            if (widget.isVideo && _audioUrl != null)
+              IconButton(
+                icon: const Icon(Icons.tune_rounded,
+                    color: Colors.white, size: 24),
+                onPressed: _openVolumeMixer,
+              ),
+            // Save the edited result to the phone's own gallery.
+            IconButton(
+              icon: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white70))
+                  : const Icon(Icons.download_rounded,
+                      color: Colors.white, size: 26),
+              onPressed: (_saving || _publishing) ? null : _saveToPhone,
             ),
           ]),
         ),
@@ -1852,7 +1774,7 @@ class _DrawPainter extends CustomPainter {
 //  "Add element" sheet — frosted glass, card grid, spring press feedback.
 // ═══════════════════════════════════════════════════════════════════════════
 enum _ElementAction {
-  location, link, weather, time, emoji, text, music, deviceMusic, gif, hashtag, mention,
+  location, link, weather, time, emoji, text, music, gif, hashtag, mention,
 }
 
 class _ElementsSheet extends StatelessWidget {
@@ -1868,9 +1790,10 @@ class _ElementsSheet extends StatelessWidget {
       (_ElementAction.time, Icons.schedule_rounded, context.t('elTime')),
       (_ElementAction.emoji, Icons.emoji_emotions_rounded, context.t('elEmoji')),
       (_ElementAction.text, Icons.text_fields_rounded, context.t('elText')),
-      (_ElementAction.music, Icons.music_note_rounded, context.t('musicFromRhythm')),
-      (_ElementAction.deviceMusic, Icons.audiotrack_rounded,
-          context.t('musicFromDevice')),
+      // Music is intentionally NOT offered here (removed 2026-07-24 by
+      // request — "убрать музыку из сторис пока"). The whole music pipeline
+      // below (_pickMusic / _musicData / the sticker / ffmpeg burn-in) is
+      // left intact so it can be switched back on by restoring this one row.
       (_ElementAction.gif, Icons.gif_box_rounded, context.t('elGif')),
       (_ElementAction.hashtag, Icons.tag_rounded, context.t('elHashtag')),
       (_ElementAction.mention, Icons.alternate_email_rounded, context.t('elMention')),
@@ -2006,55 +1929,3 @@ class _ElementCardState extends State<_ElementCard> {
     );
   }
 }
-
-/// Animated bars, like Telegram's music widget. Purely decorative — it keeps
-/// one cheap controller and repaints only the bars.
-class _Waveform extends StatefulWidget {
-  final double scale;
-  const _Waveform({required this.scale});
-  @override
-  State<_Waveform> createState() => _WaveformState();
-}
-
-class _WaveformState extends State<_Waveform>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 900))
-    ..repeat(reverse: true);
-
-  static const _base = [0.35, 0.75, 0.5, 0.95, 0.6, 0.85, 0.4];
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.scale;
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, __) => Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < _base.length; i++) ...[
-            Container(
-              width: 2.5 * s,
-              height: (7 + 11 * _base[i] * (0.45 + 0.55 * _c.value)) * s,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(2 * s),
-              ),
-            ),
-            if (i != _base.length - 1) SizedBox(width: 2.2 * s),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-
-

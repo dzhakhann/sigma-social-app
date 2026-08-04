@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    Dedicated "just the app" entry point — sigmacta.pages.dev/app/.
+    Unlike the root index.html (which gates on platform and shows a
+    marketing/install page to everyone except iOS Safari), this URL always
+    boots the Flutter web app directly, no gate, no conditions. It exists so
+    the web app itself has its own shareable link, separate from the
+    marketing site at the root.
+
+    <base href="/"> so the compiled engine assets (main.dart.js, flutter.js,
+    canvaskit, etc. — all built to be served from the domain root) resolve
+    correctly even though this HTML file lives under /app/. The manifest
+    link below is written as an absolute path for the same reason: base
+    href only redirects relative (non-leading-slash) URLs.
+  -->
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="Sigmacta — a social app with chat, stories, music and communities.">
+  <meta name="theme-color" content="#0F1015">
+
+  <!-- iOS: behave like an installed app when added to Home Screen from here -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Sigmacta">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" href="/icons/Icon-192.png">
+
+  <link rel="icon" type="image/png" href="/favicon.png"/>
+
+  <title>Sigmacta</title>
+  <!-- Its own manifest (start_url "." resolves to /app/) so installing from
+       this URL reopens straight into the app, not the marketing gate. -->
+  <link rel="manifest" href="/app/manifest.json">
+
+  <script>
+    const serviceWorkerVersion = null;
+  </script>
+  <script src="flutter.js" defer></script>
+  <script src="ffmpeg_bridge.js" defer></script>
+</head>
+<body>
+  <script>
+    window.addEventListener('load', function () {
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: { serviceWorkerVersion: serviceWorkerVersion },
+        onEntrypointLoaded: function (engineInitializer) {
+          engineInitializer.initializeEngine().then(function (appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

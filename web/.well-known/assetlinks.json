@@ -4,7 +4,8 @@
     "namespace": "android_app",
     "package_name": "com.sigmacta.app",
     "sha256_cert_fingerprints": [
-      "REPLACE_WITH_PLAY_APP_SIGNING_SHA256"
+      "C3:A9:22:87:CB:63:86:D6:9A:7C:D3:7F:54:6E:4A:A7:3D:7D:30:A4:05:DA:E1:D6:A7:66:4F:95:D0:03:B1:22",
+      "27:91:C4:68:CC:5C:32:DC:AD:EC:B0:49:F2:6D:62:AA:38:0B:56:B4:99:D8:1C:A3:29:AA:CE:0D:3A:5B:16:E4"
     ]
   }
 }]
